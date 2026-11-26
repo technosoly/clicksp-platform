@@ -10,7 +10,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - SQL integrity rules with integration tests: append-only ledgers, hash-chained audit log with `audit_logs_verify()`, RBAC level ceilings and last-Super-Admin guard, ledger-driven oversell-proof inventory balances and reservations, order state machine with automatic status history, order total checks at commit, frozen order amounts and line snapshots, refund and return limits, immutable final payments and issued invoices, balanced and immutable posted journals with reversals, non-overlapping periods, fitment year and verification rules, category cycle guard, media and link allow-lists.
 - Permission catalogue (65 keys) with level ceilings, scopes, MFA flags and default bundles for Super Admin, Business Admin and Store Staff (`src/modules/rbac/domain/permission-catalogue.ts`); required settings with safe defaults (`src/modules/settings/domain/default-settings.ts`).
 - Idempotent system seed (`pnpm db:seed`, also run by the Docker migrate job): fa/en locales, IRR, permissions, four system roles, settings. No business data.
-- `pnpm test:integration` (77 tests on a real PostgreSQL database, including a concurrent-checkout test) and `pnpm db:drift`; both run in CI.
+- `pnpm test:integration` (82 tests on a real PostgreSQL database, including concurrent-checkout and concurrent-posting tests) and `pnpm db:drift`; both run in CI.
+- Security hardening from the independent review (`20261126100300_security_hardening`): immutable permission keys, journal and period row locks, TRUNCATE refused on ledgers and logs, approval state rules, paid orders need a matching succeeded payment, no refunds before payment, stricter relative-link checks, expiring Super Admin grants don't count as the last one.
 - Docs: `DATABASE.md`, `ERD.md`, `RBAC.md`, `ACCOUNTING.md` (with the professional-review disclaimer), `SECURITY.md` (including the PII inventory).
 
 ### Changed (Phase 3)

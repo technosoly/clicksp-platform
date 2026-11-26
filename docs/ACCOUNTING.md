@@ -26,8 +26,9 @@ What is implemented (Phase 3): the schema and the rules the database enforces. P
 4. **Corrections are reversals:** a `reversal` transaction references the posted transaction it reverses; each transaction can be reversed once and only posted transactions can be reversed. A test checks that a transaction plus its reversal nets to zero on every account.
 5. **Periods:** no overlaps (exclusion constraint); postings into a closed period, or with a date outside the period, are refused; a period with transactions cannot change dates or be deleted.
 6. **Accounts:** postings only to active, postable accounts in the transaction's currency; a child account has its parent's type; no cycles; accounts are never deleted (deactivate instead); an account's type cannot change once it has entries or children.
-7. **Idempotent posting:** `(source_type, source_id, source_event)` is unique, so an event handler that runs twice posts once.
-8. Money is integer Rial (`BIGINT`) throughout; no rounding happens inside accounting.
+7. **Concurrency:** writing an entry locks its transaction (`FOR SHARE`) and writing a transaction locks its period, so posting, adding entries and closing a period are serialized; an entry can't slip into a journal while it is being posted (tested with two connections).
+8. **Idempotent posting:** `(source_type, source_id, source_event)` is unique, so an event handler that runs twice posts once.
+9. Money is integer Rial (`BIGINT`) throughout; no rounding happens inside accounting.
 
 ## Default posting templates (Phase 6, accounts chosen by the accountant)
 

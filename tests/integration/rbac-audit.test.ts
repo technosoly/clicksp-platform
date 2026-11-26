@@ -109,6 +109,10 @@ describe("RBAC escalation guards (database level)", () => {
       expect((await dbError(db, "UPDATE users SET status = 'locked' WHERE id = $1", [second]))?.message).toMatch(
         /last active Super Admin/,
       );
+      // An expiry date on the last permanent grant would lock everyone out later.
+      expect(
+        (await dbError(db, "UPDATE user_roles SET expires_at = now() + interval '1 day' WHERE user_id = $1", [second]))?.message,
+      ).toMatch(/last active Super Admin/);
     });
   });
 
@@ -151,13 +155,76 @@ describe("RBAC escalation guards (database level)", () => {
   it("requires a different user to decide an approval", async () => {
     await inTx(async (db) => {
       const staff = await createUser(db);
-      const err = await dbError(
+      const a = await one<{ id: string }>(
         db,
-        `INSERT INTO admin_approvals (action, payload, status, requested_by, decided_by, decided_at, expires_at)
-         VALUES ('price.update', '{}', 'approved', $1, $1, now(), now() + interval '1 day')`,
+        `INSERT INTO admin_approvals (action, payload, requested_by, expires_at)
+         VALUES ('price.update', '{}', $1, now() + interval '1 day') RETURNING id`,
         [staff],
       );
+      const err = await dbError(
+        db,
+        "UPDATE admin_approvals SET status = 'approved', decided_by = $2, decided_at = now() WHERE id = $1",
+        [a.id, staff],
+      );
       expect(err?.constraint).toBe("admin_approvals_not_self_decided");
+    });
+  });
+
+  it("keeps approval requests immutable and decisions final", async () => {
+    await inTx(async (db) => {
+      const staff = await createUser(db);
+      const admin = await createUser(db);
+      expect(
+        (await dbError(
+          db,
+          `INSERT INTO admin_approvals (action, payload, status, requested_by, decided_by, decided_at, expires_at)
+           VALUES ('price.update', '{}', 'approved', $1, $2, now(), now() + interval '1 day')`,
+          [staff, admin],
+        ))?.message,
+      ).toMatch(/created pending/);
+      const a = await one<{ id: string }>(
+        db,
+        `INSERT INTO admin_approvals (action, payload, requested_by, expires_at)
+         VALUES ('price.update', '{"price": "1000"}', $1, now() + interval '1 day') RETURNING id`,
+        [staff],
+      );
+      expect(
+        (await dbError(db, `UPDATE admin_approvals SET payload = '{"price": "1"}' WHERE id = $1`, [a.id]))?.message,
+      ).toMatch(/request is immutable/);
+      expect(
+        await dbError(db, "UPDATE admin_approvals SET status = 'approved', decided_by = $2, decided_at = now() WHERE id = $1", [
+          a.id,
+          admin,
+        ]),
+      ).toBeNull();
+      expect((await dbError(db, "UPDATE admin_approvals SET status = 'pending' WHERE id = $1", [a.id]))?.message).toMatch(
+        /cannot change from approved to pending/,
+      );
+      expect((await dbError(db, "UPDATE admin_approvals SET decided_by = $2 WHERE id = $1", [a.id, staff]))?.message).toMatch(
+        /decision is final/,
+      );
+      expect(await dbError(db, "UPDATE admin_approvals SET status = 'executed', executed_at = now() WHERE id = $1", [a.id])).toBeNull();
+      expect((await dbError(db, "DELETE FROM admin_approvals WHERE id = $1", [a.id]))?.message).toMatch(/cannot be deleted/);
+    });
+  });
+
+  it("never lets a permission key be renamed", async () => {
+    await inTx(async (db) => {
+      expect((await dbError(db, "UPDATE permissions SET key = 'zz.tmp' WHERE key = 'role.manage'"))?.message).toMatch(
+        /keys are immutable/,
+      );
+      expect(
+        (await dbError(db, "UPDATE permissions SET scope_type = NULL WHERE key = 'product.update'"))?.message,
+      ).toMatch(/granted scoped/);
+      expect(await dbError(db, "UPDATE permissions SET requires_mfa = requires_mfa WHERE key = 'role.manage'")).toBeNull();
+    });
+  });
+
+  it("refuses TRUNCATE on ledgers and logs", async () => {
+    await inTx(async (db) => {
+      for (const table of ["audit_logs", "inventory_movements", "accounting_entries", "payment_transactions", "users"]) {
+        expect((await dbError(db, `TRUNCATE ${table} CASCADE`))?.message).toMatch(/cannot be truncated/);
+      }
     });
   });
 

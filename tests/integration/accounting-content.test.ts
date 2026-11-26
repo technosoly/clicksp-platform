@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { commitCheck, createAccount, createJournal, createPeriod, createUser, dbError, inTx, one, setActor, uid } from "./helpers";
+import {
+  commitCheck,
+  createAccount,
+  createJournal,
+  createPeriod,
+  createUser,
+  dbError,
+  inTx,
+  one,
+  pool,
+  setActor,
+  uid,
+} from "./helpers";
 
 const post = (id: string) => `UPDATE accounting_transactions SET status = 'posted' WHERE id = '${id}'`;
 
@@ -102,6 +114,60 @@ describe("double-entry accounting", () => {
       );
       expect(again?.constraint).toBe("accounting_transactions_reverses_id_key");
     });
+  });
+
+  it("does not let a concurrent transaction add entries to a journal being posted", async () => {
+    // Committed fixtures in a far-future period no other test uses.
+    const setup = await pool.connect();
+    let txId = "";
+    let accountId = "";
+    try {
+      await setup.query("BEGIN");
+      const period = await createPeriod(setup, "2099-01-01", "2099-01-31");
+      const cash = await createAccount(setup, "asset");
+      const income = await createAccount(setup, "income");
+      txId = await createJournal(setup, period, "2099-01-15", [
+        { accountId: cash, debit: 1000, credit: 0 },
+        { accountId: income, debit: 0, credit: 1000 },
+      ]);
+      await setup.query("COMMIT");
+      accountId = cash;
+    } finally {
+      setup.release();
+    }
+
+    const poster = await pool.connect();
+    const writer = await pool.connect();
+    try {
+      await poster.query("BEGIN");
+      await poster.query(post(txId));
+      await writer.query("BEGIN");
+      let settled = false;
+      const insert = writer
+        .query("INSERT INTO accounting_entries (transaction_id, line_no, account_id, debit, credit) VALUES ($1, 9, $2, 500, 0)", [
+          txId,
+          accountId,
+        ])
+        .then(
+          () => null,
+          (error: Error) => error,
+        )
+        .finally(() => {
+          settled = true;
+        });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(settled).toBe(false); // blocked by the posting transaction
+      await poster.query("COMMIT");
+      expect((await insert)?.message).toMatch(/posted transaction .* immutable/);
+      await writer.query("ROLLBACK");
+    } finally {
+      poster.release();
+      writer.release();
+    }
+    const totals = await pool.query("SELECT count(*)::int AS n, sum(debit)::int AS d FROM accounting_entries WHERE transaction_id = $1", [
+      txId,
+    ]);
+    expect(totals.rows[0]).toEqual({ n: 2, d: 1000 });
   });
 
   it("only reverses posted transactions", async () => {
@@ -238,6 +304,8 @@ describe("content and page builder", () => {
       expect((await banner("javascript:alert(1)"))?.constraint).toBe("banners_href_safe");
       expect((await banner("//evil.example"))?.constraint).toBe("banners_href_safe");
       expect((await banner("http://insecure.example"))?.constraint).toBe("banners_href_safe");
+      expect((await banner("/\\evil.example"))?.constraint).toBe("banners_href_safe");
+      expect((await banner("/fa/x\nLocation: y"))?.constraint).toBe("banners_href_safe");
       expect(await banner("/fa/categories/brakes")).toBeNull();
     });
   });

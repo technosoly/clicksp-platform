@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { commitCheck, createOrder, createProduct, createUser, dbError, inTx, one, setActor, type Db } from "./helpers";
+import {
+  commitCheck,
+  createOrder,
+  createProduct,
+  createUser,
+  dbError,
+  inTx,
+  one,
+  payOrder,
+  setActor,
+  succeededPayment,
+  type Db,
+} from "./helpers";
 
 async function setStatus(db: Db, orderId: string, status: string) {
   return dbError(db, "UPDATE orders SET status = $2::order_status WHERE id = $1", [orderId, status]);
@@ -76,6 +88,7 @@ describe("orders", () => {
       expect((await setStatus(db, orderId, "shipped"))?.message).toMatch(/cannot change from pending_payment to shipped/);
       await setActor(db, admin);
       await db.query("SELECT set_config('app.status_reason', 'TEST payment verified', true)");
+      await succeededPayment(db, orderId, 950_000);
       for (const status of ["paid", "processing", "shipped", "delivered"]) {
         expect(await setStatus(db, orderId, status)).toBeNull();
       }
@@ -101,6 +114,7 @@ describe("orders", () => {
   it("freezes amounts and items once the order is paid", async () => {
     await inTx(async (db) => {
       const { orderId, itemId, product } = await createOrder(db);
+      await succeededPayment(db, orderId, 950_000);
       expect(await setStatus(db, orderId, "paid")).toBeNull();
       expect((await dbError(db, "UPDATE orders SET shipping_total = 0, grand_total = 900000 WHERE id = $1", [orderId]))?.message).toMatch(
         /frozen/,
@@ -115,6 +129,20 @@ describe("orders", () => {
           [orderId, product.productId, product.variantId],
         ))?.message,
       ).toMatch(/awaits payment/);
+    });
+  });
+
+  it("becomes paid only with a succeeded payment for exactly the grand total", async () => {
+    await inTx(async (db) => {
+      const { orderId } = await createOrder(db); // grand_total 950,000
+      expect((await setStatus(db, orderId, "paid"))?.message).toMatch(/no succeeded payment/);
+      await succeededPayment(db, orderId, 900_000);
+      expect((await setStatus(db, orderId, "paid"))?.message).toMatch(/no succeeded payment/);
+    });
+    await inTx(async (db) => {
+      const { orderId } = await createOrder(db);
+      await succeededPayment(db, orderId, 950_000);
+      expect(await setStatus(db, orderId, "paid")).toBeNull();
     });
   });
 
@@ -139,6 +167,8 @@ describe("orders", () => {
            VALUES ($1, $2, 'gateway', 'TEST', $3, $4)`,
           [orderId, amount, key, admin],
         );
+      expect((await refund(600_000, "r0"))?.message).toMatch(/awaiting payment cannot be refunded/);
+      await payOrder(db, orderId);
       expect(await refund(600_000, "r1")).toBeNull();
       // Idempotency key: the same refund request cannot be recorded twice.
       expect((await refund(1, "r1"))?.constraint).toBe("order_refunds_idempotency_key_key");

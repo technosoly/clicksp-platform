@@ -273,3 +273,29 @@ export async function createJournal(
   }
   return t.id;
 }
+
+/** Records a verified, succeeded gateway payment for amount (Rial). */
+export async function succeededPayment(db: Db, orderId: string, amount: number | bigint): Promise<string> {
+  const code = `test_${uid().toLowerCase()}`;
+  const prov = await one<{ id: string }>(
+    db,
+    "INSERT INTO payment_providers (code, adapter_key) VALUES ($1, 'test') RETURNING id",
+    [code],
+  );
+  const ref = `TEST-${uid()}`;
+  return (
+    await one<{ id: string }>(
+      db,
+      `INSERT INTO payment_transactions (order_id, provider_id, amount, our_reference, idempotency_key,
+                                         status, verified_at, provider_reference)
+       VALUES ($1, $2, $3, $4, $4, 'succeeded', now(), $4) RETURNING id`,
+      [orderId, prov.id, amount.toString(), ref],
+    )
+  ).id;
+}
+
+/** Pays a fixture order (grand total 950,000) and marks it paid. */
+export async function payOrder(db: Db, orderId: string): Promise<void> {
+  await succeededPayment(db, orderId, 950_000);
+  await db.query("UPDATE orders SET status = 'paid' WHERE id = $1", [orderId]);
+}

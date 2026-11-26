@@ -16,7 +16,9 @@ Enforced by database triggers (tested in `tests/integration/rbac-audit.test.ts`)
 
 1. **Level ceiling.** Every permission has `max_level`. A role can hold it only when `1 <= role level <= max_level`. Super Admin-only permissions have `max_level = 1`, so a Business Admin or Staff role, system or custom, can never hold them, even if role data is edited directly. Customers (level 0) hold no permissions.
 2. System roles keep their key and level and cannot be deleted.
-3. The last active Super Admin cannot be disabled, lose the role or have the role deactivated.
+3. The last active Super Admin cannot be disabled, lose the role or have the role deactivated. Only grants without an expiry date count.
+4. Permission keys can't be renamed, and a scope type can't change while the permission is granted scoped.
+5. Approval requests can't be edited, decisions are final, and the requester can't decide.
 
 Further guards (only level 1 can assign level 1 roles, nobody grants a permission they lack, nobody edits their own roles) are service rules in Phase 4.
 

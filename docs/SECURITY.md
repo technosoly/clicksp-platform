@@ -11,7 +11,9 @@ What is implemented so far. Authentication, sessions, MFA, the authorization eng
   - Hash-chained, append-only `audit_logs`, verifiable with `SELECT audit_logs_verify()`; append-only login attempts, security events, inventory movements, order status history, price history, payment callbacks, tracking events.
   - Only hashes of session tokens, verification codes, guest cart tokens and MFA backup codes are stored (CHECK on SHA-256 hex format where the hash is fixed-length). The TOTP secret is stored encrypted by the app.
   - Immutable financial records: posted journal entries, final payments, issued invoices, order lines and frozen order amounts.
-  - No permanent deletes of users, orders, accounts, payments, refunds or invoices.
+  - No permanent deletes of users, orders, accounts, payments, refunds or invoices, and no `TRUNCATE` of ledgers and logs.
+  - Permission keys are immutable; approval requests and decisions are final; an order is paid only with a matching succeeded payment.
+  - Independent security review done on Phase 3; its findings were fixed in `20261126100300_security_hardening` or are listed as known gaps in [DATABASE.md](DATABASE.md#known-gaps-until-the-phase-10-database-roles).
   - Media types are allow-listed (no SVG, HTML or scripts); banner links must be relative or `https://`.
   - No business data is seeded.
 
