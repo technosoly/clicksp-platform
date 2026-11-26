@@ -1,6 +1,6 @@
 # Roles and permissions
 
-What is implemented: the data model, the permission catalogue, the default bundles of the three admin levels and the database-level escalation guards (Phase 3); the `authorize()` engine, admin and customer sign-in, sessions and TOTP (Phase 4). Screens to manage users, roles and permissions come in Phase 5.
+What is implemented: the data model, the permission catalogue, the default bundles of the three admin levels and the database-level escalation guards (Phase 3); the `authorize()` engine, admin and customer sign-in, sessions and TOTP (Phase 4); the screens and services to manage admin accounts, roles and permissions, the per-level admin navigation and the audit log viewer (Phase 5).
 
 ## Checking a permission (Phase 4)
 
@@ -11,7 +11,7 @@ await authorize(actor, "product.update", { type: "product", id, categoryIds })
 - `actor` comes from the session (`requireAdmin()` in pages/actions); never from request data.
 - Deny by default: a key the actor's active, unexpired roles don't grant is refused with `AuthzError` (403) and a `security_events` row (`authz.denied`).
 - Scoped grants (Store Staff) need the resource's categories or warehouses, and every one of them must be in the user's scope. Missing resource information denies.
-- Permissions marked MFA also need a TOTP check in the last `security.step_up_mfa_seconds` (300 s), otherwise `MfaRequiredError`; the admin re-enters a code at `/admin/mfa`.
+- Permissions marked MFA also need a TOTP check in the last `security.step_up_mfa_seconds` (300 s), otherwise `MfaRequiredError`; the admin re-enters a code at `/admin/mfa?next=<page>` and returns to the page (only `/admin/...` paths are accepted as `next`). Read-only screens of such a permission (the admin list behind `user.manage_staff`, the role list behind `role.manage`) call `authorize(..., { stepUp: false })`: the grant is still checked, the code is asked for only when something changes.
 - The admin navigation hides links the user does not hold, but only `authorize()` grants access.
 - Tested for **every permission × each of the three admin levels** (allowed and denied, in and out of scope) on PostgreSQL in `tests/integration/auth.test.ts`, and on the pure engine in `src/modules/rbac/tests/authorize.test.ts`.
 
@@ -37,7 +37,31 @@ Enforced by database triggers (tested in `tests/integration/rbac-audit.test.ts`)
 4. Permission keys can't be renamed, and a scope type can't change while the permission is granted scoped.
 5. Approval requests can't be edited, decisions are final, and the requester can't decide.
 
-Further guards (only level 1 can assign level 1 roles, nobody grants a permission they lack, nobody edits their own roles) are service rules of the role and user management services in Phase 5. Until then the only way to create an admin is the first-Super-Admin CLI.
+Service rules on top (Phase 5, `src/modules/rbac/domain/escalation.ts`, used by `identity/service/admin-users.ts` and `rbac/service/roles.ts`; tested in `src/modules/rbac/tests/escalation.test.ts` and `tests/integration/admin-management.test.ts`):
+
+6. **Who manages which accounts.** Store Staff accounts (level 3) need `user.manage_staff` (or `user.manage_admins`) and an actor of level 1 or 2. Business Admin and Super Admin accounts (levels 1-2) need `user.manage_admins` **and** a level 1 actor, whatever permissions a role has been given. An account's level is the strongest admin role it has ever been assigned (expired or not). Both the account's current level and the new role's level must be manageable when changing a role.
+7. **Nobody manages their own account** through these screens (role, status, password link, two-factor reset, sign-out); their own password and devices are on My account.
+8. **Role editing:** only roles of a strictly lower rank than the actor (levels 2-3 for a Super Admin); the Super Admin bundle is fixed; nobody edits a role they hold; system roles can't be switched off.
+9. **Grant only what you hold:** a permission can be added, removed or re-scoped only by an actor holding it (`x.propose` counts as held through `x`). Cells the actor may not change keep their current state whatever the form sends. Above-ceiling permissions are never granted (and the database refuses them anyway). The same rule applies to **assigning a role**: an account can be given a role only when the actor holds every permission it grants (unscoped grants need the actor's own grant to be unscoped).
+10. Changing an account's role, disabling it, removing its two-factor enrolment and using a password link **revoke all its sessions**. Changing the role or disabling the account also retires its unused password links, so a link issued for a Store Staff account can't be used after a promotion. Role permission edits apply at the members' next request (effective permissions are loaded per request), so sessions are kept.
+
+## Screens per level (Phase 5)
+
+| Screen | Super Admin | Business Admin | Store Staff |
+|---|---|---|---|
+| Dashboard, My account (password change, signed-in devices) | ✓ | ✓ | ✓ |
+| People › Admins and staff (`/admin/people/users`) | all levels | Store Staff accounts only | 403 |
+| People › Roles and permissions (`/admin/people/roles`) | ✓ (edits levels 2-3) | 403 | 403 |
+| Audit log (`/admin/audit`) | everything + security events | business and staff actions only (`staff.*`, catalog, inventory, sales, finance, content) | 403 |
+| Catalog, inventory, orders, content areas | ✓ | ✓ | ✓ (scoped) |
+| Customers, approvals, accounting, reports, shipping, payment gateways, settings | ✓ | ✓ | 403 |
+| Page builder, technical (integrations, backups, deployments, monitoring) | ✓ | 403 | 403 |
+
+The navigation (`src/components/admin/admin-nav.ts`) shows an area when the admin holds any one of its permissions; typed URLs of hidden areas answer **403** with a localized page (Next.js `forbidden()`). Areas marked "Coming soon" (catalog, inventory, orders, finance, content, settings, technical) are only reachable by the admins who will use them, and say that the screens arrive in Phase 6 or later.
+
+Account lifecycle: a manager creates an account without a password and hands over a **one-time link** (72 hours) to set it; resets use a 30-minute link. Links are 256-bit random tokens, stored as SHA-256, single use, carried in the URL fragment (never sent to the server in a request line or Referer), and a new link retires older ones. Two-factor enrolment follows at the first sign-in. Lost phone and backup codes: a manager removes the enrolment. Owner locked out of the only Super Admin account: `pnpm admin:reset-link --username <name> [--reset-mfa]` on the server.
+
+Scopes (which categories or warehouses a Store Staff member covers) are stored per user-role but have no screen yet: categories and warehouses arrive in Phase 6, and until then scoped grants deny.
 
 ## Default bundles
 

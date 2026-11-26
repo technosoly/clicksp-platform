@@ -52,11 +52,12 @@ Implemented so far:
 | System seed with node-postgres, not the Prisma client | Runs under plain Node (type stripping) in the migrate container; never overwrites admin changes. |
 | Vazirmatn self-hosted via `@fontsource-variable/vazirmatn` | Fonts are bundled into the build with unicode-range subsets; no Google Fonts (unreliable from Iran). |
 | Tailwind CSS 4 with CSS-variable tokens | Brand palette from the logo (orange `#DE803C`, charcoal `#272A2D`, cream `#F4F1D4`) in one place; shadcn/ui reads the same token names. Layout uses logical properties (`ms-`, `start-`) for RTL/LTR. |
-| Security headers in `next.config.ts` | `nosniff`, `X-Frame-Options: DENY`, referrer and permissions policies, HSTS. A nonce-based CSP for the (dynamic) admin and account routes is planned for Phase 5. |
+| Security headers in `next.config.ts`, CSP in `proxy.ts` | `nosniff`, `X-Frame-Options: DENY`, referrer and permissions policies, HSTS. Content-Security-Policy with a per-request nonce on the (dynamic) admin, sign-in and account pages; a static policy on the pre-rendered storefront ([SECURITY.md](SECURITY.md)). |
+| Admin pages: service call → 403 | Pages call a service through `adminPage()`, which turns `AuthzError` into Next.js `forbidden()` (HTTP 403, `forbidden.tsx`) and `MfaRequiredError` into the two-factor page. Admin Server Actions go through `runAdminAction()`, which resolves the actor from the cookie and maps the same errors to form messages. |
 | Own authentication code, rate limits in PostgreSQL | Hashed tokens and codes, separate admin/customer realms and audit-in-transaction fit the Phase 3 schema better than adapting Better Auth. See [ADR 0002](adr/0002-own-authentication.md). |
 | Sign-in through Server Actions | Same-origin checks by Next.js (CSRF), no client-side token handling, works with JS disabled-ish forms; admin pages render per request (`force-dynamic`), storefront pages stay static. |
 | `robots.txt` disallows everything | The store is not open; Phase 6b ships the real robots rules and sitemap. |
 
 ## Not implemented yet
 
-Authentication, the RBAC engine (`authorize()`), admin panel, business services and repositories, search indexing, object storage, background jobs, page builder. The database tables for all of them exist (Phase 3). See [ROADMAP.md](ROADMAP.md).
+Business services and screens (catalog, motorcycles, inventory, orders, accounting, payments, shipping, content), search indexing, object storage, background jobs, page builder. The database tables for all of them exist (Phase 3); the admin navigation already lists their areas as "Coming soon". See [ROADMAP.md](ROADMAP.md).

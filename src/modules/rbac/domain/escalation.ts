@@ -60,6 +60,23 @@ export function canGrantPermission(perms: EffectivePermissions, key: string): bo
   return false;
 }
 
+/**
+ * Keys of a role's grants the actor could not give themselves, so may not
+ * assign the role to anyone (empty = assignable). An unscoped grant needs the
+ * actor to hold that permission unscoped; a scoped grant starts with no scope
+ * rows (deny) and needs the permission held in any form.
+ */
+export function ungrantableKeys(perms: EffectivePermissions, grants: readonly GrantChange[]): string[] {
+  return grants
+    .filter((g) => {
+      if (!canGrantPermission(perms, g.key)) return true;
+      if (g.isScoped) return false;
+      const own = perms.get(g.key) ?? (g.key.endsWith(".propose") ? perms.get(g.key.slice(0, -".propose".length)) : undefined);
+      return !own?.unscoped;
+    })
+    .map((g) => g.key);
+}
+
 export interface GrantChange {
   key: string;
   isScoped: boolean;

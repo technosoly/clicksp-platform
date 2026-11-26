@@ -3,7 +3,7 @@ import { db, transaction } from "@/lib/db";
 import { randomToken, sha256Hex } from "@/lib/security/tokens";
 import { recordAudit, recordSecurityEvent } from "@/modules/audit/service/audit";
 import type { Actor } from "@/modules/rbac/domain/actor";
-import { manageableLevels, userManagementPermission, type ManagingActor } from "@/modules/rbac/domain/escalation";
+import { manageableLevels, ungrantableKeys, userManagementPermission, type ManagingActor } from "@/modules/rbac/domain/escalation";
 import { authorize, AuthzError } from "@/modules/rbac/service/authorize";
 import {
   accountAuditAction,
@@ -25,7 +25,9 @@ import {
   listActiveSessions,
   listAdminUsers as listAdminUserRows,
   listAssignableRoles,
+  listRoleGrants,
   replaceAdminRole,
+  retirePasswordLinks,
   setUserStatus,
   strongestAdminLevel,
   updateAdminUserDetails,
@@ -81,6 +83,23 @@ async function loadTarget(actor: Actor, userId: string, stepUp: boolean): Promis
   if (!row || level === null) return { status: "not_found" };
   await authorizeTargetLevel(actor, level, userId, stepUp);
   return { row, level };
+}
+
+/**
+ * An actor may assign only roles whose every permission they could grant
+ * themselves (rbac-security: no granting what you do not hold). Denials are
+ * recorded like any other authorization failure.
+ */
+async function authorizeRoleGrants(actor: Actor, roleId: string): Promise<void> {
+  const missing = ungrantableKeys(actor.permissions, await listRoleGrants(db(), roleId));
+  if (missing.length === 0) return;
+  await recordSecurityEvent(actor.meta, {
+    type: "authz.denied",
+    severity: "warning",
+    userId: actor.userId,
+    details: { permission: missing[0], reason: "role_exceeds_actor", resourceType: "role", resourceId: roleId, missing: missing.slice(0, 20) },
+  });
+  throw new AuthzError(missing[0]!, "role_exceeds_actor");
 }
 
 function isLastSuperAdminError(error: unknown): boolean {
@@ -140,6 +159,7 @@ export async function createAdminUser(actor: Actor, input: CreateAdminUserInput,
   const role = await findRole(db(), data.roleId);
   if (!role || !role.isActive || role.level < 1 || role.level > 3) return { status: "invalid", field: "invalid_role" };
   const managing = await authorizeTargetLevel(actor, role.level, undefined, true);
+  await authorizeRoleGrants(actor, role.id);
 
   const taken = await identifierTaken(db(), { username: data.username, email: data.email });
   if (taken) return { status: "taken", field: taken };
@@ -202,10 +222,13 @@ export async function changeAdminRole(actor: Actor, userId: string, roleId: stri
   if (!role || !role.isActive || role.level < 1 || role.level > 3) return { status: "invalid", field: "invalid_role" };
   await authorizeTargetLevel(actor, role.level, userId, true);
   if (role.id === target.row.role.id && target.level === role.level) return { status: "ok" };
+  await authorizeRoleGrants(actor, role.id);
   try {
     await transaction(async (tx) => {
       await replaceAdminRole(tx, userId, role.id, actor.userId!);
       await revokeUserSessions(tx, userId, "role_changed", now);
+      // A link issued under the old role must not outlive it (no takeover after a promotion).
+      await retirePasswordLinks(tx, userId, now);
       await recordAudit(tx, actor.meta, {
         actorUserId: actor.userId,
         action: accountAuditAction(Math.min(target.level, role.level), "role_changed"),
@@ -236,7 +259,10 @@ export async function setAdminStatus(
   try {
     await transaction(async (tx) => {
       await setUserStatus(tx, userId, status);
-      if (status === "disabled") await revokeUserSessions(tx, userId, "account_disabled", now);
+      if (status === "disabled") {
+        await revokeUserSessions(tx, userId, "account_disabled", now);
+        await retirePasswordLinks(tx, userId, now);
+      }
       await recordAudit(tx, actor.meta, {
         actorUserId: actor.userId,
         action: accountAuditAction(target.level, status === "disabled" ? "disabled" : "enabled"),

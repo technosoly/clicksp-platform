@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildEffectivePermissions, type EffectivePermissions } from "../domain/authorize";
-import { canEditRoleLevel, canGrantPermission, diffGrants, manageableLevels, userManagementPermission } from "../domain/escalation";
+import { canEditRoleLevel, canGrantPermission, diffGrants, manageableLevels, ungrantableKeys, userManagementPermission } from "../domain/escalation";
 import { defaultGrants, SYSTEM_ROLES } from "../domain/permission-catalogue";
 
 function bundle(key: "super_admin" | "business_admin" | "store_staff"): EffectivePermissions {
@@ -78,5 +78,22 @@ describe("role editing guards", () => {
         ],
       ),
     ).toEqual({ added: [{ key: "d", isScoped: true }], removed: ["a"], rescoped: [{ key: "b", isScoped: false }] });
+  });
+});
+
+describe("ungrantableKeys (assigning a role needs every permission it grants)", () => {
+  const scopedInventory = buildEffectivePermissions([
+    { key: "inventory.view", isScoped: true, requiresMfa: false, scopeType: "warehouse", categoryIds: [], warehouseIds: ["w1"] },
+    { key: "price.update", isScoped: false, requiresMfa: false, scopeType: null, categoryIds: [], warehouseIds: [] },
+  ]);
+  it("lists grants the actor does not hold, or holds only within a scope", () => {
+    expect(ungrantableKeys(scopedInventory, [{ key: "price.update.propose", isScoped: false }])).toEqual([]);
+    expect(ungrantableKeys(scopedInventory, [{ key: "inventory.view", isScoped: true }])).toEqual([]);
+    expect(ungrantableKeys(scopedInventory, [{ key: "inventory.view", isScoped: false }])).toEqual(["inventory.view"]);
+    expect(ungrantableKeys(scopedInventory, [{ key: "product.update", isScoped: false }, { key: "price.update", isScoped: false }])).toEqual(["product.update"]);
+  });
+  it("the Business Admin bundle covers the Store Staff role", () => {
+    const staff = SYSTEM_ROLES.find((r) => r.key === "store_staff")!;
+    expect(ungrantableKeys(bundle("business_admin"), defaultGrants(staff).map((g) => ({ key: g.key, isScoped: false })))).toEqual([]);
   });
 });

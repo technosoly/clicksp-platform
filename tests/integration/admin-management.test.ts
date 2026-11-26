@@ -264,6 +264,40 @@ describe("account lifecycle", () => {
     expect(await completePasswordLink({ token: "x".repeat(43), password: "a good long password" }, sameIp)).toEqual({ status: "rate_limited" });
   });
 
+  it("a promotion or a disable retires the account's unused password links", async () => {
+    const ba = await actorFor("business_admin");
+    const sa = await actorFor("super_admin");
+    // A Business Admin's invite for a staff account must not survive a promotion by a Super Admin.
+    const created = await createAdminUser(ba, { username: `test-promo-${uid().toLowerCase()}`, email: "", name: "x", roleId: await roleIdOf("store_staff") });
+    if (created.status !== "ok") throw new Error(created.status);
+    expect(await changeAdminRole(sa, created.userId, await roleIdOf("business_admin"))).toEqual({ status: "ok" });
+    expect(await completePasswordLink({ token: created.token, password: "a good long password" }, meta())).toEqual({ status: "invalid_link" });
+
+    // Disable then re-enable: the old link stays dead.
+    const target = await createAccount("store_staff");
+    const link = await issuePasswordLink(ba, target.id);
+    if (link.status !== "ok") throw new Error("not issued");
+    expect(await setAdminStatus(sa, target.id, "disabled")).toEqual({ status: "ok" });
+    expect(await setAdminStatus(sa, target.id, "active")).toEqual({ status: "ok" });
+    expect(await completePasswordLink({ token: link.token, password: "a good long password" }, meta())).toEqual({ status: "invalid_link" });
+  });
+
+  it("an admin can assign only roles whose permissions they hold", async () => {
+    const sa = await actorFor("super_admin");
+    const role = await createRole(sa, { key: `test_r_${uid().toLowerCase()}`, name: "TEST STOCK", description: "", level: 3 });
+    if (role.status !== "ok") throw new Error(role.status);
+    await setRolePermissions(sa, role.roleId, [{ key: "inventory.view", isScoped: false }]);
+    const ba = await actorFor("business_admin");
+    const narrow: typeof ba = { ...ba, permissions: new Map([...ba.permissions].filter(([k]) => k !== "inventory.view")) };
+    await expect(createAdminUser(narrow, { username: `test-n-${uid().toLowerCase()}`, email: "", name: "x", roleId: role.roleId })).rejects.toBeInstanceOf(AuthzError);
+    const target = await createAccount("store_staff");
+    await expect(changeAdminRole(narrow, target.id, role.roleId)).rejects.toBeInstanceOf(AuthzError);
+    const denied = await q("SELECT 1 FROM security_events WHERE user_id = $1 AND details->>'reason' = 'role_exceeds_actor'", [ba.userId]);
+    expect(denied.length).toBe(2);
+    // The full Business Admin bundle covers it.
+    expect(await changeAdminRole(ba, target.id, role.roleId)).toEqual({ status: "ok" });
+  });
+
   it("role changes, disabling, two-factor reset and sign-out revoke the target's sessions", async () => {
     const sa = await actorFor("super_admin");
     const target = await createAccount("store_staff");

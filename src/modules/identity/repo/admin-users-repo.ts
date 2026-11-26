@@ -115,6 +115,15 @@ export async function findRole(client: DbClient, roleId: string) {
   });
 }
 
+/** The permission grants of a role (to check the assigner holds them all). */
+export async function listRoleGrants(client: DbClient, roleId: string): Promise<{ key: string; isScoped: boolean }[]> {
+  const rows = await client.rolePermission.findMany({
+    where: { roleId },
+    select: { isScoped: true, permission: { select: { key: true } } },
+  });
+  return rows.map((r) => ({ key: r.permission.key, isScoped: r.isScoped }));
+}
+
 /** Active admin roles of the given levels (for the role picker). */
 export async function listAssignableRoles(client: DbClient, levels: number[]) {
   return client.role.findMany({
@@ -198,6 +207,19 @@ export async function createPasswordLink(
     select: { id: true },
   });
   return token.id;
+}
+
+/**
+ * Retires every unused password link of the user. Called whenever the
+ * account's privileges or status change, so a link handed out for a Store
+ * Staff account can never be used after a promotion or a disable.
+ */
+export async function retirePasswordLinks(client: DbClient, userId: string, at: Date): Promise<number> {
+  const result = await client.verificationToken.updateMany({
+    where: { userId, purpose: { in: ["admin_invite", "password_reset"] }, consumedAt: null },
+    data: { consumedAt: at },
+  });
+  return result.count;
 }
 
 export async function findPasswordLink(client: DbClient, valueHash: string) {

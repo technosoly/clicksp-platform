@@ -22,7 +22,10 @@ Object storage is not in the stack yet. The community MinIO images are no longer
 - `SMS_PROVIDER`: `none` until a real provider adapter exists. `console` is refused in production.
 - `TRUSTED_IP_HEADER` (`x-real-ip` default, or `x-forwarded-for`): the reverse proxy must **overwrite** that header with the client address (nginx: `proxy_set_header X-Real-IP $remote_addr;`). With `x-forwarded-for` the app uses the last entry, which the proxy appends. The app uses it for per-IP rate limits and security logs.
 - Session cookies are `Secure` with the `__Host-` prefix in production builds, so the site must be served over HTTPS (local `http://localhost` works in Chrome and Firefox).
-- First Super Admin: `docker compose --profile app run --rm migrate pnpm admin:create-super` (or `pnpm admin:create-super` on a checkout with `DATABASE_URL`). There is no web sign-up for admins.
+- First Super Admin: `docker compose --profile app run --rm migrate pnpm admin:create-super` (or `pnpm admin:create-super` on a checkout with `DATABASE_URL`). There is no web sign-up for admins; further admins are invited from the panel.
+- Account recovery: `docker compose --profile app run --rm migrate pnpm admin:reset-link --username <name> [--reset-mfa]` prints a one-time link built from `APP_URL`, so set `APP_URL` to the public address. It signs the account out everywhere and is recorded in the audit log.
+- `APP_URL` is also used for the password links shown in the admin panel.
+- Content-Security-Policy is sent by the app (`proxy.ts`); a reverse proxy must not add a second, conflicting CSP header.
 
 ## Endpoints for monitoring
 - `GET /api/health`: 200 while the process serves requests.

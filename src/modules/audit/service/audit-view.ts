@@ -31,7 +31,7 @@ export const BUSINESS_AUDIT_PREFIXES: readonly string[] = [
   "content.",
   "menu.",
   "banner.",
-  "settings.store",
+  "settings.store.",
 ];
 
 export const AUDIT_PAGE_SIZE = 50;

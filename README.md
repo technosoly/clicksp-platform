@@ -28,7 +28,7 @@ In `.env`, set `AUTH_SECRET` to a long random value (`openssl rand -base64 48`);
 
 ### Getting into the admin panel
 
-1. Create the first Super Admin (only works while there is none; more admins are added from the panel in Phase 5):
+1. Create the first Super Admin (only works while there is none; more admins are added from the panel, see below):
    ```bash
    pnpm admin:create-super
    ```
@@ -38,7 +38,19 @@ In `.env`, set `AUTH_SECRET` to a long random value (`openssl rand -base64 48`);
 4. Save the 10 backup codes somewhere private. Each one works once if you lose your phone.
 5. From then on, every sign-in asks for the password and a current code from the app.
 
-Lost both the phone and the backup codes? There is no reset from the web yet (Phase 5); ask a developer to clear `user_mfa` for your user on the server, after which the next sign-in asks to scan a new QR code.
+### Adding your team
+
+In the panel, open **People › Admins and staff › Add an account**: enter a name and username and pick a role (Super Admin, Business Admin, Store Staff or a custom role). You get a **one-time link** (valid 72 hours); send it to the person privately. They open it, choose their password, sign in and set up two-factor sign-in. Business Admins can add and manage Store Staff accounts only.
+
+From an account's page you can change its role, create a password reset link (30 minutes), remove a lost authenticator, sign it out everywhere or disable it. **People › Roles and permissions** (Super Admin) shows what each role can do and lets you adjust the Business Admin and Store Staff bundles or create custom roles. **Audit log** lists every sensitive change. Your own password and signed-in devices are under **My account**.
+
+Lost your password, or your phone and backup codes? Another Super Admin can reset it from the panel. If you are the only Super Admin, run on the server:
+
+```bash
+pnpm admin:reset-link --username <your-username> --reset-mfa
+```
+
+It prints a one-time link (30 minutes) to set a new password; `--reset-mfa` also removes the authenticator so the next sign-in shows a new QR code.
 
 ### Customer sign-in
 
@@ -64,6 +76,7 @@ docker compose --profile app run --rm migrate pnpm admin:create-super
 | `pnpm db:seed` | Idempotent system seed (no business data) |
 | `pnpm db:drift` | Fail if the Prisma schema and the migrations differ |
 | `pnpm admin:create-super` | Create the first Super Admin on the server (interactive) |
+| `pnpm admin:reset-link` | Print a one-time password reset link for an admin account (`--reset-mfa` removes two-factor too) |
 | `pnpm skills:validate` | Check `.claude/` skills and agents |
 
 ## Repository layout

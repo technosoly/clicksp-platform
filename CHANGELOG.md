@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 5: administration)
+- Redesigned admin panel: navigation grouped by area and filtered by permission, a dashboard listing the admin's areas, plain "coming in a later phase" pages for areas not built yet, and a 403 page for typed URLs. Mobile menu with the language switcher.
+- People screens: Super Admins manage every admin, Business Admins manage Store Staff only. Create an account (it gets a one-time "set your password" link, valid 72 hours), edit details, change role, disable or enable, issue a password reset link (30 minutes), reset two-factor, sign the account out everywhere.
+- Roles screens (Super Admin): create custom Business Admin or Store Staff level roles, rename or deactivate them, and edit their permissions in a matrix that respects level ceilings and only lets the actor grant what they hold.
+- Audit log screen: business actions for Business Admins, every action plus security events for Super Admins.
+- My account: change password (signs out other sessions, locked after 5 wrong attempts in 15 minutes), list and sign out sessions.
+- Set-password page for invitation and reset links (token in the URL fragment, single use, 20 wrong links per IP per 15 minutes), and a "forgot password" page that explains who can issue a link.
+- `pnpm admin:reset-link <username> [--reset-mfa]`: server-side recovery link for any admin, including the last Super Admin.
+- Strict nonce-based Content Security Policy on admin, account and login pages; a static policy elsewhere.
+- Escalation guards: nobody manages their own account or a role they hold, Business Admins never touch levels 1-2, an account can be given only a role whose permissions the actor holds, and every change needs a fresh two-factor check (reads do not).
+- Tests: unit (156 in total), integration on PostgreSQL (141 in total), E2E (42 in total, desktop and mobile).
+
+### Fixed (Phase 5)
+- From the independent security review: unused password links are retired when the account's role changes or it is disabled (a staff invite could otherwise be used after a promotion), an account can be given only a role whose permissions the assigning admin holds, and the business audit filter for store settings is anchored.
+- Customer SMS sign-in refuses phone numbers that belong to admin accounts.
+- The price-history integration test no longer depends on the order of UUIDv7 ids created in the same millisecond.
+
 ### Added (Phase 4: authentication and permissions)
 - Admin sign-in at `/fa/admin/login` and `/en/admin/login`: username or email + password (Argon2id), then two-factor sign-in with an authenticator app (TOTP). First sign-in shows a QR code and 10 one-time backup codes. Mandatory for Super Admin, Business Admin and Staff with price or money permissions.
 - Minimal admin panel at `/admin`: dashboard with the signed-in admin's role and two-factor status, permission-filtered navigation, sign-out. Pages are never indexed.
