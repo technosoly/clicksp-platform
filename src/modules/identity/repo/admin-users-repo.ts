@@ -124,6 +124,15 @@ export async function listRoleGrants(client: DbClient, roleId: string): Promise<
   return rows.map((r) => ({ key: r.permission.key, isScoped: r.isScoped }));
 }
 
+/** Every permission grant of all the user's admin roles (levels 1-3, any state). */
+export async function listUserAdminGrants(client: DbClient, userId: string): Promise<{ key: string; isScoped: boolean }[]> {
+  const rows = await client.rolePermission.findMany({
+    where: { role: { level: { gte: 1, lte: 3 }, userRoles: { some: { userId } } } },
+    select: { isScoped: true, permission: { select: { key: true } } },
+  });
+  return rows.map((r) => ({ key: r.permission.key, isScoped: r.isScoped }));
+}
+
 /** Active admin roles of the given levels (for the role picker). */
 export async function listAssignableRoles(client: DbClient, levels: number[]) {
   return client.role.findMany({

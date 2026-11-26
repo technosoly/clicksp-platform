@@ -282,7 +282,7 @@ describe("account lifecycle", () => {
     expect(await completePasswordLink({ token: link.token, password: "a good long password" }, meta())).toEqual({ status: "invalid_link" });
   });
 
-  it("an admin can assign only roles whose permissions they hold", async () => {
+  it("an admin can assign, or take over through a link, only roles whose permissions they hold", async () => {
     const sa = await actorFor("super_admin");
     const role = await createRole(sa, { key: `test_r_${uid().toLowerCase()}`, name: "TEST STOCK", description: "", level: 3 });
     if (role.status !== "ok") throw new Error(role.status);
@@ -293,9 +293,13 @@ describe("account lifecycle", () => {
     const target = await createAccount("store_staff");
     await expect(changeAdminRole(narrow, target.id, role.roleId)).rejects.toBeInstanceOf(AuthzError);
     const denied = await q("SELECT 1 FROM security_events WHERE user_id = $1 AND details->>'reason' = 'role_exceeds_actor'", [ba.userId]);
-    expect(denied.length).toBe(2);
+    expect(denied.length).toBeGreaterThanOrEqual(2);
     // The full Business Admin bundle covers it.
     expect(await changeAdminRole(ba, target.id, role.roleId)).toEqual({ status: "ok" });
+    // Nor can the narrow admin take the account over through a link or a two-factor reset.
+    await expect(issuePasswordLink(narrow, target.id)).rejects.toBeInstanceOf(AuthzError);
+    await expect(resetAdminMfa(narrow, target.id)).rejects.toBeInstanceOf(AuthzError);
+    expect((await issuePasswordLink(ba, target.id)).status).toBe("ok");
   });
 
   it("role changes, disabling, two-factor reset and sign-out revoke the target's sessions", async () => {

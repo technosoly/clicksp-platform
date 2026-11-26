@@ -26,6 +26,7 @@ import {
   listAdminUsers as listAdminUserRows,
   listAssignableRoles,
   listRoleGrants,
+  listUserAdminGrants,
   replaceAdminRole,
   retirePasswordLinks,
   setUserStatus,
@@ -82,6 +83,8 @@ async function loadTarget(actor: Actor, userId: string, stepUp: boolean): Promis
   const [row, level] = await Promise.all([getAdminUser(db(), userId), strongestAdminLevel(db(), userId)]);
   if (!row || level === null) return { status: "not_found" };
   await authorizeTargetLevel(actor, level, userId, stepUp);
+  // Every change (stepUp) also needs the actor to hold what the account holds.
+  if (stepUp) await authorizeAccountGrants(actor, userId);
   return { row, level };
 }
 
@@ -91,13 +94,25 @@ async function loadTarget(actor: Actor, userId: string, stepUp: boolean): Promis
  * recorded like any other authorization failure.
  */
 async function authorizeRoleGrants(actor: Actor, roleId: string): Promise<void> {
-  const missing = ungrantableKeys(actor.permissions, await listRoleGrants(db(), roleId));
+  await denyUngrantable(actor, ungrantableKeys(actor.permissions, await listRoleGrants(db(), roleId)), "role", roleId);
+}
+
+/**
+ * Changing an account (password link, two-factor reset, role, status...) is
+ * as good as acting through it, so the actor must also hold every permission
+ * the account's admin roles grant.
+ */
+async function authorizeAccountGrants(actor: Actor, userId: string): Promise<void> {
+  await denyUngrantable(actor, ungrantableKeys(actor.permissions, await listUserAdminGrants(db(), userId)), "user", userId);
+}
+
+async function denyUngrantable(actor: Actor, missing: string[], resourceType: "role" | "user", resourceId: string): Promise<void> {
   if (missing.length === 0) return;
   await recordSecurityEvent(actor.meta, {
     type: "authz.denied",
     severity: "warning",
     userId: actor.userId,
-    details: { permission: missing[0], reason: "role_exceeds_actor", resourceType: "role", resourceId: roleId, missing: missing.slice(0, 20) },
+    details: { permission: missing[0], reason: "role_exceeds_actor", resourceType, resourceId, missing: missing.slice(0, 20) },
   });
   throw new AuthzError(missing[0]!, "role_exceeds_actor");
 }

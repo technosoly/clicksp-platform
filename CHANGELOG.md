@@ -17,7 +17,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Tests: unit (156 in total), integration on PostgreSQL (141 in total), E2E (42 in total, desktop and mobile).
 
 ### Fixed (Phase 5)
-- From the independent security review: unused password links are retired when the account's role changes or it is disabled (a staff invite could otherwise be used after a promotion), an account can be given only a role whose permissions the assigning admin holds, and the business audit filter for store settings is anchored.
+- From the independent security review: unused password links are retired when the account's role changes or it is disabled (a staff invite could otherwise be used after a promotion), an account can be given only a role whose permissions the assigning admin holds, and an account can be changed (password link, two-factor reset, role, status) only by an admin who holds every permission it has, and the business audit filter for store settings is anchored.
 - Customer SMS sign-in refuses phone numbers that belong to admin accounts.
 - The price-history integration test no longer depends on the order of UUIDv7 ids created in the same millisecond.
 
