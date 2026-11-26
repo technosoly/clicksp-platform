@@ -19,6 +19,14 @@ export const serverEnvSchema = z.object({
       message: "DATABASE_URL must be a PostgreSQL connection string",
     }),
 
+  /**
+   * Server secret for authentication: encrypts TOTP secrets and keys the OTP
+   * hashes. At least 32 characters; generate with `openssl rand -base64 48`.
+   * Optional so the storefront builds and runs without it; sign-in refuses to
+   * work until it is set, and production refuses to start without it.
+   */
+  AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters").optional(),
+
   REDIS_URL: z.string().optional(),
 
   MEILISEARCH_HOST: z.url().optional(),
@@ -38,7 +46,9 @@ export const serverEnvSchema = z.object({
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
 export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
-  const result = serverEnvSchema.safeParse(source);
+  // An empty value (e.g. `S3_ENDPOINT=` copied from .env.example) means "not set".
+  const cleaned = Object.fromEntries(Object.entries(source).filter(([, value]) => value !== ""));
+  const result = serverEnvSchema.safeParse(cleaned);
   if (!result.success) {
     // List only the variable names and problems, never the values.
     const problems = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
@@ -46,6 +56,9 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   }
   if (result.data.APP_ENV === "production" && result.data.SMS_PROVIDER === "console") {
     throw new Error("Invalid server environment: SMS_PROVIDER=console is not allowed in production");
+  }
+  if (result.data.APP_ENV === "production" && !result.data.AUTH_SECRET) {
+    throw new Error("Invalid server environment: AUTH_SECRET is required in production");
   }
   return result.data;
 }
