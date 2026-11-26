@@ -1,0 +1,543 @@
+// SYSTEM: locales, currencies, settings, tax, SEO, feature flags, releases,
+// deployments, jobs, imports/exports, outbox, idempotency, notifications, logs.
+
+enum TextDirection {
+  rtl
+  ltr
+
+  @@map("text_direction")
+}
+
+enum SettingValueType {
+  string
+  integer
+  boolean
+  json
+  money_rial
+
+  @@map("setting_value_type")
+}
+
+enum SeoEntityType {
+  product
+  category
+  brand
+  manufacturer
+  motorcycle_manufacturer
+  motorcycle_brand
+  motorcycle_model
+  article
+  article_category
+  page
+
+  @@map("seo_entity_type")
+}
+
+enum DeploymentEnvironment {
+  staging
+  production
+
+  @@map("deployment_environment")
+}
+
+enum DeploymentAction {
+  deploy
+  rollback
+
+  @@map("deployment_action")
+}
+
+enum DeploymentStatus {
+  requested
+  approved
+  running
+  succeeded
+  failed
+  cancelled
+
+  @@map("deployment_status")
+}
+
+enum JobStatus {
+  queued
+  running
+  succeeded
+  failed
+  cancelled
+
+  @@map("job_status")
+}
+
+enum ImportType {
+  products
+  product_identifiers
+  prices
+  inventory
+  motorcycles
+  compatibilities
+
+  @@map("import_type")
+}
+
+enum ImportStatus {
+  uploaded
+  validating
+  validated
+  applying
+  completed
+  failed
+  cancelled
+
+  @@map("import_status")
+}
+
+enum ImportRowStatus {
+  valid
+  invalid
+  created
+  updated
+  skipped
+  failed
+
+  @@map("import_row_status")
+}
+
+enum ExportType {
+  products
+  inventory
+  orders
+  customers
+  accounting_ledger
+  compatibilities
+
+  @@map("export_type")
+}
+
+enum OutboxStatus {
+  pending
+  processing
+  done
+  failed
+
+  @@map("outbox_status")
+}
+
+enum NotificationChannel {
+  sms
+  email
+
+  @@map("notification_channel")
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  failed
+  skipped
+
+  @@map("notification_status")
+}
+
+enum LogLevel {
+  debug
+  info
+  warn
+  error
+
+  @@map("log_level")
+}
+
+/// Supported content/UI locales. Seeded: fa (default), en.
+model Locale {
+  code       String        @id @db.VarChar(10)
+  name       String        @db.VarChar(64)
+  nativeName String        @map("native_name") @db.VarChar(64)
+  direction  TextDirection
+  isDefault  Boolean       @default(false) @map("is_default")
+  isActive   Boolean       @default(true) @map("is_active")
+  sortOrder  Int           @default(0) @map("sort_order") @db.SmallInt
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  userProfiles                      UserProfile[]
+  productTranslations               ProductTranslation[]
+  categoryTranslations              CategoryTranslation[]
+  brandTranslations                 BrandTranslation[]
+  manufacturerTranslations          ManufacturerTranslation[]
+  attributeDefinitionTranslations   AttributeDefinitionTranslation[]
+  attributeOptionTranslations       AttributeOptionTranslation[]
+  productDocuments                  ProductDocument[]
+  motorcycleManufacturerTranslations MotorcycleManufacturerTranslation[]
+  motorcycleBrandTranslations       MotorcycleBrandTranslation[]
+  motorcycleModelTranslations       MotorcycleModelTranslation[]
+  motorcycleVariantTranslations     MotorcycleVariantTranslation[]
+  orders                            Order[]
+  paymentProviderTranslations       PaymentProviderTranslation[]
+  shippingProviderTranslations      ShippingProviderTranslation[]
+  shippingMethodTranslations        ShippingMethodTranslation[]
+  shippingZoneTranslations          ShippingZoneTranslation[]
+  articleTranslations               ArticleTranslation[]
+  articleCategoryTranslations       ArticleCategoryTranslation[]
+  articleTagTranslations            ArticleTagTranslation[]
+  pageTranslations                  PageTranslation[]
+  bannerTranslations                BannerTranslation[]
+  seoMetadata                       SeoMetadata[]
+
+  @@unique([isDefault], map: "locales_single_default", where: raw("is_default"))
+  @@map("locales")
+}
+
+/// ISO 4217 currencies. Seeded: IRR only. Amounts are stored in the minor
+/// unit given by decimal_places (IRR: 0, i.e. whole Rial).
+model Currency {
+  code          String   @id @db.Char(3)
+  numericCode   String   @map("numeric_code") @db.Char(3)
+  decimalPlaces Int      @map("decimal_places") @db.SmallInt
+  isDefault     Boolean  @default(false) @map("is_default")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  productVariants     ProductVariant[]
+  productPrices       ProductPrice[]
+  carts               Cart[]
+  orders              Order[]
+  orderRefunds        OrderRefund[]
+  coupons             Coupon[]
+  paymentTransactions PaymentTransaction[]
+  financialAccounts   FinancialAccount[]
+  accountingTxns      AccountingTransaction[]
+  expenses            Expense[]
+  incomeRecords       IncomeRecord[]
+  shippingRates       ShippingRate[]
+  shipments           Shipment[]
+  invoices            Invoice[]
+  inventoryMovements  InventoryMovement[]
+
+  @@unique([isDefault], map: "currencies_single_default", where: raw("is_default"))
+  @@map("currencies")
+}
+
+/// Technical settings managed by Super Admin (settings.system). Values are
+/// validated per key by a Zod registry in code. Secrets are never stored here.
+model SystemSetting {
+  key         String           @id @db.VarChar(100)
+  valueType   SettingValueType @map("value_type")
+  value       Json
+  updatedById String?          @map("updated_by") @db.Uuid
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  updatedBy User? @relation("SystemSettingUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@index([updatedById])
+  @@map("system_settings")
+}
+
+/// Business settings managed by Business Admin (settings.store).
+model StoreSetting {
+  key         String           @id @db.VarChar(100)
+  valueType   SettingValueType @map("value_type")
+  value       Json
+  updatedById String?          @map("updated_by") @db.Uuid
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  updatedBy User? @relation("StoreSettingUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@index([updatedById])
+  @@map("store_settings")
+}
+
+/// Tax rules in basis points (1000 = 10%). None are seeded: rates are a
+/// business/legal decision that needs an Iranian accountant's confirmation.
+model TaxRule {
+  id          String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  code        String    @unique @db.VarChar(50)
+  name        String    @db.VarChar(120)
+  rateBp      Int       @map("rate_bp")
+  isInclusive Boolean   @default(false) @map("is_inclusive")
+  appliesToShipping Boolean @default(false) @map("applies_to_shipping")
+  categoryId  String?   @map("category_id") @db.Uuid
+  priority    Int       @default(0) @db.SmallInt
+  isActive    Boolean   @default(true) @map("is_active")
+  startsAt    DateTime? @map("starts_at") @db.Timestamptz(6)
+  endsAt      DateTime? @map("ends_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  products Product[]
+
+  @@index([categoryId])
+  @@map("tax_rules")
+}
+
+/// Per-entity, per-locale SEO overrides (polymorphic by entity_type/entity_id).
+model SeoMetadata {
+  id               String        @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  entityType       SeoEntityType @map("entity_type")
+  entityId         String        @map("entity_id") @db.Uuid
+  locale           String        @db.VarChar(10)
+  title            String?       @db.VarChar(160)
+  description      String?       @db.VarChar(320)
+  canonicalPath    String?       @map("canonical_path") @db.VarChar(500)
+  ogImageMediaId   String?       @map("og_image_media_id") @db.Uuid
+  noindex          Boolean       @default(false)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  localeRef    Locale      @relation(fields: [locale], references: [code], onDelete: Restrict)
+  ogImage      MediaAsset? @relation(fields: [ogImageMediaId], references: [id], onDelete: Restrict)
+
+  @@unique([entityType, entityId, locale])
+  @@index([locale])
+  @@index([ogImageMediaId])
+  @@map("seo_metadata")
+}
+
+model FeatureFlag {
+  key         String   @id @db.VarChar(100)
+  isEnabled   Boolean  @default(false) @map("is_enabled")
+  description String?  @db.VarChar(500)
+  updatedById String?  @map("updated_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  updatedBy User? @relation("FeatureFlagUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@index([updatedById])
+  @@map("feature_flags")
+}
+
+/// Built images known to the deployment workflow (read from CI, never built here).
+model ReleaseVersion {
+  id        String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  version   String   @unique @db.VarChar(64)
+  gitSha    String   @map("git_sha") @db.Char(40)
+  imageTag  String   @map("image_tag") @db.VarChar(200)
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  deployments DeploymentRecord[]
+
+  @@map("release_versions")
+}
+
+/// Deploy/rollback requests made from the admin panel. Execution happens in
+/// GitHub Actions with environment approval; this table only records intent
+/// and outcome. No commands or code are ever stored or executed from here.
+model DeploymentRecord {
+  id             String                @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  releaseId      String                @map("release_id") @db.Uuid
+  environment    DeploymentEnvironment
+  action         DeploymentAction
+  status         DeploymentStatus      @default(requested)
+  requestedById  String                @map("requested_by") @db.Uuid
+  approvedById   String?               @map("approved_by") @db.Uuid
+  externalRunUrl String?               @map("external_run_url") @db.VarChar(500)
+  notes          String?
+  requestedAt    DateTime              @default(now()) @map("requested_at") @db.Timestamptz(6)
+  startedAt      DateTime?             @map("started_at") @db.Timestamptz(6)
+  finishedAt     DateTime?             @map("finished_at") @db.Timestamptz(6)
+  updatedAt      DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  release     ReleaseVersion @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+  requestedBy User           @relation("DeploymentRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  approvedBy  User?          @relation("DeploymentApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+
+  @@index([releaseId])
+  @@index([requestedById])
+  @@index([approvedById])
+  @@index([environment, requestedAt(sort: Desc)])
+  @@map("deployment_records")
+}
+
+/// Operator-visible job records. pg-boss owns execution (its own schema);
+/// these rows let admins see and retry work without reading pg-boss tables.
+model BackgroundJob {
+  id          String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  queue       String    @db.VarChar(100)
+  name        String    @db.VarChar(100)
+  status      JobStatus @default(queued)
+  payload     Json      @default("{}")
+  attempts    Int       @default(0)
+  externalId  String?   @map("external_id") @db.VarChar(100)
+  lastError   String?   @map("last_error")
+  createdById String?   @map("created_by") @db.Uuid
+  scheduledAt DateTime  @default(now()) @map("scheduled_at") @db.Timestamptz(6)
+  startedAt   DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  failures FailedJob[]
+
+  @@index([status, scheduledAt])
+  @@index([queue, createdAt(sort: Desc)])
+  @@map("background_jobs")
+}
+
+model FailedJob {
+  id           String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  jobId        String?   @map("job_id") @db.Uuid
+  queue        String    @db.VarChar(100)
+  payload      Json      @default("{}")
+  error        String
+  failedAt     DateTime  @default(now()) @map("failed_at") @db.Timestamptz(6)
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolvedById String?   @map("resolved_by") @db.Uuid
+
+  job BackgroundJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([jobId])
+  @@index([queue, failedAt(sort: Desc)])
+  @@map("failed_jobs")
+}
+
+/// CSV/XLSX imports: upload -> dry run report -> confirmed apply.
+model DataImportJob {
+  id            String       @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  type          ImportType
+  status        ImportStatus @default(uploaded)
+  fileMediaId   String       @map("file_media_id") @db.Uuid
+  originalName  String       @map("original_name") @db.VarChar(255)
+  dryRunReport  Json?        @map("dry_run_report")
+  totalRows     Int          @default(0) @map("total_rows")
+  validRows     Int          @default(0) @map("valid_rows")
+  invalidRows   Int          @default(0) @map("invalid_rows")
+  appliedRows   Int          @default(0) @map("applied_rows")
+  createdById   String       @map("created_by") @db.Uuid
+  confirmedById String?      @map("confirmed_by") @db.Uuid
+  confirmedAt   DateTime?    @map("confirmed_at") @db.Timestamptz(6)
+  finishedAt    DateTime?    @map("finished_at") @db.Timestamptz(6)
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  file        MediaAsset      @relation(fields: [fileMediaId], references: [id], onDelete: Restrict)
+  createdBy   User            @relation("ImportCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  confirmedBy User?           @relation("ImportConfirmedBy", fields: [confirmedById], references: [id], onDelete: Restrict)
+  rows        DataImportRow[]
+
+  @@index([fileMediaId])
+  @@index([createdById])
+  @@index([confirmedById])
+  @@index([status, createdAt(sort: Desc)])
+  @@map("data_import_jobs")
+}
+
+model DataImportRow {
+  id        String          @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  jobId     String          @map("job_id") @db.Uuid
+  rowNumber Int             @map("row_number")
+  status    ImportRowStatus
+  data      Json
+  errors    Json?
+  entityId  String?         @map("entity_id") @db.Uuid
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  job DataImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, rowNumber])
+  @@map("data_import_rows")
+}
+
+model DataExportJob {
+  id          String     @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  type        ExportType
+  status      JobStatus  @default(queued)
+  filters     Json       @default("{}")
+  fileMediaId String?    @map("file_media_id") @db.Uuid
+  rowCount    Int?       @map("row_count")
+  createdById String     @map("created_by") @db.Uuid
+  expiresAt   DateTime?  @map("expires_at") @db.Timestamptz(6)
+  finishedAt  DateTime?  @map("finished_at") @db.Timestamptz(6)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  file      MediaAsset? @relation(fields: [fileMediaId], references: [id], onDelete: Restrict)
+  createdBy User        @relation("ExportCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([fileMediaId])
+  @@index([createdById])
+  @@map("data_export_jobs")
+}
+
+/// Transactional outbox: written in the same transaction as the business
+/// change, delivered by the worker (search reindex, SMS, accounting posting).
+model OutboxEvent {
+  id            String       @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  seq           BigInt       @unique @default(autoincrement())
+  topic         String       @db.VarChar(100)
+  aggregateType String       @map("aggregate_type") @db.VarChar(50)
+  aggregateId   String       @map("aggregate_id") @db.Uuid
+  payload       Json
+  dedupeKey     String?      @unique @map("dedupe_key") @db.VarChar(200)
+  status        OutboxStatus @default(pending)
+  attempts      Int          @default(0)
+  availableAt   DateTime     @default(now()) @map("available_at") @db.Timestamptz(6)
+  processedAt   DateTime?    @map("processed_at") @db.Timestamptz(6)
+  lastError     String?      @map("last_error")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([status, availableAt], map: "outbox_events_pending_idx", where: raw("status <> 'done'"))
+  @@index([aggregateType, aggregateId])
+  @@map("outbox_events")
+}
+
+/// Stored responses for idempotent POST requests (checkout, payment start).
+model IdempotencyKey {
+  id             String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  scope          String   @db.VarChar(100)
+  key            String   @db.VarChar(200)
+  requestHash    String   @map("request_hash") @db.Char(64)
+  responseStatus Int?     @map("response_status") @db.SmallInt
+  responseBody   Json?    @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}
+
+/// Outgoing SMS/email log. Recipient is PII (see docs/SECURITY.md); OTP codes
+/// are never stored in params.
+model Notification {
+  id                String              @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  channel           NotificationChannel
+  userId            String?             @map("user_id") @db.Uuid
+  recipient         String              @db.VarChar(254)
+  template          String              @db.VarChar(100)
+  params            Json                @default("{}")
+  status            NotificationStatus  @default(queued)
+  provider          String?             @db.VarChar(50)
+  providerMessageId String?             @map("provider_message_id") @db.VarChar(200)
+  error             String?
+  sentAt            DateTime?           @map("sent_at") @db.Timestamptz(6)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([status, createdAt])
+  @@map("notifications")
+}
+
+/// Application log rows for events worth keeping in the database (most logs
+/// go to stdout as JSON). Append-only.
+model SystemLog {
+  id        String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  level     LogLevel
+  source    String   @db.VarChar(100)
+  message   String
+  context   Json?
+  requestId String?  @map("request_id") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([level, createdAt(sort: Desc)])
+  @@map("system_logs")
+}

@@ -1,0 +1,392 @@
+// CONTENT AND PAGE BUILDER: media library, articles, pages with revisions,
+// reusable sections, templates, component registry, menus, banners.
+// Page/menu documents are JSON validated by Zod against the code-defined
+// component registry; nothing in them is ever executed.
+
+enum MediaKind {
+  image
+  document
+  video
+
+  @@map("media_kind")
+}
+
+enum MediaVisibility {
+  public
+  private
+
+  @@map("media_visibility")
+}
+
+enum MediaStatus {
+  pending
+  ready
+  rejected
+
+  @@map("media_status")
+}
+
+enum PublishStatus {
+  draft
+  published
+  archived
+
+  @@map("publish_status")
+}
+
+enum RevisionStatus {
+  draft
+  published
+  superseded
+
+  @@map("revision_status")
+}
+
+enum MenuLocation {
+  header
+  footer
+  mobile
+
+  @@map("menu_location")
+}
+
+/// Files in S3-compatible storage. Private files (receipts, imports) are
+/// served only through signed URLs after an authorization check.
+model MediaAsset {
+  id               String          @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  storageKey       String          @unique @map("storage_key") @db.VarChar(500)
+  bucket           String          @db.VarChar(100)
+  kind             MediaKind
+  visibility       MediaVisibility @default(public)
+  status           MediaStatus     @default(pending)
+  originalFilename String          @map("original_filename") @db.VarChar(255)
+  mimeType         String          @map("mime_type") @db.VarChar(100)
+  sizeBytes        BigInt          @map("size_bytes")
+  width            Int?
+  height           Int?
+  sha256           String          @db.Char(64)
+  /// Generated renditions (sizes / formats) described by storage key.
+  renditions       Json            @default("[]")
+  uploadedById     String?         @map("uploaded_by") @db.Uuid
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt        DateTime?       @map("deleted_at") @db.Timestamptz(6)
+
+  uploadedBy              User?                     @relation(fields: [uploadedById], references: [id], onDelete: Restrict)
+  seoMetadata             SeoMetadata[]
+  userAvatars             UserProfile[]
+  manufacturerLogos       Manufacturer[]
+  brandLogos              Brand[]
+  categoryImages          Category[]
+  productImages           ProductImage[]
+  productDocuments        ProductDocument[]
+  motorcycleManufacturers MotorcycleManufacturer[]
+  motorcycleBrands        MotorcycleBrand[]
+  motorcycleModels        MotorcycleModel[]
+  compatibilitySources    CompatibilitySource[]
+  importJobs              DataImportJob[]
+  exportJobs              DataExportJob[]
+  expenseReceipts         Expense[]
+  reconciliationFiles     ReconciliationStatement[]
+  articleCovers           Article[]
+  articleImages           ArticleImage[]
+  bannersDesktop          Banner[]                  @relation("BannerDesktopImage")
+  bannersMobile           Banner[]                  @relation("BannerMobileImage")
+
+  @@index([sha256])
+  @@index([uploadedById])
+  @@index([kind, createdAt(sort: Desc)])
+  @@map("media_library")
+}
+
+model ArticleCategory {
+  id        String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  parentId  String?   @map("parent_id") @db.Uuid
+  sortOrder Int       @default(0) @map("sort_order")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  parent       ArticleCategory?             @relation("ArticleCategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children     ArticleCategory[]            @relation("ArticleCategoryTree")
+  translations ArticleCategoryTranslation[]
+  articles     Article[]
+
+  @@index([parentId])
+  @@map("article_categories")
+}
+
+model ArticleCategoryTranslation {
+  id         String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+  locale     String @db.VarChar(10)
+  name       String @db.VarChar(150)
+  slug       String @db.VarChar(160)
+
+  category  ArticleCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  localeRef Locale          @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([categoryId, locale])
+  @@unique([locale, slug])
+  @@map("article_category_translations")
+}
+
+model ArticleTag {
+  id        String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  translations ArticleTagTranslation[]
+  articles     ArticleTagAssignment[]
+
+  @@map("article_tags")
+}
+
+model ArticleTagTranslation {
+  id     String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  tagId  String @map("tag_id") @db.Uuid
+  locale String @db.VarChar(10)
+  name   String @db.VarChar(80)
+  slug   String @db.VarChar(100)
+
+  tag       ArticleTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  localeRef Locale     @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([tagId, locale])
+  @@unique([locale, slug])
+  @@map("article_tag_translations")
+}
+
+model Article {
+  id           String        @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  status       PublishStatus @default(draft)
+  categoryId   String?       @map("category_id") @db.Uuid
+  authorId     String        @map("author_id") @db.Uuid
+  coverMediaId String?       @map("cover_media_id") @db.Uuid
+  publishedAt  DateTime?     @map("published_at") @db.Timestamptz(6)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  category     ArticleCategory?       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  author       User                   @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  cover        MediaAsset?            @relation(fields: [coverMediaId], references: [id], onDelete: SetNull)
+  translations ArticleTranslation[]
+  tags         ArticleTagAssignment[]
+  images       ArticleImage[]
+
+  @@index([status, publishedAt(sort: Desc)], map: "articles_listing_idx", where: raw("deleted_at IS NULL"))
+  @@index([categoryId])
+  @@index([authorId])
+  @@index([coverMediaId])
+  @@map("articles")
+}
+
+model ArticleTranslation {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  articleId   String   @map("article_id") @db.Uuid
+  locale      String   @db.VarChar(10)
+  title       String   @db.VarChar(250)
+  slug        String   @db.VarChar(260)
+  excerpt     String?  @db.VarChar(1000)
+  /// Structured rich text (validated JSON), never raw HTML.
+  body        Json
+  searchTitle String   @map("search_title") @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  article   Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  localeRef Locale  @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([articleId, locale])
+  @@unique([locale, slug])
+  @@index([searchTitle(ops: raw("gin_trgm_ops"))], type: Gin, map: "article_translations_search_title_trgm")
+  @@map("article_translations")
+}
+
+model ArticleTagAssignment {
+  articleId String @map("article_id") @db.Uuid
+  tagId     String @map("tag_id") @db.Uuid
+
+  article Article    @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     ArticleTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@index([tagId])
+  @@map("article_tag_assignments")
+}
+
+model ArticleImage {
+  id        String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  articleId String @map("article_id") @db.Uuid
+  mediaId   String @map("media_id") @db.Uuid
+  /// {"fa": "...", "en": "..."} validated by Zod; fa required.
+  alt       Json
+  sortOrder Int    @default(0) @map("sort_order")
+
+  article Article    @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  media   MediaAsset @relation(fields: [mediaId], references: [id], onDelete: Restrict)
+
+  @@index([articleId, sortOrder])
+  @@index([mediaId])
+  @@map("article_images")
+}
+
+/// Builder page. The published content is the revision referenced by
+/// published_revision_id; editing creates new draft revisions.
+model Page {
+  id                  String        @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  /// Stable key for system pages (e.g. 'home'); NULL for ordinary pages.
+  key                 String?       @unique @db.VarChar(50)
+  status              PublishStatus @default(draft)
+  templateId          String?       @map("template_id") @db.Uuid
+  publishedRevisionId String?       @unique @map("published_revision_id") @db.Uuid
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  template          PageTemplate?     @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  publishedRevision PageRevision?     @relation("PagePublishedRevision", fields: [publishedRevisionId], references: [id], onDelete: Restrict)
+  translations      PageTranslation[]
+  revisions         PageRevision[]    @relation("PageRevisions")
+
+  @@index([templateId])
+  @@map("pages")
+}
+
+model PageTranslation {
+  id     String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  pageId String @map("page_id") @db.Uuid
+  locale String @db.VarChar(10)
+  title  String @db.VarChar(200)
+  slug   String @db.VarChar(200)
+
+  page      Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  localeRef Locale @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([pageId, locale])
+  @@unique([locale, slug])
+  @@map("page_translations")
+}
+
+/// Full document snapshot. The document of a revision is immutable (trigger);
+/// rollback = publish an older revision.
+model PageRevision {
+  id            String         @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  pageId        String         @map("page_id") @db.Uuid
+  revisionNo    Int            @map("revision_no")
+  schemaVersion Int            @map("schema_version") @db.SmallInt
+  document      Json
+  status        RevisionStatus @default(draft)
+  note          String?        @db.VarChar(500)
+  createdById   String         @map("created_by") @db.Uuid
+  publishedById String?        @map("published_by") @db.Uuid
+  publishedAt   DateTime?      @map("published_at") @db.Timestamptz(6)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  page          Page  @relation("PageRevisions", fields: [pageId], references: [id], onDelete: Cascade)
+  publishedPage Page? @relation("PagePublishedRevision")
+  createdBy     User  @relation("PageRevisionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  publishedBy   User? @relation("PageRevisionPublishedBy", fields: [publishedById], references: [id], onDelete: Restrict)
+
+  @@unique([pageId, revisionNo])
+  @@index([createdById])
+  @@index([publishedById])
+  @@map("page_revisions")
+}
+
+/// Reusable saved sections ("global blocks") that pages can reference.
+model PageSection {
+  id            String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  key           String   @unique @db.VarChar(64)
+  name          String   @db.VarChar(120)
+  componentType String   @map("component_type") @db.VarChar(64)
+  schemaVersion Int      @map("schema_version") @db.SmallInt
+  document      Json
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([componentType])
+  @@map("page_sections")
+}
+
+model PageTemplate {
+  id            String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  key           String   @unique @db.VarChar(64)
+  name          String   @db.VarChar(120)
+  schemaVersion Int      @map("schema_version") @db.SmallInt
+  document      Json
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  pages Page[]
+
+  @@map("page_templates")
+}
+
+/// Mirror of the code-defined component registry so Super Admin can enable or
+/// disable components. Definitions and validation live in code (Phase 7).
+model PageBuilderComponent {
+  type          String   @id @db.VarChar(64)
+  isEnabled     Boolean  @default(true) @map("is_enabled")
+  schemaVersion Int      @map("schema_version") @db.SmallInt
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("page_builder_components")
+}
+
+/// Navigation document (items with fa/en labels and safe hrefs).
+model Menu {
+  id            String       @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  key           String       @unique @db.VarChar(64)
+  location      MenuLocation
+  schemaVersion Int          @map("schema_version") @db.SmallInt
+  document      Json
+  isActive      Boolean      @default(true) @map("is_active")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([location])
+  @@map("menus")
+}
+
+/// Hero/promotional banner with separate desktop and mobile images.
+model Banner {
+  id             String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  placement      String    @db.VarChar(64)
+  desktopMediaId String    @map("desktop_media_id") @db.Uuid
+  mobileMediaId  String?   @map("mobile_media_id") @db.Uuid
+  /// Relative path or allow-listed https URL (validated in code).
+  href           String?   @db.VarChar(500)
+  sortOrder      Int       @default(0) @map("sort_order")
+  isActive       Boolean   @default(true) @map("is_active")
+  startsAt       DateTime? @map("starts_at") @db.Timestamptz(6)
+  endsAt         DateTime? @map("ends_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  desktopImage MediaAsset          @relation("BannerDesktopImage", fields: [desktopMediaId], references: [id], onDelete: Restrict)
+  mobileImage  MediaAsset?         @relation("BannerMobileImage", fields: [mobileMediaId], references: [id], onDelete: Restrict)
+  translations BannerTranslation[]
+
+  @@index([placement, sortOrder])
+  @@index([desktopMediaId])
+  @@index([mobileMediaId])
+  @@map("banners")
+}
+
+model BannerTranslation {
+  id       String  @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  bannerId String  @map("banner_id") @db.Uuid
+  locale   String  @db.VarChar(10)
+  title    String  @db.VarChar(200)
+  subtitle String? @db.VarChar(300)
+  ctaLabel String? @map("cta_label") @db.VarChar(60)
+  alt      String  @db.VarChar(300)
+
+  banner    Banner @relation(fields: [bannerId], references: [id], onDelete: Cascade)
+  localeRef Locale @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([bannerId, locale])
+  @@map("banner_translations")
+}

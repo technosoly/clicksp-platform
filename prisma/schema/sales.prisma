@@ -1,0 +1,494 @@
+// SALES: carts, wishlists, orders (with snapshots), status history, addresses,
+// coupons, returns, refunds, invoices. All amounts are integer Rial (BIGINT).
+
+enum CartStatus {
+  active
+  converted
+  merged
+  abandoned
+
+  @@map("cart_status")
+}
+
+enum OrderStatus {
+  pending_payment
+  paid
+  processing
+  shipped
+  delivered
+  cancelled
+  return_requested
+  returned
+  refunded
+
+  @@map("order_status")
+}
+
+enum AddressType {
+  shipping
+  billing
+
+  @@map("address_type")
+}
+
+enum CouponType {
+  percent
+  fixed_amount
+  free_shipping
+
+  @@map("coupon_type")
+}
+
+enum ReturnStatus {
+  requested
+  approved
+  rejected
+  received
+  completed
+  cancelled
+
+  @@map("return_status")
+}
+
+enum ReturnReason {
+  wrong_fitment
+  defective
+  damaged_in_transit
+  wrong_item
+  not_as_described
+  changed_mind
+  other
+
+  @@map("return_reason")
+}
+
+enum RefundStatus {
+  pending
+  approved
+  processing
+  completed
+  failed
+  cancelled
+
+  @@map("refund_status")
+}
+
+enum RefundMethod {
+  gateway
+  bank_transfer
+  cash
+
+  @@map("refund_method")
+}
+
+enum InvoiceType {
+  sale
+  credit_note
+
+  @@map("invoice_type")
+}
+
+enum EInvoiceStatus {
+  not_required
+  pending
+  submitted
+  accepted
+  rejected
+
+  @@map("einvoice_status")
+}
+
+/// Cart lines carry no prices: totals are always recomputed on the server.
+model Cart {
+  id              String     @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  userId          String?    @map("user_id") @db.Uuid
+  /// SHA-256 of the guest cart cookie token.
+  guestTokenHash  String?    @unique @map("guest_token_hash") @db.Char(64)
+  status          CartStatus @default(active)
+  currencyCode    String     @default("IRR") @map("currency_code") @db.Char(3)
+  couponId        String?    @map("coupon_id") @db.Uuid
+  expiresAt       DateTime?  @map("expires_at") @db.Timestamptz(6)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency     Currency           @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  coupon       Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  items        CartItem[]
+  reservations StockReservation[]
+
+  @@unique([userId], map: "carts_single_active_per_user", where: raw("status = 'active' AND user_id IS NOT NULL"))
+  @@index([couponId])
+  @@index([currencyCode])
+  @@index([status, updatedAt])
+  @@map("carts")
+}
+
+model CartItem {
+  id        String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  cartId    String   @map("cart_id") @db.Uuid
+  variantId String   @map("variant_id") @db.Uuid
+  quantity  Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  cart    Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([cartId, variantId])
+  @@index([variantId])
+  @@map("cart_items")
+}
+
+model Wishlist {
+  id        String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String?  @db.VarChar(100)
+  isDefault Boolean  @default(true) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WishlistItem[]
+
+  @@unique([userId], map: "wishlists_single_default", where: raw("is_default"))
+  @@index([userId])
+  @@map("wishlists")
+}
+
+model WishlistItem {
+  id         String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  wishlistId String   @map("wishlist_id") @db.Uuid
+  productId  String   @map("product_id") @db.Uuid
+  variantId  String?  @map("variant_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  wishlist Wishlist        @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  product  Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant  ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([wishlistId, productId])
+  @@index([productId])
+  @@index([variantId])
+  @@map("wishlist_items")
+}
+
+/// Order header. Totals: grand_total = subtotal - discount_total +
+/// shipping_total + tax_total (CHECK), subtotal = sum of item gross amounts
+/// (deferred trigger). Monetary columns are frozen once the order leaves
+/// pending_payment; status changes are validated and logged by trigger.
+model Order {
+  id              String      @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  orderNumber     BigInt      @unique @default(autoincrement()) @map("order_number")
+  userId          String?     @map("user_id") @db.Uuid
+  status          OrderStatus @default(pending_payment)
+  locale          String      @default("fa") @db.VarChar(10)
+  currencyCode    String      @default("IRR") @map("currency_code") @db.Char(3)
+  subtotal        BigInt
+  discountTotal   BigInt      @default(0) @map("discount_total")
+  shippingTotal   BigInt      @default(0) @map("shipping_total")
+  taxTotal        BigInt      @default(0) @map("tax_total")
+  grandTotal      BigInt      @map("grand_total")
+  couponId        String?     @map("coupon_id") @db.Uuid
+  couponCode      String?     @map("coupon_code") @db.VarChar(50)
+  shippingMethodId String?    @map("shipping_method_id") @db.Uuid
+  /// Customer snapshot at checkout.
+  customerName    String      @map("customer_name") @db.VarChar(160)
+  customerPhone   String      @map("customer_phone") @db.VarChar(16)
+  customerEmail   String?     @map("customer_email") @db.VarChar(254)
+  customerNote    String?     @map("customer_note") @db.VarChar(1000)
+  placedAt        DateTime    @default(now()) @map("placed_at") @db.Timestamptz(6)
+  paidAt          DateTime?   @map("paid_at") @db.Timestamptz(6)
+  cancelledAt     DateTime?   @map("cancelled_at") @db.Timestamptz(6)
+  cancelReason    String?     @map("cancel_reason") @db.VarChar(500)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user                User?                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  localeRef           Locale               @relation(fields: [locale], references: [code], onDelete: Restrict)
+  currency            Currency             @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  coupon              Coupon?              @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  shippingMethod      ShippingMethod?      @relation(fields: [shippingMethodId], references: [id], onDelete: Restrict)
+  items               OrderItem[]
+  statusHistory       OrderStatusHistory[]
+  addresses           OrderAddress[]
+  returns             OrderReturn[]
+  refunds             OrderRefund[]
+  reservations        StockReservation[]
+  paymentTransactions PaymentTransaction[]
+  shipments           Shipment[]
+  invoices            Invoice[]
+  couponRedemption    CouponRedemption?
+
+  @@index([userId, placedAt(sort: Desc)])
+  @@index([status, placedAt(sort: Desc)])
+  @@index([couponId])
+  @@index([shippingMethodId])
+  @@index([currencyCode])
+  @@index([locale])
+  @@map("orders")
+}
+
+/// Line snapshot: product data is copied so later catalog edits never change
+/// past orders. line_total = unit_price * quantity - discount_total + tax_total.
+model OrderItem {
+  id            String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  orderId       String   @map("order_id") @db.Uuid
+  productId     String   @map("product_id") @db.Uuid
+  variantId     String   @map("variant_id") @db.Uuid
+  sku           String   @db.VarChar(64)
+  titleFa       String   @map("title_fa") @db.VarChar(250)
+  titleEn       String?  @map("title_en") @db.VarChar(250)
+  /// Attributes, image, identifiers and brand at the time of purchase.
+  snapshot      Json
+  quantity      Int
+  unitPrice     BigInt   @map("unit_price")
+  discountTotal BigInt   @default(0) @map("discount_total")
+  taxTotal      BigInt   @default(0) @map("tax_total")
+  lineTotal     BigInt   @map("line_total")
+  taxRateBp     Int      @default(0) @map("tax_rate_bp")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  order         Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  product       Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  variant       ProductVariant    @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  returnItems   OrderReturnItem[]
+  shipmentItems ShipmentItem[]
+
+  @@index([orderId])
+  @@index([productId])
+  @@index([variantId])
+  @@map("order_items")
+}
+
+/// Append-only; one row per status change, written by trigger.
+model OrderStatusHistory {
+  id          String       @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  orderId     String       @map("order_id") @db.Uuid
+  fromStatus  OrderStatus? @map("from_status")
+  toStatus    OrderStatus  @map("to_status")
+  actorUserId String?      @map("actor_user_id") @db.Uuid
+  reason      String?      @db.VarChar(500)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+  @@index([actorUserId])
+  @@map("order_status_history")
+}
+
+/// Address snapshot copied onto the order.
+model OrderAddress {
+  id            String      @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  orderId       String      @map("order_id") @db.Uuid
+  type          AddressType
+  recipientName String      @map("recipient_name") @db.VarChar(160)
+  phone         String      @db.VarChar(16)
+  provinceCode  String?     @map("province_code") @db.VarChar(8)
+  province      String      @db.VarChar(100)
+  city          String      @db.VarChar(100)
+  addressLine   String      @map("address_line") @db.VarChar(500)
+  plaque        String?     @db.VarChar(20)
+  unit          String?     @db.VarChar(20)
+  /// Iranian postal code: 10 digits (CHECK).
+  postalCode    String      @map("postal_code") @db.Char(10)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, type])
+  @@map("order_addresses")
+}
+
+/// Customer address book.
+model DeliveryAddress {
+  id            String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  title         String?   @db.VarChar(60)
+  recipientName String    @map("recipient_name") @db.VarChar(160)
+  phone         String    @db.VarChar(16)
+  provinceCode  String?   @map("province_code") @db.VarChar(8)
+  province      String    @db.VarChar(100)
+  city          String    @db.VarChar(100)
+  addressLine   String    @map("address_line") @db.VarChar(500)
+  plaque        String?   @db.VarChar(20)
+  unit          String?   @db.VarChar(20)
+  postalCode    String    @map("postal_code") @db.Char(10)
+  isDefault     Boolean   @default(false) @map("is_default")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId], map: "delivery_addresses_single_default", where: raw("is_default AND deleted_at IS NULL"))
+  @@index([userId])
+  @@map("delivery_addresses")
+}
+
+/// percent_bp in basis points (1000 = 10%); amounts in Rial.
+model Coupon {
+  id           String     @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  /// Normalized upper case (CHECK).
+  code         String     @db.VarChar(50)
+  type         CouponType
+  percentBp    Int?       @map("percent_bp")
+  amount       BigInt?
+  maxDiscount  BigInt?    @map("max_discount")
+  minSubtotal  BigInt?    @map("min_subtotal")
+  currencyCode String     @default("IRR") @map("currency_code") @db.Char(3)
+  usageLimit   Int?       @map("usage_limit")
+  perUserLimit Int?       @map("per_user_limit")
+  usedCount    Int        @default(0) @map("used_count")
+  startsAt     DateTime?  @map("starts_at") @db.Timestamptz(6)
+  endsAt       DateTime?  @map("ends_at") @db.Timestamptz(6)
+  isActive     Boolean    @default(true) @map("is_active")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime?  @map("deleted_at") @db.Timestamptz(6)
+
+  currency    Currency           @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  carts       Cart[]
+  orders      Order[]
+  redemptions CouponRedemption[]
+
+  @@unique([code], map: "coupons_code_active", where: raw("deleted_at IS NULL"))
+  @@index([currencyCode])
+  @@map("coupons")
+}
+
+model CouponRedemption {
+  id        String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  couponId  String   @map("coupon_id") @db.Uuid
+  orderId   String   @unique @map("order_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  amount    BigInt
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([couponId, userId])
+  @@index([userId])
+  @@map("coupon_redemptions")
+}
+
+model OrderReturn {
+  id            String       @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  returnNumber  BigInt       @unique @default(autoincrement()) @map("return_number")
+  orderId       String       @map("order_id") @db.Uuid
+  status        ReturnStatus @default(requested)
+  reason        ReturnReason
+  customerNote  String?      @map("customer_note") @db.VarChar(1000)
+  adminNote     String?      @map("admin_note") @db.VarChar(1000)
+  requestedById String?      @map("requested_by") @db.Uuid
+  decidedById   String?      @map("decided_by") @db.Uuid
+  decidedAt     DateTime?    @map("decided_at") @db.Timestamptz(6)
+  receivedAt    DateTime?    @map("received_at") @db.Timestamptz(6)
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order       Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  requestedBy User?             @relation("ReturnRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedBy   User?             @relation("ReturnDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+  items       OrderReturnItem[]
+  refunds     OrderRefund[]
+
+  @@index([orderId])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([requestedById])
+  @@index([decidedById])
+  @@map("order_returns")
+}
+
+/// Returned quantity per order item never exceeds the ordered quantity
+/// across all non-rejected returns (trigger).
+model OrderReturnItem {
+  id          String  @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  returnId    String  @map("return_id") @db.Uuid
+  orderItemId String  @map("order_item_id") @db.Uuid
+  quantity    Int
+  restock     Boolean @default(false)
+  condition   String? @db.VarChar(200)
+
+  orderReturn OrderReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  orderItem   OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  @@unique([returnId, orderItemId])
+  @@index([orderItemId])
+  @@map("order_return_items")
+}
+
+/// Total of non-failed, non-cancelled refunds never exceeds the order's
+/// grand_total (trigger).
+model OrderRefund {
+  id                   String       @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  orderId              String       @map("order_id") @db.Uuid
+  returnId             String?      @map("return_id") @db.Uuid
+  amount               BigInt
+  currencyCode         String       @default("IRR") @map("currency_code") @db.Char(3)
+  status               RefundStatus @default(pending)
+  method               RefundMethod
+  reason               String       @db.VarChar(500)
+  idempotencyKey       String       @unique @map("idempotency_key") @db.VarChar(100)
+  approvalId           String?      @map("approval_id") @db.Uuid
+  createdById          String       @map("created_by") @db.Uuid
+  processedAt          DateTime?    @map("processed_at") @db.Timestamptz(6)
+  failureReason        String?      @map("failure_reason") @db.VarChar(500)
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order               Order                @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  orderReturn         OrderReturn?         @relation(fields: [returnId], references: [id], onDelete: Restrict)
+  currency            Currency             @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  approval            AdminApproval?       @relation(fields: [approvalId], references: [id], onDelete: Restrict)
+  createdBy           User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  paymentTransactions PaymentTransaction[]
+
+  @@index([orderId])
+  @@index([returnId])
+  @@index([approvalId])
+  @@index([createdById])
+  @@index([currencyCode])
+  @@map("order_refunds")
+}
+
+/// Issued invoices and credit notes. Immutable after insert except the
+/// e-invoice (Moadian) submission fields. Whether and how e-invoicing applies
+/// must be confirmed by an Iranian accountant.
+model Invoice {
+  id                String         @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  invoiceNumber     BigInt         @unique @default(autoincrement()) @map("invoice_number")
+  type              InvoiceType
+  orderId           String         @map("order_id") @db.Uuid
+  creditsInvoiceId  String?        @map("credits_invoice_id") @db.Uuid
+  currencyCode      String         @default("IRR") @map("currency_code") @db.Char(3)
+  subtotal          BigInt
+  discountTotal     BigInt         @map("discount_total")
+  shippingTotal     BigInt         @map("shipping_total")
+  taxTotal          BigInt         @map("tax_total")
+  grandTotal        BigInt         @map("grand_total")
+  sellerSnapshot    Json           @map("seller_snapshot")
+  buyerSnapshot     Json           @map("buyer_snapshot")
+  linesSnapshot     Json           @map("lines_snapshot")
+  issuedAt          DateTime       @default(now()) @map("issued_at") @db.Timestamptz(6)
+  einvoiceStatus    EInvoiceStatus @default(not_required) @map("einvoice_status")
+  einvoiceReference String?        @map("einvoice_reference") @db.VarChar(100)
+  einvoiceMessage   String?        @map("einvoice_message") @db.VarChar(1000)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  creditsInvoice Invoice?  @relation("InvoiceCredits", fields: [creditsInvoiceId], references: [id], onDelete: Restrict)
+  creditNotes    Invoice[] @relation("InvoiceCredits")
+  currency       Currency  @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+
+  @@unique([orderId], map: "invoices_single_sale_per_order", where: raw("type = 'sale'"))
+  @@index([orderId])
+  @@index([creditsInvoiceId])
+  @@index([currencyCode])
+  @@map("invoices")
+}

@@ -1,0 +1,345 @@
+// MOTORCYCLE CATALOG AND COMPATIBILITY (fitment).
+// manufacturer > brand > model > generation (years) > variant (engine, market)
+// No motorcycles are seeded; the owner enters or imports real data.
+
+enum MotorcycleSegment {
+  scooter
+  moped
+  underbone
+  standard
+  sport
+  touring
+  cruiser
+  off_road
+  dual_sport
+  utility
+  other
+
+  @@map("motorcycle_segment")
+}
+
+enum EngineStroke {
+  two_stroke
+  four_stroke
+  electric
+
+  @@map("engine_stroke")
+}
+
+enum EngineCooling {
+  air
+  oil
+  liquid
+
+  @@map("engine_cooling")
+}
+
+enum FuelSystem {
+  carburetor
+  injection
+  none
+
+  @@map("fuel_system")
+}
+
+enum CompatibilitySourceType {
+  oem_catalog
+  manufacturer_doc
+  supplier_sheet
+  physical_test
+  customer_report
+
+  @@map("compatibility_source_type")
+}
+
+enum VerificationStatus {
+  unverified
+  verified
+  disputed
+  rejected
+
+  @@map("verification_status")
+}
+
+enum FitmentPosition {
+  any
+  front
+  rear
+  left
+  right
+  front_left
+  front_right
+  rear_left
+  rear_right
+  upper
+  lower
+
+  @@map("fitment_position")
+}
+
+model MotorcycleManufacturer {
+  id          String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  countryCode String?   @map("country_code") @db.Char(2)
+  website     String?   @db.VarChar(500)
+  logoMediaId String?   @map("logo_media_id") @db.Uuid
+  isActive    Boolean   @default(true) @map("is_active")
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  logo         MediaAsset?                         @relation(fields: [logoMediaId], references: [id], onDelete: SetNull)
+  translations MotorcycleManufacturerTranslation[]
+  brands       MotorcycleBrand[]
+
+  @@index([logoMediaId])
+  @@map("motorcycle_manufacturers")
+}
+
+model MotorcycleManufacturerTranslation {
+  id             String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  manufacturerId String   @map("manufacturer_id") @db.Uuid
+  locale         String   @db.VarChar(10)
+  name           String   @db.VarChar(150)
+  slug           String   @db.VarChar(160)
+  searchName     String   @map("search_name") @db.VarChar(300)
+
+  manufacturer MotorcycleManufacturer @relation(fields: [manufacturerId], references: [id], onDelete: Cascade)
+  localeRef    Locale                 @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([manufacturerId, locale])
+  @@unique([locale, slug])
+  @@map("motorcycle_manufacturer_translations")
+}
+
+/// Marketed brand (the "make" in the selector).
+model MotorcycleBrand {
+  id             String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  manufacturerId String    @map("manufacturer_id") @db.Uuid
+  logoMediaId    String?   @map("logo_media_id") @db.Uuid
+  isActive       Boolean   @default(true) @map("is_active")
+  sortOrder      Int       @default(0) @map("sort_order")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  manufacturer MotorcycleManufacturer       @relation(fields: [manufacturerId], references: [id], onDelete: Restrict)
+  logo         MediaAsset?                  @relation(fields: [logoMediaId], references: [id], onDelete: SetNull)
+  translations MotorcycleBrandTranslation[]
+  models       MotorcycleModel[]
+
+  @@index([manufacturerId])
+  @@index([logoMediaId])
+  @@map("motorcycle_brands")
+}
+
+model MotorcycleBrandTranslation {
+  id         String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  brandId    String @map("brand_id") @db.Uuid
+  locale     String @db.VarChar(10)
+  name       String @db.VarChar(150)
+  slug       String @db.VarChar(160)
+  searchName String @map("search_name") @db.VarChar(300)
+
+  brand     MotorcycleBrand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  localeRef Locale          @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([brandId, locale])
+  @@unique([locale, slug])
+  @@map("motorcycle_brand_translations")
+}
+
+model MotorcycleModel {
+  id          String             @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  brandId     String             @map("brand_id") @db.Uuid
+  segment     MotorcycleSegment?
+  imageMediaId String?           @map("image_media_id") @db.Uuid
+  isActive    Boolean            @default(true) @map("is_active")
+  sortOrder   Int                @default(0) @map("sort_order")
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?          @map("deleted_at") @db.Timestamptz(6)
+
+  brand        MotorcycleBrand              @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  image        MediaAsset?                  @relation(fields: [imageMediaId], references: [id], onDelete: SetNull)
+  translations MotorcycleModelTranslation[]
+  generations  MotorcycleGeneration[]
+
+  @@index([brandId, sortOrder])
+  @@index([imageMediaId])
+  @@map("motorcycle_models")
+}
+
+model MotorcycleModelTranslation {
+  id         String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  modelId    String @map("model_id") @db.Uuid
+  locale     String @db.VarChar(10)
+  name       String @db.VarChar(150)
+  slug       String @db.VarChar(160)
+  searchName String @map("search_name") @db.VarChar(300)
+
+  model     MotorcycleModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  localeRef Locale          @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([modelId, locale])
+  @@unique([locale, slug])
+  @@index([searchName(ops: raw("gin_trgm_ops"))], type: Gin, map: "motorcycle_model_translations_search_trgm")
+  @@map("motorcycle_model_translations")
+}
+
+/// Production span of a model. Years are Gregorian and inclusive; year_to
+/// NULL means still in production.
+model MotorcycleGeneration {
+  id        String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  modelId   String   @map("model_id") @db.Uuid
+  code      String?  @db.VarChar(50)
+  yearFrom  Int      @map("year_from") @db.SmallInt
+  yearTo    Int?     @map("year_to") @db.SmallInt
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  model           MotorcycleModel        @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  variants        MotorcycleVariant[]
+  compatibilities ProductCompatibility[]
+
+  @@index([modelId, yearFrom])
+  @@map("motorcycle_generations")
+}
+
+/// Concrete version of a generation: engine, market, trim. Optional year
+/// range narrows the generation's years (checked by trigger).
+model MotorcycleVariant {
+  id                  String         @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  generationId        String         @map("generation_id") @db.Uuid
+  code                String?        @db.VarChar(50)
+  engineDisplacementCc Int?          @map("engine_displacement_cc")
+  engineStroke        EngineStroke?  @map("engine_stroke")
+  cylinders           Int?           @db.SmallInt
+  cooling             EngineCooling?
+  fuelSystem          FuelSystem?    @map("fuel_system")
+  marketCode          String?        @map("market_code") @db.VarChar(10)
+  yearFrom            Int?           @map("year_from") @db.SmallInt
+  yearTo              Int?           @map("year_to") @db.SmallInt
+  isActive            Boolean        @default(true) @map("is_active")
+  createdAt           DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt           DateTime?      @map("deleted_at") @db.Timestamptz(6)
+
+  generation       MotorcycleGeneration           @relation(fields: [generationId], references: [id], onDelete: Restrict)
+  translations     MotorcycleVariantTranslation[]
+  specifications   MotorcycleSpecification[]
+  compatibilities  ProductCompatibility[]
+  customerVehicles CustomerVehicle[]
+
+  @@index([generationId])
+  @@map("motorcycle_variants")
+}
+
+model MotorcycleVariantTranslation {
+  id        String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  variantId String @map("variant_id") @db.Uuid
+  locale    String @db.VarChar(10)
+  name      String @db.VarChar(150)
+
+  variant   MotorcycleVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  localeRef Locale            @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([variantId, locale])
+  @@map("motorcycle_variant_translations")
+}
+
+/// Typed technical specifications (key from a code-defined registry).
+model MotorcycleSpecification {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  variantId   String   @map("variant_id") @db.Uuid
+  specKey     String   @map("spec_key") @db.VarChar(64)
+  valueNumber Decimal? @map("value_number") @db.Decimal(18, 6)
+  valueText   String?  @map("value_text") @db.VarChar(255)
+  unit        String?  @db.VarChar(20)
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  variant MotorcycleVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, specKey])
+  @@map("motorcycle_specifications")
+}
+
+/// Where a fitment claim comes from. Required on every compatibility row.
+model CompatibilitySource {
+  id               String                  @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  type             CompatibilitySourceType
+  title            String                  @db.VarChar(200)
+  reference        String?                 @db.VarChar(200)
+  url              String?                 @db.VarChar(500)
+  documentMediaId  String?                 @map("document_media_id") @db.Uuid
+  notes            String?
+  createdById      String?                 @map("created_by") @db.Uuid
+  createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  document        MediaAsset?            @relation(fields: [documentMediaId], references: [id], onDelete: Restrict)
+  compatibilities ProductCompatibility[]
+
+  @@index([documentMediaId])
+  @@map("compatibility_sources")
+}
+
+/// Product fits motorcycle: linked at the most specific level known, either a
+/// variant or a whole generation (optionally narrowed by years). Only
+/// `verified` rows are shown as "fits" on the storefront by default.
+model ProductCompatibility {
+  id                     String             @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  productId              String             @map("product_id") @db.Uuid
+  motorcycleVariantId    String?            @map("motorcycle_variant_id") @db.Uuid
+  motorcycleGenerationId String?            @map("motorcycle_generation_id") @db.Uuid
+  yearFrom               Int?               @map("year_from") @db.SmallInt
+  yearTo                 Int?               @map("year_to") @db.SmallInt
+  position               FitmentPosition    @default(any)
+  quantityPerVehicle     Int?               @map("quantity_per_vehicle") @db.SmallInt
+  notes                  String?            @db.VarChar(1000)
+  sourceId               String             @map("source_id") @db.Uuid
+  verificationStatus     VerificationStatus @default(unverified) @map("verification_status")
+  verifiedById           String?            @map("verified_by") @db.Uuid
+  verifiedAt             DateTime?          @map("verified_at") @db.Timestamptz(6)
+  createdById            String?            @map("created_by") @db.Uuid
+  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  product              Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  motorcycleVariant    MotorcycleVariant?    @relation(fields: [motorcycleVariantId], references: [id], onDelete: Restrict)
+  motorcycleGeneration MotorcycleGeneration? @relation(fields: [motorcycleGenerationId], references: [id], onDelete: Restrict)
+  source               CompatibilitySource   @relation(fields: [sourceId], references: [id], onDelete: Restrict)
+  verifiedBy           User?                 @relation("CompatibilityVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
+  createdBy            User?                 @relation("CompatibilityCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@unique([productId, motorcycleVariantId, position], map: "product_compatibilities_variant_key", where: raw("motorcycle_variant_id IS NOT NULL"))
+  @@index([motorcycleVariantId, verificationStatus])
+  @@index([motorcycleGenerationId, verificationStatus])
+  @@index([productId, verificationStatus])
+  @@index([sourceId])
+  @@index([verifiedById])
+  @@index([createdById])
+  @@map("product_compatibilities")
+}
+
+/// "My garage": motorcycles a customer saved for quick part lookup.
+model CustomerVehicle {
+  id                  String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  motorcycleVariantId String   @map("motorcycle_variant_id") @db.Uuid
+  modelYear           Int?     @map("model_year") @db.SmallInt
+  nickname            String?  @db.VarChar(60)
+  isPrimary           Boolean  @default(false) @map("is_primary")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  motorcycleVariant MotorcycleVariant @relation(fields: [motorcycleVariantId], references: [id], onDelete: Restrict)
+
+  @@unique([userId], map: "customer_vehicles_single_primary", where: raw("is_primary"))
+  @@index([userId])
+  @@index([motorcycleVariantId])
+  @@map("customer_vehicles")
+}

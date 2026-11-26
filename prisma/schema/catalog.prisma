@@ -1,0 +1,534 @@
+// PRODUCT CATALOG: manufacturers, brands, categories, attributes, products,
+// variants, prices, images, documents, identifiers (OEM / part numbers),
+// relations. No rows are seeded: the owner creates all catalog data.
+
+enum ProductStatus {
+  draft
+  active
+  archived
+
+  @@map("product_status")
+}
+
+enum AttributeDataType {
+  text
+  number
+  boolean
+  option
+
+  @@map("attribute_data_type")
+}
+
+enum IdentifierType {
+  barcode
+  oem
+  manufacturer_pn
+  alternative_pn
+  superseded_pn
+
+  @@map("identifier_type")
+}
+
+enum ProductRelationType {
+  replacement
+  superseded_by
+  alternative
+  accessory
+  bundle_part
+  related
+
+  @@map("product_relation_type")
+}
+
+enum ProductDocumentType {
+  manual
+  datasheet
+  installation_guide
+  certificate
+  warranty
+  other
+
+  @@map("product_document_type")
+}
+
+/// Company that makes parts (genuine or aftermarket).
+model Manufacturer {
+  id          String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  countryCode String?   @map("country_code") @db.Char(2)
+  website     String?   @db.VarChar(500)
+  logoMediaId String?   @map("logo_media_id") @db.Uuid
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  logo         MediaAsset?               @relation(fields: [logoMediaId], references: [id], onDelete: SetNull)
+  translations ManufacturerTranslation[]
+  brands       Brand[]
+  products     Product[]
+  identifiers  ProductIdentifier[]
+
+  @@index([logoMediaId])
+  @@map("manufacturers")
+}
+
+model ManufacturerTranslation {
+  id             String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  manufacturerId String   @map("manufacturer_id") @db.Uuid
+  locale         String   @db.VarChar(10)
+  name           String   @db.VarChar(150)
+  slug           String   @db.VarChar(160)
+  description    String?
+  searchName     String   @map("search_name") @db.VarChar(300)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  manufacturer Manufacturer @relation(fields: [manufacturerId], references: [id], onDelete: Cascade)
+  localeRef    Locale       @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([manufacturerId, locale])
+  @@unique([locale, slug])
+  @@map("manufacturer_translations")
+}
+
+/// Brand a product is sold under (may belong to a manufacturer).
+model Brand {
+  id             String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  manufacturerId String?   @map("manufacturer_id") @db.Uuid
+  logoMediaId    String?   @map("logo_media_id") @db.Uuid
+  isGenuine      Boolean   @default(false) @map("is_genuine")
+  isActive       Boolean   @default(true) @map("is_active")
+  sortOrder      Int       @default(0) @map("sort_order")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  manufacturer Manufacturer?       @relation(fields: [manufacturerId], references: [id], onDelete: Restrict)
+  logo         MediaAsset?         @relation(fields: [logoMediaId], references: [id], onDelete: SetNull)
+  translations BrandTranslation[]
+  products     Product[]
+  identifiers  ProductIdentifier[]
+
+  @@index([manufacturerId])
+  @@index([logoMediaId])
+  @@map("brands")
+}
+
+model BrandTranslation {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  brandId     String   @map("brand_id") @db.Uuid
+  locale      String   @db.VarChar(10)
+  name        String   @db.VarChar(150)
+  slug        String   @db.VarChar(160)
+  description String?
+  searchName  String   @map("search_name") @db.VarChar(300)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  brand     Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  localeRef Locale @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([brandId, locale])
+  @@unique([locale, slug])
+  @@map("brand_translations")
+}
+
+/// Category tree for "shop by category". The top-level part categories also
+/// serve as the "systems" (engine, brakes, electrical, ...) used to group a
+/// motorcycle's parts in "shop by motorcycle" (is_vehicle_system).
+model Category {
+  id              String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  parentId        String?   @map("parent_id") @db.Uuid
+  /// Filled by trigger: 0 for roots.
+  depth           Int       @default(0) @db.SmallInt
+  isVehicleSystem Boolean   @default(false) @map("is_vehicle_system")
+  imageMediaId    String?   @map("image_media_id") @db.Uuid
+  sortOrder       Int       @default(0) @map("sort_order")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  parent           Category?             @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children         Category[]            @relation("CategoryTree")
+  image            MediaAsset?           @relation(fields: [imageMediaId], references: [id], onDelete: SetNull)
+  translations     CategoryTranslation[]
+  attributes       CategoryAttribute[]
+  products         ProductCategory[]
+  primaryProducts  Product[]             @relation("ProductPrimaryCategory")
+  taxRules         TaxRule[]
+  roleScopes       UserRoleScope[]
+
+  @@index([parentId, sortOrder])
+  @@index([imageMediaId])
+  @@map("categories")
+}
+
+model CategoryTranslation {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  categoryId  String   @map("category_id") @db.Uuid
+  locale      String   @db.VarChar(10)
+  name        String   @db.VarChar(150)
+  slug        String   @db.VarChar(160)
+  /// Structured rich text (validated JSON), never raw HTML.
+  description Json?
+  searchName  String   @map("search_name") @db.VarChar(300)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  category  Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  localeRef Locale   @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([categoryId, locale])
+  @@unique([locale, slug])
+  @@map("category_translations")
+}
+
+/// Technical attribute definitions (e.g. thread size, voltage, viscosity).
+model AttributeDefinition {
+  id              String            @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  key             String            @unique @db.VarChar(64)
+  dataType        AttributeDataType @map("data_type")
+  unit            String?           @db.VarChar(20)
+  isFilterable    Boolean           @default(false) @map("is_filterable")
+  isVariantOption Boolean           @default(false) @map("is_variant_option")
+  sortOrder       Int               @default(0) @map("sort_order")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  translations AttributeDefinitionTranslation[]
+  options      AttributeOption[]
+  categories   CategoryAttribute[]
+  values       ProductAttribute[]
+
+  @@map("attribute_definitions")
+}
+
+model AttributeDefinitionTranslation {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  attributeId String   @map("attribute_id") @db.Uuid
+  locale      String   @db.VarChar(10)
+  name        String   @db.VarChar(120)
+
+  attribute AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  localeRef Locale              @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([attributeId, locale])
+  @@map("attribute_definition_translations")
+}
+
+model AttributeOption {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  attributeId String   @map("attribute_id") @db.Uuid
+  key         String   @db.VarChar(64)
+  sortOrder   Int      @default(0) @map("sort_order")
+
+  attribute    AttributeDefinition          @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+  translations AttributeOptionTranslation[]
+  values       ProductAttribute[]
+
+  @@unique([attributeId, key])
+  @@unique([id, attributeId])
+  @@map("attribute_options")
+}
+
+model AttributeOptionTranslation {
+  id       String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  optionId String @map("option_id") @db.Uuid
+  locale   String @db.VarChar(10)
+  label    String @db.VarChar(120)
+
+  option    AttributeOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  localeRef Locale          @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([optionId, locale])
+  @@map("attribute_option_translations")
+}
+
+/// Which attributes a category's products use (drives admin forms and filters).
+model CategoryAttribute {
+  categoryId  String  @map("category_id") @db.Uuid
+  attributeId String  @map("attribute_id") @db.Uuid
+  isRequired  Boolean @default(false) @map("is_required")
+  sortOrder   Int     @default(0) @map("sort_order")
+
+  category  Category            @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  attribute AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Cascade)
+
+  @@id([categoryId, attributeId])
+  @@index([attributeId])
+  @@map("category_attributes")
+}
+
+/// A sellable item. Every product has at least one variant (the default
+/// variant) which carries SKU, price and stock.
+model Product {
+  id                String        @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  status            ProductStatus @default(draft)
+  brandId           String?       @map("brand_id") @db.Uuid
+  manufacturerId    String?       @map("manufacturer_id") @db.Uuid
+  primaryCategoryId String?       @map("primary_category_id") @db.Uuid
+  taxRuleId         String?       @map("tax_rule_id") @db.Uuid
+  warrantyMonths    Int?          @map("warranty_months") @db.SmallInt
+  isFeatured        Boolean       @default(false) @map("is_featured")
+  publishedAt       DateTime?     @map("published_at") @db.Timestamptz(6)
+  createdById       String?       @map("created_by") @db.Uuid
+  updatedById       String?       @map("updated_by") @db.Uuid
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime?     @map("deleted_at") @db.Timestamptz(6)
+
+  brand           Brand?                 @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  manufacturer    Manufacturer?          @relation(fields: [manufacturerId], references: [id], onDelete: Restrict)
+  primaryCategory Category?              @relation("ProductPrimaryCategory", fields: [primaryCategoryId], references: [id], onDelete: Restrict)
+  taxRule         TaxRule?               @relation(fields: [taxRuleId], references: [id], onDelete: Restrict)
+  translations    ProductTranslation[]
+  categories      ProductCategory[]
+  variants        ProductVariant[]
+  attributes      ProductAttribute[]
+  images          ProductImage[]
+  documents       ProductDocument[]
+  identifiers     ProductIdentifier[]
+  relations       ProductRelation[]      @relation("RelationFrom")
+  relatedFrom     ProductRelation[]      @relation("RelationTo")
+  compatibilities ProductCompatibility[]
+  wishlistItems   WishlistItem[]
+  orderItems      OrderItem[]
+
+  @@index([status, publishedAt(sort: Desc)], map: "products_listing_idx", where: raw("deleted_at IS NULL"))
+  @@index([brandId])
+  @@index([manufacturerId])
+  @@index([primaryCategoryId])
+  @@index([taxRuleId])
+  @@map("products")
+}
+
+model ProductTranslation {
+  id               String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  productId        String   @map("product_id") @db.Uuid
+  locale           String   @db.VarChar(10)
+  title            String   @db.VarChar(250)
+  slug             String   @db.VarChar(260)
+  shortDescription String?  @map("short_description") @db.VarChar(1000)
+  /// Structured rich text (validated JSON), never raw HTML.
+  description      Json?
+  warrantyTerms    String?  @map("warranty_terms") @db.VarChar(2000)
+  /// Normalized by src/lib/persian-text (search fallback, trigram index).
+  searchTitle      String   @map("search_title") @db.VarChar(500)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  localeRef Locale  @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([productId, locale])
+  @@unique([locale, slug])
+  @@index([searchTitle(ops: raw("gin_trgm_ops"))], type: Gin, map: "product_translations_search_title_trgm")
+  @@map("product_translations")
+}
+
+model ProductCategory {
+  productId  String   @map("product_id") @db.Uuid
+  categoryId String   @map("category_id") @db.Uuid
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@id([productId, categoryId])
+  @@index([categoryId, sortOrder])
+  @@map("product_categories")
+}
+
+/// SKU-level item: price (integer Rial), dimensions, stock (via inventory).
+/// price changes are recorded in product_prices by trigger.
+model ProductVariant {
+  id             String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  productId      String    @map("product_id") @db.Uuid
+  sku            String    @db.VarChar(64)
+  /// normalizeIdentifier(sku): used for lookups and uniqueness.
+  skuNormalized  String    @map("sku_normalized") @db.VarChar(64)
+  isDefault      Boolean   @default(false) @map("is_default")
+  price          BigInt
+  compareAtPrice BigInt?   @map("compare_at_price")
+  /// Purchase cost; visible only with accounting.view / report.financial.
+  costPrice      BigInt?   @map("cost_price")
+  currencyCode   String    @default("IRR") @map("currency_code") @db.Char(3)
+  weightGrams    Int?      @map("weight_grams")
+  lengthMm       Int?      @map("length_mm")
+  widthMm        Int?      @map("width_mm")
+  heightMm       Int?      @map("height_mm")
+  minOrderQty    Int       @default(1) @map("min_order_qty")
+  maxOrderQty    Int?      @map("max_order_qty")
+  isActive       Boolean   @default(true) @map("is_active")
+  sortOrder      Int       @default(0) @map("sort_order")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  product            Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  currency           Currency            @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  prices             ProductPrice[]
+  attributes         ProductAttribute[]
+  images             ProductImage[]
+  identifiers        ProductIdentifier[]
+  inventoryBalances  InventoryBalance[]
+  inventoryMovements InventoryMovement[]
+  reservations       StockReservation[]
+  adjustmentLines    StockAdjustmentLine[]
+  countLines         InventoryCountLine[]
+  transferLines      StockTransferLine[]
+  stockAlerts        StockAlert[]
+  cartItems          CartItem[]
+  wishlistItems      WishlistItem[]
+  orderItems         OrderItem[]
+
+  @@unique([skuNormalized], map: "product_variants_sku_active", where: raw("deleted_at IS NULL"))
+  @@unique([productId], map: "product_variants_single_default", where: raw("is_default AND deleted_at IS NULL"))
+  @@index([productId, sortOrder])
+  @@index([currencyCode])
+  @@index([skuNormalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "product_variants_sku_trgm")
+  @@map("product_variants")
+}
+
+/// Append-only price history, written by trigger on product_variants.
+model ProductPrice {
+  id             String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  variantId      String   @map("variant_id") @db.Uuid
+  price          BigInt
+  compareAtPrice BigInt?  @map("compare_at_price")
+  currencyCode   String   @map("currency_code") @db.Char(3)
+  changedById    String?  @map("changed_by") @db.Uuid
+  approvalId     String?  @map("approval_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  currency  Currency       @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  changedBy User?          @relation(fields: [changedById], references: [id], onDelete: Restrict)
+  approval  AdminApproval? @relation(fields: [approvalId], references: [id], onDelete: Restrict)
+
+  @@index([variantId, createdAt(sort: Desc)])
+  @@index([currencyCode])
+  @@index([changedById])
+  @@index([approvalId])
+  @@map("product_prices")
+}
+
+/// Attribute values for a product (variant_id NULL) or one variant.
+model ProductAttribute {
+  id           String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  variantId    String?  @map("variant_id") @db.Uuid
+  attributeId  String   @map("attribute_id") @db.Uuid
+  valueText    String?  @map("value_text") @db.VarChar(500)
+  valueNumber  Decimal? @map("value_number") @db.Decimal(18, 6)
+  valueBoolean Boolean? @map("value_boolean")
+  optionId     String?  @map("option_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  product   Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant?     @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  attribute AttributeDefinition @relation(fields: [attributeId], references: [id], onDelete: Restrict)
+  option    AttributeOption?    @relation(fields: [optionId, attributeId], references: [id, attributeId], onDelete: Restrict)
+
+  @@unique([productId, attributeId], map: "product_attributes_product_key", where: raw("variant_id IS NULL"))
+  @@unique([variantId, attributeId], map: "product_attributes_variant_key", where: raw("variant_id IS NOT NULL"))
+  @@index([attributeId, optionId])
+  @@index([attributeId, valueNumber])
+  @@index([optionId, attributeId])
+  @@map("product_attributes")
+}
+
+model ProductImage {
+  id        String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  variantId String?  @map("variant_id") @db.Uuid
+  mediaId   String   @map("media_id") @db.Uuid
+  /// {"fa": "...", "en": "..."} validated by Zod; fa required.
+  alt       Json
+  isPrimary Boolean  @default(false) @map("is_primary")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  media   MediaAsset      @relation(fields: [mediaId], references: [id], onDelete: Restrict)
+
+  @@unique([productId], map: "product_images_single_primary", where: raw("is_primary"))
+  @@index([productId, sortOrder])
+  @@index([variantId])
+  @@index([mediaId])
+  @@map("product_images")
+}
+
+model ProductDocument {
+  id        String              @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  productId String              @map("product_id") @db.Uuid
+  mediaId   String              @map("media_id") @db.Uuid
+  type      ProductDocumentType
+  /// NULL = applies to every language.
+  locale    String?             @db.VarChar(10)
+  title     String              @db.VarChar(200)
+  sortOrder Int                 @default(0) @map("sort_order")
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  media     MediaAsset @relation(fields: [mediaId], references: [id], onDelete: Restrict)
+  localeRef Locale?    @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@index([productId, sortOrder])
+  @@index([mediaId])
+  @@index([locale])
+  @@map("product_documents")
+}
+
+/// Barcodes and part numbers. value is shown as entered; normalized_value
+/// (normalizeIdentifier: ASCII digits, upper case, no separators) is used for
+/// lookup, so "۱۲۳-ab 45" finds "123AB45". The SKU lives on product_variants.
+model ProductIdentifier {
+  id              String         @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  productId       String         @map("product_id") @db.Uuid
+  variantId       String?        @map("variant_id") @db.Uuid
+  type            IdentifierType
+  value           String         @db.VarChar(100)
+  normalizedValue String         @map("normalized_value") @db.VarChar(100)
+  /// Whose number this is (e.g. the motorcycle maker for an OEM number).
+  brandId         String?        @map("brand_id") @db.Uuid
+  manufacturerId  String?        @map("manufacturer_id") @db.Uuid
+  isPrimary       Boolean        @default(false) @map("is_primary")
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product      Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant      ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  brand        Brand?          @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  manufacturer Manufacturer?   @relation(fields: [manufacturerId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, type, normalizedValue])
+  @@unique([normalizedValue], map: "product_identifiers_barcode_key", where: raw("type = 'barcode'"))
+  @@index([normalizedValue])
+  @@index([normalizedValue(ops: raw("gin_trgm_ops"))], type: Gin, map: "product_identifiers_normalized_trgm")
+  @@index([variantId])
+  @@index([brandId])
+  @@index([manufacturerId])
+  @@map("product_identifiers")
+}
+
+/// Replacement, supersession, alternatives, accessories, bundle parts.
+model ProductRelation {
+  id               String              @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  productId        String              @map("product_id") @db.Uuid
+  relatedProductId String              @map("related_product_id") @db.Uuid
+  type             ProductRelationType
+  sortOrder        Int                 @default(0) @map("sort_order")
+  notes            String?             @db.VarChar(500)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  product        Product @relation("RelationFrom", fields: [productId], references: [id], onDelete: Cascade)
+  relatedProduct Product @relation("RelationTo", fields: [relatedProductId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, relatedProductId, type])
+  @@index([relatedProductId, type])
+  @@map("product_relations")
+}
