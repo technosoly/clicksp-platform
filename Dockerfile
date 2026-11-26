@@ -37,9 +37,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm prisma generate && pnpm build
 
-# ---- migrate: one-off job that applies database migrations ----
+# ---- migrate: one-off job that applies migrations, then the idempotent system seed ----
 FROM build AS migrate
-CMD ["pnpm", "prisma", "migrate", "deploy"]
+CMD ["sh", "-c", "pnpm prisma migrate deploy && pnpm db:seed"]
 
 # ---- runtime: minimal image, non-root ----
 FROM ${NODE_IMAGE} AS runtime
