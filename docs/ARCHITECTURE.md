@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes what is implemented today (Phase 2). Target architecture and rules for later phases live in [.claude/CLAUDE.md](../.claude/CLAUDE.md) and the skills under `.claude/skills/`.
+This document describes what is implemented today (Phase 3). Target architecture and rules for later phases live in [.claude/CLAUDE.md](../.claude/CLAUDE.md) and the skills under `.claude/skills/`.
 
 ## Shape
 
@@ -23,6 +23,11 @@ Implemented so far:
 | `src/lib/logger` | Structured JSON logging |
 | `src/modules/sales/domain/totals.ts` | Pure order total and refund-limit calculation |
 | `src/modules/accounting/domain/journal.ts` | Pure double-entry balance and reversal rules |
+| `src/modules/rbac/domain/permission-catalogue.ts` | Permission keys, level ceilings and default bundles of the three admin levels |
+| `src/modules/settings/domain/default-settings.ts` | Required settings with safe defaults |
+| `prisma/schema/` | Full database schema (137 tables), one file per area; see [DATABASE.md](DATABASE.md) and [ERD.md](ERD.md) |
+| `prisma/migrations/` | Generated schema migration plus hand-written SQL for constraints and triggers |
+| `prisma/seed.ts` | Idempotent system seed (locales, IRR, permissions, roles, settings; no business data) |
 
 ## Key decisions
 
@@ -34,6 +39,11 @@ Implemented so far:
 | TypeScript 6.0 rather than 7.0 | TypeScript 7 (native compiler) is newer than the support range of typescript-eslint and Next.js tooling at the time of writing. |
 | Prisma 7.10 (stable), not 8.0 RC | npm's `latest` tag currently points at a release candidate; we pin the last stable major. Prisma 7 needs a driver adapter (`@prisma/adapter-pg`) and `prisma.config.ts`. |
 | Money as `bigint` Rial | No floats, no overflow at 2^53. Toman is display only. See [ADR 0001](adr/0001-money-representation.md). |
+| Integrity rules in the database, not only in code | Triggers and CHECKs enforce append-only ledgers, balanced posted journals, oversell-proof stock, the order state machine, refund limits, fitment verification and RBAC level ceilings, so a bug or a raw SQL write cannot break them. Each rule has an integration test. |
+| Inventory balances driven by the movement ledger | Balances change only inside triggers on `inventory_movements` and `stock_reservations`; the row lock taken by the UPDATE serializes concurrent checkouts. |
+| UUIDv7 keys from a SQL function | Time-ordered keys without a PostgreSQL 18 dependency; raw SQL inserts get keys too. |
+| Prisma multi-file schema + `partialIndexes` preview | One file per area keeps the 137-table schema readable; partial unique indexes (soft-delete-aware uniqueness) are declared in Prisma so `pnpm db:drift` stays empty. |
+| System seed with node-postgres, not the Prisma client | Runs under plain Node (type stripping) in the migrate container; never overwrites admin changes. |
 | Vazirmatn self-hosted via `@fontsource-variable/vazirmatn` | Fonts are bundled into the build with unicode-range subsets; no Google Fonts (unreliable from Iran). |
 | Tailwind CSS 4 with CSS-variable tokens | Brand palette from the logo (orange `#DE803C`, charcoal `#272A2D`, cream `#F4F1D4`) in one place; shadcn/ui reads the same token names. Layout uses logical properties (`ms-`, `start-`) for RTL/LTR. |
 | Security headers in `next.config.ts` | `nosniff`, `X-Frame-Options: DENY`, referrer and permissions policies, HSTS. A nonce-based CSP comes with Phase 4. |
@@ -41,4 +51,4 @@ Implemented so far:
 
 ## Not implemented yet
 
-Database schema, authentication, RBAC, admin panel, business services, search indexing, object storage, background jobs, page builder. See [ROADMAP.md](ROADMAP.md).
+Authentication, the RBAC engine (`authorize()`), admin panel, business services and repositories, search indexing, object storage, background jobs, page builder. The database tables for all of them exist (Phase 3). See [ROADMAP.md](ROADMAP.md).

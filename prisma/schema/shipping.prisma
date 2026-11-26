@@ -1,0 +1,237 @@
+// SHIPPING: providers (carriers), zones, methods, weight-based rates,
+// shipments and tracking events. No carriers, zones or rates are seeded:
+// real prices come from the owner, real APIs only from official docs.
+
+enum ShippingMethodKind {
+  post
+  courier
+  freight
+  pickup
+
+  @@map("shipping_method_kind")
+}
+
+enum ShipmentStatus {
+  pending
+  label_created
+  picked_up
+  in_transit
+  out_for_delivery
+  delivered
+  failed
+  returned
+  cancelled
+
+  @@map("shipment_status")
+}
+
+enum TrackingSource {
+  provider
+  manual
+
+  @@map("tracking_source")
+}
+
+/// Carrier (e.g. national post, courier companies). Credentials come from env.
+model ShippingProvider {
+  id                    String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  code                  String   @unique @db.VarChar(50)
+  adapterKey            String?  @map("adapter_key") @db.VarChar(50)
+  credentialsEnvPrefix  String?  @map("credentials_env_prefix") @db.VarChar(50)
+  /// e.g. https://carrier.example/track?code={code}; validated as https.
+  trackingUrlTemplate   String?  @map("tracking_url_template") @db.VarChar(500)
+  config                Json     @default("{}")
+  isActive              Boolean  @default(false) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  translations ShippingProviderTranslation[]
+  methods      ShippingMethod[]
+  shipments    Shipment[]
+
+  @@map("shipping_providers")
+}
+
+model ShippingProviderTranslation {
+  id         String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  providerId String @map("provider_id") @db.Uuid
+  locale     String @db.VarChar(10)
+  name       String @db.VarChar(100)
+
+  provider  ShippingProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  localeRef Locale           @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([providerId, locale])
+  @@map("shipping_provider_translations")
+}
+
+model ShippingZone {
+  id        String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  code      String   @unique @db.VarChar(50)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  translations ShippingZoneTranslation[]
+  regions      ShippingZoneRegion[]
+  rates        ShippingRate[]
+
+  @@map("shipping_zones")
+}
+
+model ShippingZoneTranslation {
+  id     String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  zoneId String @map("zone_id") @db.Uuid
+  locale String @db.VarChar(10)
+  name   String @db.VarChar(100)
+
+  zone      ShippingZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  localeRef Locale       @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([zoneId, locale])
+  @@map("shipping_zone_translations")
+}
+
+/// Province (and optionally city) membership of a zone.
+model ShippingZoneRegion {
+  id           String  @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  zoneId       String  @map("zone_id") @db.Uuid
+  provinceCode String  @map("province_code") @db.VarChar(8)
+  city         String? @db.VarChar(100)
+
+  zone ShippingZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@unique([zoneId, provinceCode], map: "shipping_zone_regions_province_key", where: raw("city IS NULL"))
+  @@unique([zoneId, provinceCode, city], map: "shipping_zone_regions_city_key", where: raw("city IS NOT NULL"))
+  @@index([provinceCode, city])
+  @@map("shipping_zone_regions")
+}
+
+model ShippingMethod {
+  id              String             @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  code            String             @unique @db.VarChar(50)
+  providerId      String?            @map("provider_id") @db.Uuid
+  kind            ShippingMethodKind
+  minDeliveryDays Int?               @map("min_delivery_days") @db.SmallInt
+  maxDeliveryDays Int?               @map("max_delivery_days") @db.SmallInt
+  isActive        Boolean            @default(false) @map("is_active")
+  sortOrder       Int                @default(0) @map("sort_order")
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  provider     ShippingProvider?           @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  translations ShippingMethodTranslation[]
+  rates        ShippingRate[]
+  orders       Order[]
+  shipments    Shipment[]
+
+  @@index([providerId])
+  @@map("shipping_methods")
+}
+
+model ShippingMethodTranslation {
+  id          String  @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  methodId    String  @map("method_id") @db.Uuid
+  locale      String  @db.VarChar(10)
+  name        String  @db.VarChar(100)
+  description String? @db.VarChar(500)
+
+  method    ShippingMethod @relation(fields: [methodId], references: [id], onDelete: Cascade)
+  localeRef Locale         @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([methodId, locale])
+  @@map("shipping_method_translations")
+}
+
+/// Weight-based rate for a method in a zone:
+/// cost = base_amount + per_kg_amount * ceil((weight - min_weight) / 1000),
+/// free when the goods total >= free_above_subtotal. Integer Rial.
+model ShippingRate {
+  id                String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  methodId          String   @map("method_id") @db.Uuid
+  zoneId            String   @map("zone_id") @db.Uuid
+  minWeightGrams    Int      @default(0) @map("min_weight_grams")
+  maxWeightGrams    Int?     @map("max_weight_grams")
+  baseAmount        BigInt   @map("base_amount")
+  perKgAmount       BigInt   @default(0) @map("per_kg_amount")
+  freeAboveSubtotal BigInt?  @map("free_above_subtotal")
+  currencyCode      String   @default("IRR") @map("currency_code") @db.Char(3)
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  method   ShippingMethod @relation(fields: [methodId], references: [id], onDelete: Cascade)
+  zone     ShippingZone   @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  currency Currency       @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+
+  @@index([methodId, zoneId, minWeightGrams])
+  @@index([zoneId])
+  @@index([currencyCode])
+  @@map("shipping_rates")
+}
+
+model Shipment {
+  id           String         @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  orderId      String         @map("order_id") @db.Uuid
+  methodId     String         @map("method_id") @db.Uuid
+  providerId   String?        @map("provider_id") @db.Uuid
+  warehouseId  String         @map("warehouse_id") @db.Uuid
+  status       ShipmentStatus @default(pending)
+  trackingCode String?        @map("tracking_code") @db.VarChar(100)
+  /// What the carrier actually charged us (may differ from order shipping_total).
+  cost         BigInt?
+  currencyCode String         @default("IRR") @map("currency_code") @db.Char(3)
+  weightGrams  Int?           @map("weight_grams")
+  shippedAt    DateTime?      @map("shipped_at") @db.Timestamptz(6)
+  deliveredAt  DateTime?      @map("delivered_at") @db.Timestamptz(6)
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order          Order                    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  method         ShippingMethod           @relation(fields: [methodId], references: [id], onDelete: Restrict)
+  provider       ShippingProvider?        @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  warehouse      Warehouse                @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  currency       Currency                 @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  items          ShipmentItem[]
+  trackingEvents ShipmentTrackingEvent[]
+
+  @@unique([providerId, trackingCode], map: "shipments_tracking_key", where: raw("tracking_code IS NOT NULL"))
+  @@index([orderId])
+  @@index([methodId])
+  @@index([warehouseId])
+  @@index([status, updatedAt])
+  @@index([currencyCode])
+  @@map("shipments")
+}
+
+model ShipmentItem {
+  id          String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  shipmentId  String @map("shipment_id") @db.Uuid
+  orderItemId String @map("order_item_id") @db.Uuid
+  quantity    Int
+
+  shipment  Shipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  @@unique([shipmentId, orderItemId])
+  @@index([orderItemId])
+  @@map("shipment_items")
+}
+
+/// Append-only; duplicates from repeated webhooks are rejected by the unique key.
+model ShipmentTrackingEvent {
+  id          String         @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  shipmentId  String         @map("shipment_id") @db.Uuid
+  status      ShipmentStatus
+  description String?        @db.VarChar(500)
+  location    String?        @db.VarChar(200)
+  source      TrackingSource
+  rawPayload  Json?          @map("raw_payload")
+  occurredAt  DateTime       @map("occurred_at") @db.Timestamptz(6)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+
+  @@unique([shipmentId, occurredAt, status])
+  @@map("shipment_tracking_events")
+}

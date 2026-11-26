@@ -1,0 +1,447 @@
+// IDENTITY AND SECURITY: users, profiles, credentials, sessions, MFA,
+// verification tokens, login attempts, roles, permissions, scopes, approvals,
+// audit logs and security events.
+//
+// The users/sessions/auth_accounts/user_mfa columns are shaped so Better Auth
+// (Phase 4) can map onto them with modelName/fields options. Session tokens
+// and verification values are stored hashed.
+
+enum UserStatus {
+  active
+  pending_verification
+  locked
+  disabled
+
+  @@map("user_status")
+}
+
+enum SessionKind {
+  admin
+  customer
+
+  @@map("session_kind")
+}
+
+enum MfaMethod {
+  totp
+
+  @@map("mfa_method")
+}
+
+enum VerificationPurpose {
+  password_reset
+  phone_otp
+  email_verification
+
+  @@map("verification_purpose")
+}
+
+enum ScopeType {
+  category
+  warehouse
+
+  @@map("scope_type")
+}
+
+enum ApprovalStatus {
+  pending
+  approved
+  rejected
+  cancelled
+  expired
+  executed
+  failed
+
+  @@map("approval_status")
+}
+
+enum ActorType {
+  user
+  system
+  job
+
+  @@map("actor_type")
+}
+
+enum SecuritySeverity {
+  info
+  warning
+  critical
+
+  @@map("security_severity")
+}
+
+/// Every person who can sign in: admins (roles level 1-3) and customers
+/// (level 0). Users are never hard-deleted (trigger); disable instead.
+model User {
+  id                  String     @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  /// Stored lower-case (CHECK). Optional for customers who sign in by phone.
+  email               String?    @unique @db.VarChar(254)
+  emailVerified       Boolean    @default(false) @map("email_verified")
+  /// E.164, e.g. +989121234567 (CHECK).
+  phoneNumber         String?    @unique @map("phone_number") @db.VarChar(16)
+  phoneNumberVerified Boolean    @default(false) @map("phone_number_verified")
+  /// Stored lower-case (CHECK). Admin sign-in name.
+  username            String?    @unique @db.VarChar(50)
+  name                String     @default("") @db.VarChar(120)
+  image               String?    @db.VarChar(500)
+  status              UserStatus @default(active)
+  twoFactorEnabled    Boolean    @default(false) @map("two_factor_enabled")
+  lastLoginAt         DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  createdAt           DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  profile              UserProfile?
+  accounts             AuthAccount[]
+  sessions             Session[]
+  mfa                  UserMfa?
+  verificationTokens   VerificationToken[]
+  loginAttempts        LoginAttempt[]
+  userRoles            UserRole[]                @relation("UserRoleUser")
+  assignedUserRoles    UserRole[]                @relation("UserRoleAssignedBy")
+  grantedRolePerms     RolePermission[]          @relation("RolePermissionGrantedBy")
+  requestedApprovals   AdminApproval[]           @relation("ApprovalRequestedBy")
+  decidedApprovals     AdminApproval[]           @relation("ApprovalDecidedBy")
+  auditLogs            AuditLog[]
+  securityEvents       SecurityEvent[]
+  systemSettings       SystemSetting[]           @relation("SystemSettingUpdatedBy")
+  storeSettings        StoreSetting[]            @relation("StoreSettingUpdatedBy")
+  featureFlags         FeatureFlag[]             @relation("FeatureFlagUpdatedBy")
+  deploymentsRequested DeploymentRecord[]        @relation("DeploymentRequestedBy")
+  deploymentsApproved  DeploymentRecord[]        @relation("DeploymentApprovedBy")
+  importsCreated       DataImportJob[]           @relation("ImportCreatedBy")
+  importsConfirmed     DataImportJob[]           @relation("ImportConfirmedBy")
+  exportsCreated       DataExportJob[]           @relation("ExportCreatedBy")
+  notifications        Notification[]
+  priceChanges         ProductPrice[]
+  compatibilitiesMade  ProductCompatibility[]    @relation("CompatibilityCreatedBy")
+  compatibilitiesVerified ProductCompatibility[] @relation("CompatibilityVerifiedBy")
+  customerVehicles     CustomerVehicle[]
+  inventoryMovements   InventoryMovement[]
+  stockAdjustments     StockAdjustment[]         @relation("AdjustmentCreatedBy")
+  stockAdjustmentsApplied StockAdjustment[]      @relation("AdjustmentAppliedBy")
+  inventoryCounts      InventoryCount[]          @relation("CountStartedBy")
+  inventoryCountsDone  InventoryCount[]          @relation("CountCompletedBy")
+  stockTransfers       StockTransfer[]
+  carts                Cart[]
+  wishlists            Wishlist[]
+  orders               Order[]
+  orderStatusChanges   OrderStatusHistory[]
+  orderReturns         OrderReturn[]             @relation("ReturnRequestedBy")
+  orderReturnsDecided  OrderReturn[]             @relation("ReturnDecidedBy")
+  orderRefunds         OrderRefund[]
+  couponRedemptions    CouponRedemption[]
+  deliveryAddresses    DeliveryAddress[]
+  accountingCreated    AccountingTransaction[]   @relation("AccountingCreatedBy")
+  accountingPosted     AccountingTransaction[]   @relation("AccountingPostedBy")
+  periodsClosed        FinancialPeriod[]
+  expenses             Expense[]
+  incomeRecords        IncomeRecord[]
+  articles             Article[]
+  pageRevisions        PageRevision[]            @relation("PageRevisionCreatedBy")
+  pageRevisionsPublished PageRevision[]          @relation("PageRevisionPublishedBy")
+  mediaUploads         MediaAsset[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  userId          String    @id @map("user_id") @db.Uuid
+  firstName       String?   @map("first_name") @db.VarChar(80)
+  lastName        String?   @map("last_name") @db.VarChar(80)
+  preferredLocale String    @default("fa") @map("preferred_locale") @db.VarChar(10)
+  avatarMediaId   String?   @map("avatar_media_id") @db.Uuid
+  marketingOptIn  Boolean   @default(false) @map("marketing_opt_in")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locale Locale      @relation(fields: [preferredLocale], references: [code], onDelete: Restrict)
+  avatar MediaAsset? @relation(fields: [avatarMediaId], references: [id], onDelete: SetNull)
+
+  @@index([preferredLocale])
+  @@index([avatarMediaId])
+  @@map("user_profiles")
+}
+
+/// Sign-in methods per user (Better Auth "account"). provider_id 'credential'
+/// holds the Argon2id password hash in password_hash.
+model AuthAccount {
+  id                    String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  userId                String    @map("user_id") @db.Uuid
+  providerId            String    @map("provider_id") @db.VarChar(50)
+  accountId             String    @map("account_id") @db.VarChar(255)
+  passwordHash          String?   @map("password_hash") @db.VarChar(255)
+  passwordChangedAt     DateTime? @map("password_changed_at") @db.Timestamptz(6)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("auth_accounts")
+}
+
+/// Server-side sessions. Only a SHA-256 hash of the cookie token is stored.
+model Session {
+  id            String      @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  userId        String      @map("user_id") @db.Uuid
+  tokenHash     String      @unique @map("token_hash") @db.Char(64)
+  kind          SessionKind
+  ipAddress     String?     @map("ip_address") @db.Inet
+  userAgent     String?     @map("user_agent") @db.VarChar(500)
+  mfaVerifiedAt DateTime?   @map("mfa_verified_at") @db.Timestamptz(6)
+  lastSeenAt    DateTime    @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  expiresAt     DateTime    @map("expires_at") @db.Timestamptz(6)
+  revokedAt     DateTime?   @map("revoked_at") @db.Timestamptz(6)
+  revokedReason String?     @map("revoked_reason") @db.VarChar(100)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+/// TOTP enrolment. The secret is encrypted by the app (key from env), backup
+/// codes are stored as hashes only.
+model UserMfa {
+  id                      String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  userId                  String    @unique @map("user_id") @db.Uuid
+  method                  MfaMethod @default(totp)
+  secretEncrypted         String    @map("secret_encrypted")
+  backupCodeHashes        String[]  @map("backup_code_hashes")
+  isVerified              Boolean   @default(false) @map("is_verified")
+  failedVerificationCount Int       @default(0) @map("failed_verification_count")
+  lockedUntil             DateTime? @map("locked_until") @db.Timestamptz(6)
+  lastUsedAt              DateTime? @map("last_used_at") @db.Timestamptz(6)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_mfa")
+}
+
+/// Single-use tokens and OTP codes (password reset, phone OTP, email
+/// verification). value_hash is a SHA-256 hash; the raw value is never stored.
+model VerificationToken {
+  id          String              @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  purpose     VerificationPurpose
+  identifier  String              @db.VarChar(254)
+  userId      String?             @map("user_id") @db.Uuid
+  valueHash   String              @unique @map("value_hash") @db.Char(64)
+  attempts    Int                 @default(0)
+  expiresAt   DateTime            @map("expires_at") @db.Timestamptz(6)
+  consumedAt  DateTime?           @map("consumed_at") @db.Timestamptz(6)
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([purpose, identifier, createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("verification_tokens")
+}
+
+/// Login history (successful and failed). Append-only.
+model LoginAttempt {
+  id            String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  identifier    String   @db.VarChar(254)
+  userId        String?  @map("user_id") @db.Uuid
+  success       Boolean
+  failureReason String?  @map("failure_reason") @db.VarChar(100)
+  ipAddress     String?  @map("ip_address") @db.Inet
+  userAgent     String?  @map("user_agent") @db.VarChar(500)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([identifier, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([ipAddress, createdAt(sort: Desc)])
+  @@map("login_attempts")
+}
+
+/// level: 1 Super Admin, 2 Business Admin, 3 Store Staff, 0 Customer.
+/// System roles (is_system) cannot be deleted or have their key/level changed.
+model Role {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  key         String   @unique @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(500)
+  level       Int      @db.SmallInt
+  isSystem    Boolean  @default(false) @map("is_system")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  permissions RolePermission[]
+  userRoles   UserRole[]
+
+  @@map("roles")
+}
+
+/// Permission keys `<resource>.<action>`; the catalogue lives in code
+/// (src/modules/rbac/domain/permission-catalogue.ts) and is synced by the seed.
+model Permission {
+  id          String     @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  key         String     @unique @db.VarChar(100)
+  module      String     @db.VarChar(50)
+  /// Kind of resource scope this permission can be limited by (NULL = none).
+  scopeType   ScopeType? @map("scope_type")
+  requiresMfa Boolean    @default(false) @map("requires_mfa")
+  /// Lowest role level allowed to hold this permission (1 = Super Admin only).
+  maxLevel    Int        @default(3) @map("max_level") @db.SmallInt
+  isActive    Boolean    @default(true) @map("is_active")
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  /// Scoped grant: the user-role's scope rows limit it, and no scope rows
+  /// means deny. Only for permissions with a scope_type (trigger).
+  isScoped     Boolean  @default(false) @map("is_scoped")
+  grantedById  String?  @map("granted_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+  grantedBy  User?      @relation("RolePermissionGrantedBy", fields: [grantedById], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@index([grantedById])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id           String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  roleId       String    @map("role_id") @db.Uuid
+  assignedById String?   @map("assigned_by") @db.Uuid
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user       User            @relation("UserRoleUser", fields: [userId], references: [id], onDelete: Cascade)
+  role       Role            @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  assignedBy User?           @relation("UserRoleAssignedBy", fields: [assignedById], references: [id], onDelete: Restrict)
+  scopes     UserRoleScope[]
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+  @@index([assignedById])
+  @@map("user_roles")
+}
+
+/// Resource scope of a user-role: which categories or warehouses its scoped
+/// grants (role_permissions.is_scoped) cover. A scoped grant with no matching
+/// scope rows denies; unscoped grants ignore scope rows.
+model UserRoleScope {
+  id          String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  userRoleId  String    @map("user_role_id") @db.Uuid
+  scopeType   ScopeType @map("scope_type")
+  categoryId  String?   @map("category_id") @db.Uuid
+  warehouseId String?   @map("warehouse_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  userRole  UserRole   @relation(fields: [userRoleId], references: [id], onDelete: Cascade)
+  category  Category?  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([userRoleId, categoryId], map: "user_role_scopes_category_key", where: raw("category_id IS NOT NULL"))
+  @@unique([userRoleId, warehouseId], map: "user_role_scopes_warehouse_key", where: raw("warehouse_id IS NOT NULL"))
+  @@index([categoryId])
+  @@index([warehouseId])
+  @@map("user_role_scopes")
+}
+
+/// Actions proposed by a user lacking the direct permission (e.g. Staff price
+/// change). Executed as the approver after re-validation.
+model AdminApproval {
+  id            String         @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  action        String         @db.VarChar(100)
+  entityType    String?        @map("entity_type") @db.VarChar(50)
+  entityId      String?        @map("entity_id") @db.Uuid
+  payload       Json
+  status        ApprovalStatus @default(pending)
+  requestedById String         @map("requested_by") @db.Uuid
+  decidedById   String?        @map("decided_by") @db.Uuid
+  decisionNote  String?        @map("decision_note") @db.VarChar(1000)
+  decidedAt     DateTime?      @map("decided_at") @db.Timestamptz(6)
+  executedAt    DateTime?      @map("executed_at") @db.Timestamptz(6)
+  error         String?
+  expiresAt     DateTime       @map("expires_at") @db.Timestamptz(6)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  requestedBy      User              @relation("ApprovalRequestedBy", fields: [requestedById], references: [id], onDelete: Restrict)
+  decidedBy        User?             @relation("ApprovalDecidedBy", fields: [decidedById], references: [id], onDelete: Restrict)
+  priceChanges     ProductPrice[]
+  stockAdjustments StockAdjustment[]
+  refunds          OrderRefund[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([requestedById])
+  @@index([decidedById])
+  @@index([entityType, entityId])
+  @@map("admin_approvals")
+}
+
+/// Hash-chained, append-only audit trail. seq/prev_hash/hash are filled by a
+/// database trigger, so the application cannot forge the chain.
+model AuditLog {
+  id          String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  seq         BigInt    @unique @default(autoincrement())
+  occurredAt  DateTime  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  actorType   ActorType @map("actor_type")
+  actorUserId String?   @map("actor_user_id") @db.Uuid
+  action      String    @db.VarChar(100)
+  entityType  String    @map("entity_type") @db.VarChar(50)
+  entityId    String?   @map("entity_id") @db.Uuid
+  before      Json?
+  after       Json?
+  ipAddress   String?   @map("ip_address") @db.Inet
+  userAgent   String?   @map("user_agent") @db.VarChar(500)
+  requestId   String?   @map("request_id") @db.VarChar(64)
+  prevHash    Bytes?    @map("prev_hash")
+  hash        Bytes
+
+  actorUser User? @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([entityType, entityId, occurredAt(sort: Desc)])
+  @@index([actorUserId, occurredAt(sort: Desc)])
+  @@index([action, occurredAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+/// Denied authorizations, rate-limit hits, MFA failures, suspicious activity.
+/// Append-only.
+model SecurityEvent {
+  id         String           @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  type       String           @db.VarChar(100)
+  severity   SecuritySeverity @default(info)
+  userId     String?          @map("user_id") @db.Uuid
+  ipAddress  String?          @map("ip_address") @db.Inet
+  userAgent  String?          @map("user_agent") @db.VarChar(500)
+  requestId  String?          @map("request_id") @db.VarChar(64)
+  details    Json?
+  occurredAt DateTime         @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([type, occurredAt(sort: Desc)])
+  @@index([userId, occurredAt(sort: Desc)])
+  @@index([severity, occurredAt(sort: Desc)])
+  @@map("security_events")
+}

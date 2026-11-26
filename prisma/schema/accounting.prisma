@@ -1,0 +1,470 @@
+// ACCOUNTING AND PAYMENTS: chart of accounts, periods, journal (double-entry),
+// expenses, income, cash/bank registers, payment providers and transactions,
+// reconciliation. Posted records are immutable; corrections are reversals.
+// This structure must be reviewed by an Iranian accounting professional; no
+// compliance with Iranian standards or tax law is claimed.
+
+enum AccountType {
+  asset
+  liability
+  equity
+  income
+  expense
+
+  @@map("account_type")
+}
+
+/// Technical role of an account, used by posting mappings and reports.
+enum AccountSubtype {
+  general
+  cash
+  bank
+  gateway_clearing
+  receivable
+  payable
+  vat_payable
+  inventory
+  sales
+  sales_returns
+  shipping_income
+  cogs
+
+  @@map("account_subtype")
+}
+
+enum PeriodStatus {
+  open
+  closed
+
+  @@map("period_status")
+}
+
+enum JournalStatus {
+  draft
+  posted
+
+  @@map("journal_status")
+}
+
+enum JournalSourceType {
+  order_payment
+  refund
+  payment_settlement
+  expense
+  income_record
+  inventory
+  manual
+  reversal
+
+  @@map("journal_source_type")
+}
+
+enum RecordStatus {
+  draft
+  recorded
+  voided
+
+  @@map("record_status")
+}
+
+enum CashRegisterKind {
+  cash
+  bank
+  gateway
+
+  @@map("cash_register_kind")
+}
+
+enum PaymentKind {
+  payment
+  refund
+
+  @@map("payment_kind")
+}
+
+enum PaymentStatus {
+  initiated
+  redirected
+  verifying
+  succeeded
+  failed
+  cancelled
+  expired
+
+  @@map("payment_status")
+}
+
+enum AmountUnit {
+  rial
+  toman
+
+  @@map("amount_unit")
+}
+
+enum ReconciliationLineStatus {
+  unmatched
+  matched
+  ignored
+
+  @@map("reconciliation_line_status")
+}
+
+/// Chart of accounts. Nothing is seeded: the owner or accountant defines the
+/// accounts. A child must have the same type as its parent (trigger).
+model FinancialAccount {
+  id           String         @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  code         String         @unique @db.VarChar(20)
+  name         String         @db.VarChar(150)
+  type         AccountType
+  subtype      AccountSubtype @default(general)
+  parentId     String?        @map("parent_id") @db.Uuid
+  isPostable   Boolean        @default(true) @map("is_postable")
+  isActive     Boolean        @default(true) @map("is_active")
+  currencyCode String         @default("IRR") @map("currency_code") @db.Char(3)
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  children         FinancialAccount[]  @relation("AccountTree")
+  parentAccount    FinancialAccount?   @relation("AccountTree", fields: [parentId], references: [id], onDelete: Restrict)
+  currency         Currency            @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  entries          AccountingEntry[]
+  mappings         AccountMapping[]
+  expensesCharged  Expense[]           @relation("ExpenseAccount")
+  expensesPaidFrom Expense[]           @relation("ExpensePaymentAccount")
+  incomeCredited   IncomeRecord[]      @relation("IncomeAccount")
+  incomeDeposited  IncomeRecord[]      @relation("IncomeDepositAccount")
+  cashRegisters    CashRegister[]
+  reconciliations  ReconciliationStatement[]
+
+  @@index([parentId])
+  @@index([type, code])
+  @@index([currencyCode])
+  @@map("financial_accounts")
+}
+
+/// Which account an automatic posting uses for a given role
+/// (e.g. 'sales_income', 'gateway_clearing'). Posting fails loudly when a
+/// required mapping is missing. Nothing is seeded.
+model AccountMapping {
+  key       String   @id @db.VarChar(64)
+  accountId String   @map("account_id") @db.Uuid
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([accountId])
+  @@map("account_mappings")
+}
+
+/// Periods never overlap (exclusion constraint). Posting into a closed period
+/// is rejected.
+model FinancialPeriod {
+  id         String       @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  name       String       @db.VarChar(60)
+  startDate  DateTime     @map("start_date") @db.Date
+  endDate    DateTime     @map("end_date") @db.Date
+  status     PeriodStatus @default(open)
+  closedById String?      @map("closed_by") @db.Uuid
+  closedAt   DateTime?    @map("closed_at") @db.Timestamptz(6)
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  closedBy     User?                   @relation(fields: [closedById], references: [id], onDelete: Restrict)
+  transactions AccountingTransaction[]
+
+  @@index([closedById])
+  @@index([startDate])
+  @@map("financial_periods")
+}
+
+/// Journal header. Posted transactions must balance (deferred trigger) and are
+/// immutable. (source_type, source_id, source_event) is unique, so an outbox
+/// handler that runs twice posts once.
+model AccountingTransaction {
+  id                String            @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  journalNumber     BigInt            @unique @default(autoincrement()) @map("journal_number")
+  entryDate         DateTime          @map("entry_date") @db.Date
+  periodId          String            @map("period_id") @db.Uuid
+  description       String            @db.VarChar(500)
+  status            JournalStatus     @default(draft)
+  currencyCode      String            @default("IRR") @map("currency_code") @db.Char(3)
+  sourceType        JournalSourceType @map("source_type")
+  sourceId          String?           @map("source_id") @db.Uuid
+  sourceEvent       String?           @map("source_event") @db.VarChar(64)
+  reversesId        String?           @unique @map("reverses_id") @db.Uuid
+  createdById       String?           @map("created_by") @db.Uuid
+  postedById        String?           @map("posted_by") @db.Uuid
+  postedAt          DateTime?         @map("posted_at") @db.Timestamptz(6)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  period              FinancialPeriod        @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  currency            Currency               @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  reverses            AccountingTransaction? @relation("Reversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversedBy          AccountingTransaction? @relation("Reversal")
+  createdBy           User?                  @relation("AccountingCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  postedBy            User?                  @relation("AccountingPostedBy", fields: [postedById], references: [id], onDelete: Restrict)
+  entries             AccountingEntry[]
+  expenses            Expense[]
+  incomeRecords       IncomeRecord[]
+  paymentTransactions PaymentTransaction[]
+
+  @@unique([sourceType, sourceId, sourceEvent], map: "accounting_transactions_source_key", where: raw("source_id IS NOT NULL"))
+  @@index([periodId, entryDate])
+  @@index([entryDate])
+  @@index([currencyCode])
+  @@index([createdById])
+  @@index([postedById])
+  @@map("accounting_transactions")
+}
+
+/// Journal line: exactly one of debit / credit is positive (CHECK).
+model AccountingEntry {
+  id            String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  transactionId String   @map("transaction_id") @db.Uuid
+  lineNo        Int      @map("line_no") @db.SmallInt
+  accountId     String   @map("account_id") @db.Uuid
+  debit         BigInt   @default(0)
+  credit        BigInt   @default(0)
+  memo          String?  @db.VarChar(500)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  transaction AccountingTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  account     FinancialAccount      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  reconciliationLines ReconciliationLine[]
+
+  @@unique([transactionId, lineNo])
+  @@index([accountId, transactionId])
+  @@map("accounting_entries")
+}
+
+model Expense {
+  id                       String       @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  expenseNumber            BigInt       @unique @default(autoincrement()) @map("expense_number")
+  expenseDate              DateTime     @map("expense_date") @db.Date
+  expenseAccountId         String       @map("expense_account_id") @db.Uuid
+  paymentAccountId         String       @map("payment_account_id") @db.Uuid
+  amount                   BigInt
+  currencyCode             String       @default("IRR") @map("currency_code") @db.Char(3)
+  vendorName               String?      @map("vendor_name") @db.VarChar(200)
+  description              String       @db.VarChar(500)
+  receiptMediaId           String?      @map("receipt_media_id") @db.Uuid
+  status                   RecordStatus @default(draft)
+  accountingTransactionId  String?      @map("accounting_transaction_id") @db.Uuid
+  createdById              String       @map("created_by") @db.Uuid
+  createdAt                DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  expenseAccount        FinancialAccount       @relation("ExpenseAccount", fields: [expenseAccountId], references: [id], onDelete: Restrict)
+  paymentAccount        FinancialAccount       @relation("ExpensePaymentAccount", fields: [paymentAccountId], references: [id], onDelete: Restrict)
+  currency              Currency               @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  receipt               MediaAsset?            @relation(fields: [receiptMediaId], references: [id], onDelete: Restrict)
+  accountingTransaction AccountingTransaction? @relation(fields: [accountingTransactionId], references: [id], onDelete: Restrict)
+  createdBy             User                   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([expenseDate])
+  @@index([expenseAccountId])
+  @@index([paymentAccountId])
+  @@index([currencyCode])
+  @@index([receiptMediaId])
+  @@index([accountingTransactionId])
+  @@index([createdById])
+  @@map("expenses")
+}
+
+model IncomeRecord {
+  id                      String       @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  incomeNumber            BigInt       @unique @default(autoincrement()) @map("income_number")
+  incomeDate              DateTime     @map("income_date") @db.Date
+  incomeAccountId         String       @map("income_account_id") @db.Uuid
+  depositAccountId        String       @map("deposit_account_id") @db.Uuid
+  amount                  BigInt
+  currencyCode            String       @default("IRR") @map("currency_code") @db.Char(3)
+  payerName               String?      @map("payer_name") @db.VarChar(200)
+  description             String       @db.VarChar(500)
+  status                  RecordStatus @default(draft)
+  accountingTransactionId String?      @map("accounting_transaction_id") @db.Uuid
+  createdById             String       @map("created_by") @db.Uuid
+  createdAt               DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  incomeAccount         FinancialAccount       @relation("IncomeAccount", fields: [incomeAccountId], references: [id], onDelete: Restrict)
+  depositAccount        FinancialAccount       @relation("IncomeDepositAccount", fields: [depositAccountId], references: [id], onDelete: Restrict)
+  currency              Currency               @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  accountingTransaction AccountingTransaction? @relation(fields: [accountingTransactionId], references: [id], onDelete: Restrict)
+  createdBy             User                   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([incomeDate])
+  @@index([incomeAccountId])
+  @@index([depositAccountId])
+  @@index([currencyCode])
+  @@index([accountingTransactionId])
+  @@index([createdById])
+  @@map("income_records")
+}
+
+/// Cash boxes, bank accounts and gateway settlement accounts, each linked to
+/// an asset account. Only the masked account number is stored.
+model CashRegister {
+  id                  String           @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  name                String           @db.VarChar(120)
+  kind                CashRegisterKind
+  accountId           String           @map("account_id") @db.Uuid
+  bankName            String?          @map("bank_name") @db.VarChar(100)
+  accountNumberMasked String?          @map("account_number_masked") @db.VarChar(40)
+  isActive            Boolean          @default(true) @map("is_active")
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([accountId])
+  @@map("cash_registers")
+}
+
+/// Payment gateway configuration. Credentials are NOT stored here: they come
+/// from server environment variables named by credentials_env_prefix.
+model PaymentProvider {
+  id                   String     @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  code                 String     @unique @db.VarChar(50)
+  adapterKey           String     @map("adapter_key") @db.VarChar(50)
+  credentialsEnvPrefix String?    @map("credentials_env_prefix") @db.VarChar(50)
+  /// Unit the provider API expects; the adapter converts from Rial.
+  amountUnit           AmountUnit @default(rial) @map("amount_unit")
+  /// Non-secret options only (validated by the adapter's Zod schema).
+  config               Json       @default("{}")
+  isSandbox            Boolean    @default(true) @map("is_sandbox")
+  isActive             Boolean    @default(false) @map("is_active")
+  supportsRefund       Boolean    @default(false) @map("supports_refund")
+  sortOrder            Int        @default(0) @map("sort_order")
+  createdAt            DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  translations PaymentProviderTranslation[]
+  transactions PaymentTransaction[]
+
+  @@map("payment_providers")
+}
+
+model PaymentProviderTranslation {
+  id          String  @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  providerId  String  @map("provider_id") @db.Uuid
+  locale      String  @db.VarChar(10)
+  name        String  @db.VarChar(100)
+  description String? @db.VarChar(500)
+
+  provider  PaymentProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  localeRef Locale          @relation(fields: [locale], references: [code], onDelete: Restrict)
+
+  @@unique([providerId, locale])
+  @@map("payment_provider_translations")
+}
+
+/// One attempt to collect (or refund) money through a gateway. Final rows
+/// (succeeded / failed / cancelled / expired) are immutable except for linking
+/// the journal entry. One succeeded payment per order (partial unique).
+model PaymentTransaction {
+  id                      String        @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  orderId                 String        @map("order_id") @db.Uuid
+  providerId              String        @map("provider_id") @db.Uuid
+  kind                    PaymentKind   @default(payment)
+  status                  PaymentStatus @default(initiated)
+  amount                  BigInt
+  currencyCode            String        @default("IRR") @map("currency_code") @db.Char(3)
+  /// Our own reference sent to the gateway and used to find this row on callback.
+  ourReference            String        @unique @map("our_reference") @db.VarChar(64)
+  idempotencyKey          String        @unique @map("idempotency_key") @db.VarChar(100)
+  /// Gateway token/authority returned by initiate().
+  providerToken           String?       @map("provider_token") @db.VarChar(200)
+  /// Gateway reference id returned by verify().
+  providerReference       String?       @map("provider_reference") @db.VarChar(200)
+  maskedCard              String?       @map("masked_card") @db.VarChar(32)
+  failureCode             String?       @map("failure_code") @db.VarChar(50)
+  failureMessage          String?       @map("failure_message") @db.VarChar(500)
+  refundId                String?       @map("refund_id") @db.Uuid
+  accountingTransactionId String?       @map("accounting_transaction_id") @db.Uuid
+  initiatedAt             DateTime      @default(now()) @map("initiated_at") @db.Timestamptz(6)
+  verifiedAt              DateTime?     @map("verified_at") @db.Timestamptz(6)
+  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order                 Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  provider              PaymentProvider        @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  currency              Currency               @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  refund                OrderRefund?           @relation(fields: [refundId], references: [id], onDelete: Restrict)
+  accountingTransaction AccountingTransaction? @relation(fields: [accountingTransactionId], references: [id], onDelete: Restrict)
+  callbacks             PaymentCallbackLog[]
+  reconciliationLines   ReconciliationLine[]
+
+  @@unique([providerId, providerReference], map: "payment_transactions_provider_reference_key", where: raw("provider_reference IS NOT NULL"))
+  @@unique([orderId], map: "payment_transactions_single_success", where: raw("kind = 'payment' AND status = 'succeeded'"))
+  @@index([orderId])
+  @@index([providerId, providerToken])
+  @@index([status, initiatedAt])
+  @@index([refundId])
+  @@index([accountingTransactionId])
+  @@index([currencyCode])
+  @@map("payment_transactions")
+}
+
+/// Raw gateway callbacks as received (sanitized). Append-only, for disputes.
+model PaymentCallbackLog {
+  id                   String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  paymentTransactionId String?  @map("payment_transaction_id") @db.Uuid
+  providerCode         String   @map("provider_code") @db.VarChar(50)
+  payload              Json
+  ipAddress            String?  @map("ip_address") @db.Inet
+  receivedAt           DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+
+  paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: Restrict)
+
+  @@index([paymentTransactionId])
+  @@index([providerCode, receivedAt(sort: Desc)])
+  @@map("payment_callback_logs")
+}
+
+/// Imported bank / gateway statement (CSV) for reconciliation.
+model ReconciliationStatement {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  accountId   String   @map("account_id") @db.Uuid
+  periodStart DateTime @map("period_start") @db.Date
+  periodEnd   DateTime @map("period_end") @db.Date
+  fileMediaId String?  @map("file_media_id") @db.Uuid
+  importedById String  @map("imported_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  account FinancialAccount     @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  file    MediaAsset?          @relation(fields: [fileMediaId], references: [id], onDelete: Restrict)
+  lines   ReconciliationLine[]
+
+  @@index([accountId, periodStart])
+  @@index([fileMediaId])
+  @@map("reconciliation_statements")
+}
+
+/// Statement line; matching links it to a payment and/or journal line and
+/// never edits posted entries. amount is signed (credit to us = positive).
+model ReconciliationLine {
+  id                   String                   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  statementId          String                   @map("statement_id") @db.Uuid
+  lineNo               Int                      @map("line_no")
+  bookedOn             DateTime                 @map("booked_on") @db.Date
+  amount               BigInt
+  reference            String?                  @db.VarChar(200)
+  description          String?                  @db.VarChar(500)
+  status               ReconciliationLineStatus @default(unmatched)
+  paymentTransactionId String?                  @map("payment_transaction_id") @db.Uuid
+  accountingEntryId    String?                  @map("accounting_entry_id") @db.Uuid
+  matchedById          String?                  @map("matched_by") @db.Uuid
+  matchedAt            DateTime?                @map("matched_at") @db.Timestamptz(6)
+
+  statement          ReconciliationStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  paymentTransaction PaymentTransaction?     @relation(fields: [paymentTransactionId], references: [id], onDelete: Restrict)
+  accountingEntry    AccountingEntry?        @relation(fields: [accountingEntryId], references: [id], onDelete: Restrict)
+
+  @@unique([statementId, lineNo])
+  @@index([status])
+  @@index([paymentTransactionId])
+  @@index([accountingEntryId])
+  @@map("reconciliation_lines")
+}

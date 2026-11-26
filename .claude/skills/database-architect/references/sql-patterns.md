@@ -32,7 +32,7 @@ AFTER INSERT ON accounting_entries
 DEFERRABLE INITIALLY DEFERRED
 FOR EACH ROW EXECUTE FUNCTION assert_transaction_balanced();
 ```
-Also add a deferred trigger on `accounting_transactions` when status changes to `posted`.
+Implemented variant (Phase 3): entries can only be added to **draft** transactions, so the deferred check runs on `accounting_transactions` when `status` changes to `posted` (`accounting_assert_balanced`). In tests, fire deferred triggers with `SET CONSTRAINTS ALL IMMEDIATE`.
 
 ## Stock balance guards
 ```sql

@@ -6,7 +6,7 @@
   "description": "Clicksp: motorcycle spare parts and accessories e-commerce platform for Iran (fa-IR / en, IRR).",
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.18.0"
   },
   "scripts": {
     "dev": "next dev",
@@ -15,12 +15,15 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:validate": "prisma validate",
+    "db:seed": "node prisma/seed.ts",
+    "db:drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code",
     "skills:validate": "node scripts/validate-claude-config.mjs",
     "postinstall": "prisma generate"
   },

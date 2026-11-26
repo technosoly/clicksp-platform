@@ -1,0 +1,381 @@
+// INVENTORY: multi-warehouse balances driven by an append-only movement
+// ledger. Balances change only through triggers on inventory_movements
+// (on_hand) and stock_reservations (reserved); direct writes are rejected.
+// available = on_hand - reserved (computed, never stored).
+
+enum MovementType {
+  receipt
+  issue
+  sale
+  return
+  transfer_out
+  transfer_in
+  adjustment_plus
+  adjustment_minus
+  count_gain
+  count_loss
+
+  @@map("movement_type")
+}
+
+enum MovementReferenceType {
+  purchase
+  order
+  order_return
+  adjustment
+  count
+  transfer
+  manual
+
+  @@map("movement_reference_type")
+}
+
+enum ReservationStatus {
+  active
+  consumed
+  released
+  expired
+
+  @@map("reservation_status")
+}
+
+enum AdjustmentReason {
+  damage
+  loss
+  found
+  correction
+  expiry
+  other
+
+  @@map("adjustment_reason")
+}
+
+enum AdjustmentStatus {
+  draft
+  pending_approval
+  applied
+  rejected
+  cancelled
+
+  @@map("adjustment_status")
+}
+
+enum CountStatus {
+  open
+  completed
+  cancelled
+
+  @@map("count_status")
+}
+
+enum TransferStatus {
+  draft
+  in_transit
+  received
+  cancelled
+
+  @@map("transfer_status")
+}
+
+enum StockAlertStatus {
+  ok
+  triggered
+  acknowledged
+
+  @@map("stock_alert_status")
+}
+
+model Warehouse {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  code        String   @unique @db.VarChar(32)
+  name        String   @db.VarChar(120)
+  provinceCode String? @map("province_code") @db.VarChar(8)
+  city        String?  @db.VarChar(100)
+  address     String?  @db.VarChar(500)
+  phone       String?  @db.VarChar(20)
+  /// Lower number = preferred when choosing where to fulfil from.
+  priority    Int      @default(100) @db.SmallInt
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  locations       WarehouseLocation[]
+  balances        InventoryBalance[]
+  movements       InventoryMovement[]
+  adjustments     StockAdjustment[]
+  counts          InventoryCount[]
+  transfersOut    StockTransfer[]     @relation("TransferFrom")
+  transfersIn     StockTransfer[]     @relation("TransferTo")
+  stockAlerts     StockAlert[]
+  roleScopes      UserRoleScope[]
+  shipments       Shipment[]
+
+  @@map("warehouses")
+}
+
+/// Bin / shelf inside a warehouse. Each warehouse should have one default
+/// location for stock that is not tracked by bin.
+model WarehouseLocation {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  code        String   @db.VarChar(32)
+  description String?  @db.VarChar(200)
+  isDefault   Boolean  @default(false) @map("is_default")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  warehouse Warehouse          @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  balances  InventoryBalance[]
+
+  @@unique([warehouseId, code])
+  @@unique([id, warehouseId])
+  @@unique([warehouseId], map: "warehouse_locations_single_default", where: raw("is_default"))
+  @@map("warehouse_locations")
+}
+
+/// One row per variant per location. CHECKs: on_hand >= 0, reserved >= 0,
+/// reserved <= on_hand. Written only by inventory triggers.
+model InventoryBalance {
+  id          String   @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  variantId   String   @map("variant_id") @db.Uuid
+  locationId  String   @map("location_id") @db.Uuid
+  warehouseId String   @map("warehouse_id") @db.Uuid
+  onHand      Int      @default(0) @map("on_hand")
+  reserved    Int      @default(0)
+  version     Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  variant      ProductVariant      @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  location     WarehouseLocation   @relation(fields: [locationId, warehouseId], references: [id, warehouseId], onDelete: Restrict)
+  warehouse    Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  movements    InventoryMovement[]
+  reservations StockReservation[]
+
+  @@unique([variantId, locationId])
+  @@index([warehouseId, variantId])
+  @@index([locationId, warehouseId])
+  @@map("inventory_balances")
+}
+
+/// Append-only stock ledger. quantity > 0; the type gives the direction.
+/// A BEFORE INSERT trigger creates the balance row if needed, applies the
+/// change under a row lock and records on_hand_after.
+model InventoryMovement {
+  id            String                @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  variantId     String                @map("variant_id") @db.Uuid
+  locationId    String                @map("location_id") @db.Uuid
+  warehouseId   String                @map("warehouse_id") @db.Uuid
+  type          MovementType
+  quantity      Int
+  onHandAfter   Int                   @default(0) @map("on_hand_after")
+  referenceType MovementReferenceType @map("reference_type")
+  referenceId   String?               @map("reference_id") @db.Uuid
+  /// External document number (supplier invoice, waybill).
+  referenceCode String?               @map("reference_code") @db.VarChar(100)
+  /// Groups the two movements of a transfer.
+  transferId    String?               @map("transfer_id") @db.Uuid
+  reason        String?               @db.VarChar(500)
+  unitCost      BigInt?               @map("unit_cost")
+  currencyCode  String?               @map("currency_code") @db.Char(3)
+  actorUserId   String?               @map("actor_user_id") @db.Uuid
+  occurredAt    DateTime              @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  createdAt     DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  balance   InventoryBalance @relation(fields: [variantId, locationId], references: [variantId, locationId], onDelete: Restrict)
+  variant   ProductVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  warehouse Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  transfer  StockTransfer?   @relation(fields: [transferId], references: [id], onDelete: Restrict)
+  currency  Currency?        @relation(fields: [currencyCode], references: [code], onDelete: Restrict)
+  actor     User?            @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  adjustmentLines StockAdjustmentLine[]
+  countLines      InventoryCountLine[]
+
+  @@index([variantId, locationId, occurredAt(sort: Desc)])
+  @@index([warehouseId, occurredAt(sort: Desc)])
+  @@index([referenceType, referenceId])
+  @@index([transferId])
+  @@index([actorUserId])
+  @@index([currencyCode])
+  @@map("inventory_movements")
+}
+
+/// Checkout holds. Inserting an active reservation increases `reserved`
+/// (fails when not enough is available); leaving `active` releases it.
+model StockReservation {
+  id          String            @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  variantId   String            @map("variant_id") @db.Uuid
+  locationId  String            @map("location_id") @db.Uuid
+  orderId     String?           @map("order_id") @db.Uuid
+  cartId      String?           @map("cart_id") @db.Uuid
+  quantity    Int
+  status      ReservationStatus @default(active)
+  expiresAt   DateTime          @map("expires_at") @db.Timestamptz(6)
+  closedAt    DateTime?         @map("closed_at") @db.Timestamptz(6)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  balance InventoryBalance @relation(fields: [variantId, locationId], references: [variantId, locationId], onDelete: Restrict)
+  variant ProductVariant   @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  order   Order?           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  cart    Cart?            @relation(fields: [cartId], references: [id], onDelete: SetNull)
+
+  @@index([variantId, locationId])
+  @@index([orderId])
+  @@index([cartId])
+  @@index([expiresAt], map: "stock_reservations_active_expiry_idx", where: raw("status = 'active'"))
+  @@map("stock_reservations")
+}
+
+model StockAdjustment {
+  id          String           @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  warehouseId String           @map("warehouse_id") @db.Uuid
+  reason      AdjustmentReason
+  note        String?          @db.VarChar(1000)
+  status      AdjustmentStatus @default(draft)
+  approvalId  String?          @map("approval_id") @db.Uuid
+  createdById String           @map("created_by") @db.Uuid
+  appliedById String?          @map("applied_by") @db.Uuid
+  appliedAt   DateTime?        @map("applied_at") @db.Timestamptz(6)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  warehouse Warehouse             @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  approval  AdminApproval?        @relation(fields: [approvalId], references: [id], onDelete: Restrict)
+  createdBy User                  @relation("AdjustmentCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  appliedBy User?                 @relation("AdjustmentAppliedBy", fields: [appliedById], references: [id], onDelete: Restrict)
+  lines     StockAdjustmentLine[]
+
+  @@index([warehouseId, createdAt(sort: Desc)])
+  @@index([approvalId])
+  @@index([createdById])
+  @@index([appliedById])
+  @@map("stock_adjustments")
+}
+
+model StockAdjustmentLine {
+  id            String  @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  adjustmentId  String  @map("adjustment_id") @db.Uuid
+  variantId     String  @map("variant_id") @db.Uuid
+  locationId    String  @map("location_id") @db.Uuid
+  /// Signed change; non-zero.
+  quantityDelta Int     @map("quantity_delta")
+  movementId    String? @unique @map("movement_id") @db.Uuid
+
+  adjustment StockAdjustment    @relation(fields: [adjustmentId], references: [id], onDelete: Cascade)
+  variant    ProductVariant     @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  movement   InventoryMovement? @relation(fields: [movementId], references: [id], onDelete: Restrict)
+
+  @@unique([adjustmentId, variantId, locationId])
+  @@index([variantId])
+  @@map("stock_adjustment_lines")
+}
+
+/// Stock count session. expected is captured at count time; on completion
+/// the difference is posted as count_gain / count_loss movements.
+model InventoryCount {
+  id            String      @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  warehouseId   String      @map("warehouse_id") @db.Uuid
+  status        CountStatus @default(open)
+  note          String?     @db.VarChar(1000)
+  startedById   String      @map("started_by") @db.Uuid
+  completedById String?     @map("completed_by") @db.Uuid
+  startedAt     DateTime    @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt   DateTime?   @map("completed_at") @db.Timestamptz(6)
+  updatedAt     DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  warehouse   Warehouse            @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  startedBy   User                 @relation("CountStartedBy", fields: [startedById], references: [id], onDelete: Restrict)
+  completedBy User?                @relation("CountCompletedBy", fields: [completedById], references: [id], onDelete: Restrict)
+  lines       InventoryCountLine[]
+
+  @@index([warehouseId, startedAt(sort: Desc)])
+  @@index([startedById])
+  @@index([completedById])
+  @@map("inventory_counts")
+}
+
+model InventoryCountLine {
+  id          String    @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  countId     String    @map("count_id") @db.Uuid
+  variantId   String    @map("variant_id") @db.Uuid
+  locationId  String    @map("location_id") @db.Uuid
+  expectedQty Int       @map("expected_qty")
+  countedQty  Int?      @map("counted_qty")
+  countedAt   DateTime? @map("counted_at") @db.Timestamptz(6)
+  movementId  String?   @unique @map("movement_id") @db.Uuid
+
+  count    InventoryCount     @relation(fields: [countId], references: [id], onDelete: Cascade)
+  variant  ProductVariant     @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  movement InventoryMovement? @relation(fields: [movementId], references: [id], onDelete: Restrict)
+
+  @@unique([countId, variantId, locationId])
+  @@index([variantId])
+  @@map("inventory_count_lines")
+}
+
+model StockTransfer {
+  id              String         @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  fromWarehouseId String         @map("from_warehouse_id") @db.Uuid
+  toWarehouseId   String         @map("to_warehouse_id") @db.Uuid
+  status          TransferStatus @default(draft)
+  note            String?        @db.VarChar(1000)
+  createdById     String         @map("created_by") @db.Uuid
+  shippedAt       DateTime?      @map("shipped_at") @db.Timestamptz(6)
+  receivedAt      DateTime?      @map("received_at") @db.Timestamptz(6)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  fromWarehouse Warehouse           @relation("TransferFrom", fields: [fromWarehouseId], references: [id], onDelete: Restrict)
+  toWarehouse   Warehouse           @relation("TransferTo", fields: [toWarehouseId], references: [id], onDelete: Restrict)
+  createdBy     User                @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  lines         StockTransferLine[]
+  movements     InventoryMovement[]
+
+  @@index([fromWarehouseId])
+  @@index([toWarehouseId])
+  @@index([createdById])
+  @@map("stock_transfers")
+}
+
+model StockTransferLine {
+  id             String @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  transferId     String @map("transfer_id") @db.Uuid
+  variantId      String @map("variant_id") @db.Uuid
+  fromLocationId String @map("from_location_id") @db.Uuid
+  toLocationId   String @map("to_location_id") @db.Uuid
+  quantity       Int
+
+  transfer StockTransfer  @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  variant  ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([transferId, variantId, fromLocationId])
+  @@index([variantId])
+  @@map("stock_transfer_lines")
+}
+
+/// Low-stock thresholds; evaluated by the worker on inventory.changed.
+/// warehouse_id NULL = across all warehouses.
+model StockAlert {
+  id              String           @id @default(dbgenerated("gen_uuid_v7()")) @db.Uuid
+  variantId       String           @map("variant_id") @db.Uuid
+  warehouseId     String?          @map("warehouse_id") @db.Uuid
+  threshold       Int
+  status          StockAlertStatus @default(ok)
+  isActive        Boolean          @default(true) @map("is_active")
+  lastTriggeredAt DateTime?        @map("last_triggered_at") @db.Timestamptz(6)
+  acknowledgedAt  DateTime?        @map("acknowledged_at") @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  warehouse Warehouse?     @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@unique([variantId, warehouseId], map: "stock_alerts_warehouse_key", where: raw("warehouse_id IS NOT NULL"))
+  @@unique([variantId], map: "stock_alerts_global_key", where: raw("warehouse_id IS NULL"))
+  @@index([warehouseId])
+  @@index([status], map: "stock_alerts_triggered_idx", where: raw("status = 'triggered'"))
+  @@map("stock_alerts")
+}
