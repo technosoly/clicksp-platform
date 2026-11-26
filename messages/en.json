@@ -26,5 +26,96 @@
     "title": "Page not found",
     "description": "The page you are looking for does not exist or has moved.",
     "backHome": "Back to the home page"
+  },
+  "Header": {
+    "account": "My account"
+  },
+  "Admin": {
+    "title": "Clicksp admin",
+    "logout": "Sign out",
+    "navLabel": "Admin sections",
+    "nav": {
+      "dashboard": "Dashboard"
+    },
+    "welcome": "Welcome, {name}",
+    "dashboardIntro": "You are signed in to the Clicksp admin panel.",
+    "yourRole": "Your role",
+    "twoFactor": "Two-factor sign-in",
+    "twoFactorOn": "On",
+    "twoFactorOff": "Off",
+    "permissions": "Permissions",
+    "levels": {
+      "superAdmin": "Super Admin",
+      "businessAdmin": "Business Admin",
+      "storeStaff": "Store Staff"
+    },
+    "nextTitle": "What comes next",
+    "nextBody": "Managing admins, roles and permissions arrives in the next phase, followed by products, motorcycles, stock and orders.",
+    "signedInAt": "Signed in: {time}"
+  },
+  "AdminAuth": {
+    "loginTitle": "Admin sign-in",
+    "loginSubtitle": "For store managers and staff only.",
+    "identifier": "Username or email",
+    "password": "Password",
+    "signIn": "Sign in",
+    "signingIn": "Signing in…",
+    "mfaTitle": "Two-factor check",
+    "mfaSubtitle": "Enter the 6-digit code from your authenticator app.",
+    "mfaCode": "Code",
+    "mfaCodeHint": "Lost your phone? Enter one of your backup codes instead.",
+    "verify": "Verify",
+    "verifying": "Checking…",
+    "setupTitle": "Turn on two-factor sign-in",
+    "setupSubtitle": "Admins must use an authenticator app. This takes about a minute.",
+    "setupStep1": "Install an authenticator app on your phone, such as Google Authenticator, Microsoft Authenticator or Aegis.",
+    "setupStep2": "In the app, add an account and scan this QR code.",
+    "setupStep3": "Enter the 6-digit code the app shows.",
+    "qrAlt": "QR code for your authenticator app",
+    "manualKey": "Can't scan? Enter this key manually",
+    "setupCode": "Code from the app",
+    "enable": "Turn on",
+    "backupCodesTitle": "Save your backup codes",
+    "backupCodesHelp": "Each code works once if you lose your phone. Keep them somewhere safe and private. They are shown only now.",
+    "continueToAdmin": "Continue to the admin panel",
+    "alreadyEnabled": "Two-factor sign-in is already on for your account.",
+    "errors": {
+      "required": "Enter your username and password.",
+      "invalid_credentials": "The username or password is incorrect.",
+      "rate_limited": "Too many attempts. Please wait 15 minutes and try again.",
+      "invalid_code": "That code is not correct. Check the time on your phone and try again.",
+      "mfa_locked": "Too many wrong codes. Two-factor sign-in is locked for 15 minutes.",
+      "unexpected": "Something went wrong. Please try again."
+    }
+  },
+  "CustomerAuth": {
+    "title": "Sign in or create an account",
+    "subtitle": "We will text a one-time code to your mobile number.",
+    "phone": "Mobile number",
+    "sendCode": "Send code",
+    "sending": "Sending…",
+    "codeSent": "We sent a code to",
+    "code": "6-digit code",
+    "verify": "Sign in",
+    "verifying": "Checking…",
+    "unavailable": "Signing in with a mobile number is not available yet. Please check back soon.",
+    "smsText": "Clicksp sign-in code: {code}\nDo not share this code with anyone.",
+    "errors": {
+      "invalid_phone": "Enter a valid Iranian mobile number, e.g. 09121234567.",
+      "unavailable": "Signing in with a mobile number is not available yet.",
+      "rate_limited": "Too many codes requested. Please wait 10 minutes.",
+      "send_failed": "We could not send the code. Please try again in a moment.",
+      "invalid_code": "That code is not correct.",
+      "expired": "The code has expired or was used too many times. Request a new one.",
+      "too_many_attempts": "Too many wrong codes. Request a new one.",
+      "account_disabled": "This account is disabled. Please contact support.",
+      "unexpected": "Something went wrong. Please try again."
+    }
+  },
+  "Account": {
+    "title": "My account",
+    "signedInAs": "Signed in as",
+    "comingSoon": "Your orders, addresses and motorcycles will appear here when the store opens.",
+    "logout": "Sign out"
   }
 }
