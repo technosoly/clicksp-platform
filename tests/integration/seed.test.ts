@@ -53,7 +53,8 @@ describe("system seed", () => {
         .sort((a, b) => a.key.localeCompare(b.key));
       expect(rows).toEqual(expected);
     }
-    const roles = await pool.query("SELECT key, level, is_system FROM roles ORDER BY level");
+    // Other suites commit synthetic custom roles; this checks the system ones.
+    const roles = await pool.query("SELECT key, level, is_system FROM roles WHERE is_system ORDER BY level");
     expect(roles.rows).toEqual([
       { key: "customer", level: 0, is_system: true },
       { key: "super_admin", level: 1, is_system: true },

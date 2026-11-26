@@ -253,14 +253,17 @@ describe("audit log", () => {
     await inTx(async (db) => {
       const user = await createUser(db);
       await setActor(db, user);
+      // Other suites (auth) commit audit rows, so compare against the chain head.
+      const head = await db.query<{ seq: string; hash: Buffer }>("SELECT seq, hash FROM audit_logs ORDER BY seq DESC LIMIT 1");
       await audit(db, "product.update", user);
       await audit(db, "price.update", user);
       await audit(db, "product.archive", user);
       const rows = await db.query<{ seq: string; prev_hash: Buffer | null; hash: Buffer }>(
-        "SELECT seq, prev_hash, hash FROM audit_logs ORDER BY seq",
+        "SELECT seq, prev_hash, hash FROM audit_logs WHERE seq > $1 ORDER BY seq",
+        [head.rows[0]?.seq ?? 0],
       );
       expect(rows.rows).toHaveLength(3);
-      expect(rows.rows[0]?.prev_hash).toBeNull();
+      expect(rows.rows[0]?.prev_hash ?? null).toEqual(head.rows[0]?.hash ?? null);
       expect(rows.rows[1]?.prev_hash).toEqual(rows.rows[0]?.hash);
       expect(rows.rows[2]?.prev_hash).toEqual(rows.rows[1]?.hash);
       expect((await one<{ broken: string | null }>(db, "SELECT audit_logs_verify() AS broken")).broken).toBeNull();
