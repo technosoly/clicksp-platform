@@ -656,7 +656,7 @@
     "system": "System",
     "variantDetails": "SKU, size and order limits",
     "addVariant": "Add variant",
-    "addVariantHelp": "Another size, colour or model of the same product, with its own SKU and price.",
+    "addVariantHelp": "Another size, colour or model of the same product, with its own SKU and price. It starts switched off: set its price, then switch it on.",
     "identifiersTitle": "Part numbers and barcodes",
     "identifiersHelp": "OEM numbers, manufacturer and alternative part numbers. Customers can search by any of them.",
     "identifiersEmpty": "No numbers yet.",
@@ -703,7 +703,8 @@
       "no_active_variant": "To publish, the main variant must be active.",
       "no_price": "To publish, the main variant needs a price.",
       "pending_exists": "A price change for this item is already waiting for approval.",
-      "taken": "Already used."
+      "taken": "Already used.",
+      "variant_unpriced": "Set a price before switching this variant on."
     }
   },
   "AdminApprovals": {

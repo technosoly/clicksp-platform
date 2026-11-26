@@ -40,6 +40,8 @@ import {
 } from "../repo/admin-users-repo";
 import { revokeUserSessions } from "../repo/identity-repo";
 
+const IS_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Managing other admin accounts (Phase 5): Super Admins manage every admin,
  * Business Admins manage Store Staff accounts only. Every method authorizes
@@ -83,7 +85,7 @@ async function authorizeTargetLevel(actor: Actor, targetLevel: number, targetId:
 
 /** Loads a target account and authorizes managing it (by its strongest admin role). */
 async function loadTarget(actor: Actor, userId: string, stepUp: boolean): Promise<{ row: AdminUserRow; level: number } | ManageError> {
-  if (!/^[0-9a-f-]{36}$/i.test(userId)) return { status: "not_found" };
+  if (!IS_UUID.test(userId)) return { status: "not_found" };
   const [row, level] = await Promise.all([getAdminUser(db(), userId), strongestAdminLevel(db(), userId)]);
   if (!row || level === null) return { status: "not_found" };
   await authorizeTargetLevel(actor, level, userId, stepUp);
@@ -237,7 +239,7 @@ export async function changeAdminRole(actor: Actor, userId: string, roleId: stri
   const target = await loadTarget(actor, userId, true);
   if ("status" in target) return target;
   if (userId === actor.userId) return { status: "self" };
-  const role = /^[0-9a-f-]{36}$/i.test(roleId) ? await findRole(db(), roleId) : null;
+  const role = IS_UUID.test(roleId) ? await findRole(db(), roleId) : null;
   if (!role || !role.isActive || role.level < 1 || role.level > 3) return { status: "invalid", field: "invalid_role" };
   await authorizeTargetLevel(actor, role.level, userId, true);
   if (role.id === target.row.role.id && target.level === role.level) return { status: "ok" };
@@ -390,7 +392,7 @@ export async function setCategoryScopes(actor: Actor, userId: string, categoryId
   const target = await loadTarget(actor, userId, true);
   if ("status" in target) return target;
   if (userId === actor.userId) return { status: "self" };
-  const requested = [...new Set(categoryIdsInput.filter((id) => /^[0-9a-f-]{36}$/i.test(id)))];
+  const requested = [...new Set(categoryIdsInput.filter((id) => IS_UUID.test(id)))];
   if (requested.length !== categoryIdsInput.length || requested.length > 200) return { status: "invalid", field: "invalid_category" };
   const categoryIds = await existingCategoryIds(db(), requested);
   if (categoryIds.length !== requested.length) return { status: "invalid", field: "invalid_category" };

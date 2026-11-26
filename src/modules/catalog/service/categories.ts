@@ -56,11 +56,13 @@ export async function getCategoryForAdmin(actor: Actor, id: string) {
   await authorize(actor, "category.manage", { type: "category", id, categoryIds: [id] }, { stepUp: false });
   const category = await getCategory(db(), id);
   if (!category) return null;
-  // Parents it may be moved under: anything the actor covers, except itself and its subtree.
+  // Parents it may be moved under: anything but itself and its subtree, and
+  // only for unscoped managers (see updateCategory); others keep the current one.
+  const canMove = allows(actor, "category.manage", undefined);
   const subtree = new Set(await categoryWithDescendants(db(), id));
   const all = await listCategoryRows(db());
-  const parents = all.filter((r) => !subtree.has(r.id) && allows(actor, "category.manage", [r.id]));
-  return { category, parents, canMakeRoot: allows(actor, "category.manage", undefined) };
+  const parents = all.filter((r) => !subtree.has(r.id) && (canMove || r.id === category.parentId));
+  return { category, parents, canMakeRoot: canMove };
 }
 
 function failure(error: unknown): CatalogResult {
@@ -110,7 +112,9 @@ export async function updateCategory(actor: Actor, id: string, input: CategoryIn
   if (data.parentId !== current.parentId) {
     if (data.parentId === id) return { status: "invalid", field: "invalid_parent" };
     if (data.parentId && !(await getCategory(db(), data.parentId))) return { status: "invalid", field: "invalid_parent" };
-    await authorizeParent(actor, data.parentId, id);
+    // Moving a category changes which staff its products are visible to
+    // (scopes cover descendants), so only unscoped category managers may move.
+    await authorize(actor, "category.manage", { type: "category", id });
   }
   try {
     await transaction(async (tx) => {

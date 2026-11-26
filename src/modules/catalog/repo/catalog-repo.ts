@@ -466,6 +466,24 @@ export async function setVariantPriceRow(tx: Tx, variantId: string, price: bigin
   await tx.productVariant.update({ where: { id: variantId }, data: { price, compareAtPrice } });
 }
 
+/**
+ * Sets a variant's price only if it still has the given price and
+ * compare-at price (checked by the UPDATE itself, so a concurrent change
+ * cannot be overwritten). Returns false when nothing matched.
+ */
+export async function setVariantPriceIfUnchanged(
+  tx: Tx,
+  variantId: string,
+  previous: { price: bigint; compareAtPrice: bigint | null },
+  next: { price: bigint; compareAtPrice: bigint | null },
+): Promise<boolean> {
+  const { count } = await tx.productVariant.updateMany({
+    where: { id: variantId, deletedAt: null, price: previous.price, compareAtPrice: previous.compareAtPrice },
+    data: { price: next.price, compareAtPrice: next.compareAtPrice },
+  });
+  return count === 1;
+}
+
 export async function setVariantCostRow(tx: Tx, variantId: string, costPrice: bigint | null): Promise<void> {
   await tx.productVariant.update({ where: { id: variantId }, data: { costPrice } });
 }

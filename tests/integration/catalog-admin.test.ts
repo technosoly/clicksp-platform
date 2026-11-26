@@ -6,8 +6,9 @@
  * checked for what it may and may not do. Data is synthetic (TEST ...).
  */
 import { afterAll, describe, expect, it } from "vitest";
-import { db as prisma } from "@/lib/db";
+import { db as prisma, transaction } from "@/lib/db";
 import type { RequestMeta } from "@/lib/http/request-meta";
+import { setVariantPriceIfUnchanged } from "@/modules/catalog/repo/catalog-repo";
 import { createBrand, updateBrand } from "@/modules/catalog/service/brands";
 import { createCategory, listCategoriesForAdmin, updateCategory } from "@/modules/catalog/service/categories";
 import { cancelOwnPriceRequest, decidePriceRequest, listApprovalInbox, listOwnApprovalRequests } from "@/modules/catalog/service/price-approvals";
@@ -22,6 +23,7 @@ import {
   removeIdentifier,
   setProductStatus,
   updateProduct,
+  updateVariant,
 } from "@/modules/catalog/service/products";
 import { setCategoryScopes } from "@/modules/identity/service/admin-users";
 import type { Actor } from "@/modules/rbac/domain/actor";
@@ -130,6 +132,11 @@ describe("categories", () => {
       updateCategory(staff, grandchild, { ...names("x"), parentId: other, isVehicleSystem: false, isActive: true, sortOrder: "0" }),
     ).rejects.toBeInstanceOf(AuthzError);
     await expect(updateCategory(staff, other, { ...names("x"), parentId: "", isVehicleSystem: false, isActive: true, sortOrder: "0" })).rejects.toBeInstanceOf(AuthzError);
+    // Moving changes who else can see a subtree, so even a move inside the scope needs unscoped access.
+    await expect(
+      updateCategory(staff, grandchild, { ...names("x"), parentId: root, isVehicleSystem: false, isActive: true, sortOrder: "0" }),
+    ).rejects.toBeInstanceOf(AuthzError);
+    expect(await updateCategory(ba, grandchild, { ...names("x"), parentId: root, isVehicleSystem: false, isActive: true, sortOrder: "0" })).toMatchObject({ status: "ok" });
 
     const list = await listCategoriesForAdmin(staff);
     expect(list.canCreateRoot).toBe(false);
@@ -142,7 +149,7 @@ describe("categories", () => {
     expect((await listCategoriesForAdmin(unscoped)).rows).toEqual([]);
 
     const actions = (await q<{ action: string }>("SELECT action FROM audit_logs WHERE entity_id = $1 ORDER BY seq", [grandchild])).map((a) => a.action);
-    expect(actions).toEqual(["category.created", "category.updated"]);
+    expect(actions).toEqual(["category.created", "category.updated", "category.updated"]);
   });
 
   it("refuses cycles, duplicate slugs and a missing Persian name", async () => {
@@ -305,6 +312,28 @@ describe("products and prices", () => {
     expect(await priceOf(variantId)).toBe("1100000");
   });
 
+  it("the approved write itself checks the price, so a concurrent change is never overwritten", async () => {
+    const ba = await actorFor("business_admin");
+    const category = await newCategory(ba);
+    const { variantId } = await newProduct(ba, category, "100000");
+    const stale = { price: 999n, compareAtPrice: null };
+    expect(await transaction((tx) => setVariantPriceIfUnchanged(tx, variantId, stale, { price: 5n, compareAtPrice: null }))).toBe(false);
+    expect(await priceOf(variantId)).toBe("1000000");
+  });
+
+  it("a requester who loses the category no longer sees their old requests", async () => {
+    const ba = await actorFor("business_admin");
+    const category = await newCategory(ba);
+    const staff = await actorFor("store_staff", [category]);
+    const { variantId } = await newProduct(ba, category, "100000");
+    const proposed = await changePrice(staff, variantId, { price: "101000", compareAtPrice: "" });
+    if (proposed.status !== "proposed") throw new Error(proposed.status);
+    expect((await listOwnApprovalRequests(staff)).map((r) => r.id)).toContain(proposed.approvalId);
+    await q("DELETE FROM user_role_scopes WHERE user_role_id IN (SELECT id FROM user_roles WHERE user_id = $1)", [staff.userId]);
+    staff.permissions = await loadEffectivePermissions(staff.userId);
+    expect((await listOwnApprovalRequests(staff)).map((r) => r.id)).not.toContain(proposed.approvalId);
+  });
+
   it("nobody decides their own request", async () => {
     const ba = await actorFor("business_admin");
     const category = await newCategory(ba);
@@ -322,9 +351,14 @@ describe("products and prices", () => {
     const category = await newCategory(ba);
     const { productId } = await newProduct(ba, category, "100000");
     const sku = `tst ${uid()}-b`;
-    expect(await addVariant(ba, productId, { sku, weightGrams: "۲۵۰", lengthMm: "", widthMm: "", heightMm: "", minOrderQty: "", maxOrderQty: "", isActive: true })).toMatchObject({
-      status: "ok",
-    });
+    const variant = await addVariant(ba, productId, { sku, weightGrams: "۲۵۰", lengthMm: "", widthMm: "", heightMm: "", minOrderQty: "", maxOrderQty: "", isActive: true });
+    if (variant.status !== "ok") throw new Error(variant.status);
+    // A new variant starts switched off and can't be switched on before it has a price.
+    expect((await q<{ is_active: boolean }>("SELECT is_active FROM product_variants WHERE id = $1", [variant.id]))[0]!.is_active).toBe(false);
+    const details = { sku, weightGrams: "", lengthMm: "", widthMm: "", heightMm: "", minOrderQty: "", maxOrderQty: "", isActive: true };
+    expect(await updateVariant(ba, variant.id, details)).toEqual({ status: "invalid", field: "variant_unpriced" });
+    expect(await changePrice(ba, variant.id, { price: "50000", compareAtPrice: "" })).toEqual({ status: "applied" });
+    expect(await updateVariant(ba, variant.id, details)).toMatchObject({ status: "ok" });
     expect(await addVariant(ba, productId, { sku: sku.toUpperCase().replace(" ", ""), weightGrams: "", lengthMm: "", widthMm: "", heightMm: "", minOrderQty: "", maxOrderQty: "", isActive: true })).toEqual({
       status: "taken",
       field: "sku",

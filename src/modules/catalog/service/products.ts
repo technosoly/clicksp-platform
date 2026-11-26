@@ -309,7 +309,7 @@ export async function setProductStatus(actor: Actor, productId: string, status: 
 // Variants
 // ---------------------------------------------------------------------------
 
-/** Adds a variant (unpriced; set or propose its price next). */
+/** Adds a variant, inactive and unpriced: price it, then switch it on. */
 export async function addVariant(actor: Actor, productId: string, input: VariantDetailsInput): Promise<ProductResult> {
   const userId = adminId(actor, "product.update");
   if (!(await loadScope(actor, productId, "product.update"))) return { status: "not_found" };
@@ -318,7 +318,7 @@ export async function addVariant(actor: Actor, productId: string, input: Variant
   try {
     const id = await transaction(async (tx) => {
       await setTransactionActor(tx, userId);
-      const id = await insertVariant(tx, productId, parsed.data);
+      const id = await insertVariant(tx, productId, { ...parsed.data, isActive: false });
       await recordAudit(tx, actor.meta, { actorUserId: userId, action: "product.variant_created", entityType: "product_variant", entityId: id, after: { productId, sku: parsed.data.sku.sku } });
       return id;
     });
@@ -337,6 +337,8 @@ export async function updateVariant(actor: Actor, variantId: string, input: Vari
   if (!variant || !(await loadScope(actor, variant.productId, "product.update"))) return { status: "not_found" };
   const parsed = variantDetailsSchema.safeParse(input);
   if (!parsed.success) return { status: "invalid", field: firstIssue(parsed.error) };
+  // An unpriced variant cannot be offered for sale.
+  if (parsed.data.isActive && !variant.isActive && variant.price <= 0n) return { status: "invalid", field: "variant_unpriced" };
   try {
     await transaction(async (tx) => {
       await updateVariantRow(tx, variantId, parsed.data);

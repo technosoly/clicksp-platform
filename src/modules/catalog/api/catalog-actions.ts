@@ -164,7 +164,7 @@ const variantDetails = (form: FormData) => ({
 
 export async function addVariantAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   return runAdminAction(form, async (actor) => {
-    const result = await addVariant(actor, text(form, "productId"), { ...variantDetails(form), isActive: true });
+    const result = await addVariant(actor, text(form, "productId"), { ...variantDetails(form), isActive: false });
     return result.status === "ok" ? { ok: true, message: "variantAdded" } : productFailure(result);
   });
 }

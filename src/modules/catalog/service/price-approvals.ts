@@ -12,7 +12,7 @@ import {
   PRICE_APPROVAL_ACTION,
   productCategoryIds,
   setTransactionActor,
-  setVariantPriceRow,
+  setVariantPriceIfUnchanged,
 } from "../repo/catalog-repo";
 import { adminId, allowedCategories, IS_UUID } from "./catalog-access";
 
@@ -43,9 +43,12 @@ export async function listApprovalInbox(actor: Actor, view: "pending" | "decided
 export async function listOwnApprovalRequests(actor: Actor, now = new Date()) {
   const userId = adminId(actor, "price.update.propose");
   if (!actor.permissions.has("price.update.propose")) await authorize(actor, "price.update.propose", undefined, { stepUp: false });
+  // Only requests for products the requester can still see.
+  const view = actor.permissions.get("product.view");
+  const visible = !view ? [] : view.unscoped ? null : [...view.categoryIds];
   const [pending, decided] = await Promise.all([
-    listPriceApprovals(db(), { status: "pending", requestedById: userId, allowedCategoryIds: null, now }),
-    listPriceApprovals(db(), { status: "decided", requestedById: userId, allowedCategoryIds: null, now }),
+    listPriceApprovals(db(), { status: "pending", requestedById: userId, allowedCategoryIds: visible, now }),
+    listPriceApprovals(db(), { status: "decided", requestedById: userId, allowedCategoryIds: visible, now }),
   ]);
   return [...pending, ...decided];
 }
@@ -101,21 +104,26 @@ export async function decidePriceRequest(
   const payload = approval.payload;
   const outcome = await transaction(async (tx) => {
     if (!(await decideApprovalRow(tx, approvalId, { status: "approved", decidedById: userId, note, at: now }))) return "already_decided" as const;
-    const stillCurrent =
-      variant.price.toString() === payload.previousPrice && (variant.compareAtPrice?.toString() ?? null) === payload.previousCompareAtPrice;
-    if (!stillCurrent) {
+    // The price must still be what the requester saw; the conditional UPDATE
+    // checks it at write time, so a concurrent direct change is never overwritten.
+    await setTransactionActor(tx, userId, approvalId);
+    const applied = await setVariantPriceIfUnchanged(
+      tx,
+      variant.id,
+      { price: BigInt(payload.previousPrice), compareAtPrice: payload.previousCompareAtPrice === null ? null : BigInt(payload.previousCompareAtPrice) },
+      { price: BigInt(payload.price), compareAtPrice: payload.compareAtPrice === null ? null : BigInt(payload.compareAtPrice) },
+    );
+    if (!applied) {
       await finishApprovalRow(tx, approvalId, { status: "failed", error: "price_changed_since_request", at: now });
       await recordAudit(tx, actor.meta, {
         actorUserId: userId,
         action: "price.request_failed",
         entityType: "admin_approval",
         entityId: approvalId,
-        after: { reason: "price_changed_since_request", currentPrice: variant.price.toString() },
+        after: { reason: "price_changed_since_request" },
       });
       return "failed" as const;
     }
-    await setTransactionActor(tx, userId, approvalId);
-    await setVariantPriceRow(tx, variant.id, BigInt(payload.price), payload.compareAtPrice === null ? null : BigInt(payload.compareAtPrice));
     await finishApprovalRow(tx, approvalId, { status: "executed", error: null, at: now });
     await recordAudit(tx, actor.meta, {
       actorUserId: userId,
