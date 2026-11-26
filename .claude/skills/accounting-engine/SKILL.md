@@ -15,7 +15,7 @@ Books that always balance, cannot be silently altered, and can be traced from an
 ## Technical requirements: data model
 - `financial_accounts` (chart of accounts): `code`, `type` (`asset | liability | equity | income | expense`), `parent_id`, `is_postable`, `currency_code`. Bank and cash accounts are asset accounts; `cash_registers` link to one.
 - `financial_periods(start_date, end_date, status: open | closed)`.
-- `accounting_transactions` (journal header): `number`, `date`, `period_id`, `description`, `status: draft | posted`, `source_type/source_id` (order, refund, expense, income_record, manual), `reverses_id?`, `posted_by`, `posted_at`.
+- `accounting_transactions` (journal header): `number`, `date`, `period_id`, `description`, `status: draft | posted` (insert as draft, add entries, then update to posted; the database refuses other flows), `source_type/source_id` (order, refund, expense, income_record, manual), `reverses_id?`, `posted_by`, `posted_at`.
 - `accounting_entries`: `transaction_id`, `account_id`, `debit BIGINT`, `credit BIGINT` (exactly one > 0, CHECK), `memo`.
 - `income_records`, `expenses` (with attachments in `media_library`), `payment_transactions` link to their journal.
 
@@ -25,7 +25,7 @@ Books that always balance, cannot be silently altered, and can be traced from an
 3. Postings into a `closed` period are rejected; corrections go into the current open period with a reference to the original.
 4. Money is integer Rial (`bigint`) via `src/lib/money`. No rounding inside accounting; amounts arrive already rounded by the source (order snapshot).
 5. Posting from business events is automatic and idempotent: outbox handler keyed by `(source_type, source_id, event)` → unique constraint prevents double posting.
-6. Seed only a minimal technical chart of accounts skeleton (top-level groups) marked editable. The owner or accountant defines real accounts. Posting rules map event types to accounts via settings, and posting fails loudly if a mapping is missing.
+6. Seed **no** accounts (CLAUDE.md: seeds hold only roles, permissions, locales, currencies and settings). The account `type` enum provides the five top-level groups. The owner or accountant defines real accounts. Posting rules map event types to accounts via `account_mappings`, and posting fails loudly if a mapping is missing.
 7. **Do not claim** compliance with Iranian accounting standards or tax law. Documentation must say the structure requires review by an Iranian accounting professional.
 
 ## Default posting templates (accounts configurable)

@@ -17,7 +17,8 @@ Deny-by-default, server-enforced, permission-based authorization with resource s
 ## Model
 - `roles.level`: 1 Super Admin, 2 Business Admin, 3 Store Staff, 0 Customer. `is_system` roles cannot be deleted.
 - `permissions.key`: `<resource>.<action>` e.g. `product.create`, `price.update`, `accounting.view`, `role.manage`. Full catalogue: `references/permission-catalogue.md`.
-- `user_role_scopes`: optional limits for a user-role (category IDs, warehouse IDs). No scope rows = unscoped **only if** the permission is unscoped by definition; scoped permissions with no scope rows deny.
+- `permissions.scope_type` says a permission *can* be limited by category or warehouse; `role_permissions.is_scoped` says this role holds it scoped. `user_role_scopes` rows (category IDs, warehouse IDs) limit a user-role's scoped grants; a scoped grant with no matching scope rows denies. Unscoped grants ignore scope rows.
+- `permissions.max_level` is a hard ceiling enforced by a database trigger: a role can hold a permission only if `1 <= role.level <= max_level`.
 - `admin_approvals`: pending actions (e.g. Staff price change) executed only when an approver with the permission approves.
 
 ## Workflow

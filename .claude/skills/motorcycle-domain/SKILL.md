@@ -22,11 +22,11 @@ motorcycle_manufacturers (e.g. the company)
               └ motorcycle_variants (engine displacement cc, engine type, market, trim)
                   └ motorcycle_specifications (key, value, unit; typed)
 ```
-- `product_compatibilities(product_variant_id, motorcycle_variant_id | motorcycle_generation_id, year_from?, year_to?, position?, notes, compatibility_source_id, verification_status, verified_by, verified_at)`
+- `product_compatibilities(product_id, motorcycle_variant_id | motorcycle_generation_id, year_from?, year_to?, position (default any), quantity_per_vehicle?, notes, source_id, verification_status, verified_by, verified_at)`. Fitment is per **product**: variants of one product (e.g. colours) share fitment; parts that fit differently are separate products.
   - Link at the **most specific level known**. A generation-level link means "all variants of this generation within the year range".
   - `verification_status`: `unverified | verified | disputed | rejected`.
 - `compatibility_sources(type: oem_catalog | manufacturer_doc | supplier_sheet | physical_test | customer_report, reference, url?, document_id?)`.
-- `product_identifiers(product_id, variant_id?, type: sku | barcode | oem | manufacturer_pn | alternative_pn | superseded_pn, value, normalized_value, brand_id?)`.
+- `product_identifiers(product_id, variant_id?, type: barcode | oem | manufacturer_pn | alternative_pn | superseded_pn, value, normalized_value, brand_id?, manufacturer_id?)`. The SKU lives on `product_variants.sku` / `sku_normalized`.
 - `product_relations(type: replacement | superseded_by | alternative | accessory | bundle_part)`.
 
 ## Domain rules

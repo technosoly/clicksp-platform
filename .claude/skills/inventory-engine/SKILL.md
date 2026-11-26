@@ -14,24 +14,22 @@ Every unit of stock is accounted for, every change is an auditable movement, and
 
 ## Model
 - `warehouses` → `warehouse_locations` (bin/shelf codes).
-- `inventory_balances(product_variant_id, warehouse_location_id, on_hand, reserved, version)` — one row per variant per location. `available = on_hand - reserved` (computed, never stored).
-- `inventory_movements` — append-only: `type` (`receipt | issue | sale | return | transfer_out | transfer_in | adjustment_plus | adjustment_minus | count_correction`), `quantity` (> 0), `balance_id`, `reference_type/reference_id` (order, adjustment, count, transfer, purchase), `reason`, `actor_id`, `occurred_at`.
+- `inventory_balances(variant_id, location_id, warehouse_id, on_hand, reserved, version)` — one row per variant per location, `UNIQUE(variant_id, location_id)`. `available = on_hand - reserved` (computed, never stored). Written **only** by database triggers (see Workflow).
+- `inventory_movements` — append-only: `type` (`receipt | issue | sale | return | transfer_out | transfer_in | adjustment_plus | adjustment_minus | count_gain | count_loss`), `quantity` (> 0, direction from type), `variant_id + location_id + warehouse_id` (FK to the balance), `on_hand_after` (set by trigger), `reference_type/reference_id/reference_code` (purchase, order, order_return, adjustment, count, transfer, manual), `transfer_id`, `reason`, `actor_user_id`, `occurred_at`.
 - `stock_reservations(order_id | cart_id, balance_id, quantity, status: active | consumed | released | expired, expires_at)`.
 - `stock_adjustments` (header with reason, approval) → movements.
-- `inventory_counts` (session per warehouse/location) → count lines → `count_correction` movements on completion.
+- `inventory_counts` (session per warehouse/location) → count lines → `count_gain` / `count_loss` movements on completion.
 - `stock_alerts(variant, warehouse, threshold, status)`.
 
 ## Workflow: every stock change
 All stock changes go through **one function** in `inventory/service`:
 ```ts
-applyMovement(tx, { balanceId, type, quantity, reference, reason, actor })
+applyMovement(tx, { variantId, locationId, warehouseId, type, quantity, reference, reason, actor })
 ```
-1. `SELECT ... FROM inventory_balances WHERE id = $1 FOR UPDATE` (lock the row).
-2. Compute the new `on_hand` / `reserved`; DB CHECK constraints (`on_hand >= 0`, `reserved <= on_hand`) are the final guard.
-3. Insert the `inventory_movements` row.
-4. Update the balance.
-5. Enqueue outbox `inventory.changed` (search availability, stock alerts).
-Lock multiple balances in a **stable order** (by id) to avoid deadlocks.
+1. `SELECT set_config('app.actor_id', actorId, true)` once per transaction.
+2. Insert the `inventory_movements` row. The `inventory_movements_apply` trigger (Phase 3 migration) creates the balance row if missing, applies the change with an `UPDATE` (which takes the row lock), and stores `on_hand_after`. CHECKs (`on_hand >= 0`, `reserved <= on_hand`) reject overselling; the insert then fails and nothing is written.
+3. Enqueue outbox `inventory.changed` (search availability, stock alerts).
+Any direct write to `on_hand`/`reserved` is rejected by `inventory_balances_guard`. When one transaction touches several balances, insert movements in a **stable order** (by variant id, then location id) to avoid deadlocks.
 
 ## Reservation flow (checkout)
 1. At "start payment": in one transaction, lock balances, verify `available >= qty`, insert `stock_reservations(active, expires_at = now + 20 min)`, increment `reserved`.
@@ -40,7 +38,7 @@ Lock multiple balances in a **stable order** (by id) to avoid deadlocks.
 4. Warehouse selection for multi-warehouse: configurable strategy (default: single warehouse with full availability, priority order). Strategy is a pure function in `domain/`.
 
 ## Technical requirements
-- Never `UPDATE inventory_balances` outside `applyMovement`/reservation functions (enforced by code review + an architecture test grep).
+- Never `UPDATE inventory_balances` from code: the database rejects it. Reservations change `reserved` through the `stock_reservations` triggers: insert `active`; then exactly one transition to `consumed | released | expired`. For a sale, consume the reservation **before** inserting the `sale` movement.
 - Adjustments above a configured quantity/value threshold require approval (`admin_approvals`) when actor has only `inventory.adjust.propose`.
 - Counts: freeze nothing; record expected vs counted at count time, correction = counted − expected at completion, reason required.
 - Low-stock alerts computed by worker on `inventory.changed`, not in the request.
