@@ -26,9 +26,9 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
   {
     labelKey: "catalog",
     items: [
-      item("/admin/products", "products", ["product.view"]),
-      item("/admin/categories", "categories", ["category.manage"]),
-      item("/admin/brands", "brands", ["brand.manage"]),
+      item("/admin/products", "products", ["product.view"], true),
+      item("/admin/categories", "categories", ["category.manage"], true),
+      item("/admin/brands", "brands", ["brand.manage"], true),
       item("/admin/motorcycles", "motorcycles", ["vehicle.manage", "compatibility.manage"]),
     ],
   },
@@ -38,7 +38,7 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
       item("/admin/inventory", "inventory", ["inventory.view"]),
       item("/admin/orders", "orders", ["order.view"]),
       item("/admin/customers", "customers", ["customer.view"]),
-      item("/admin/approvals", "approvals", ["price.update", "inventory.adjust"]),
+      item("/admin/approvals", "approvals", ["price.update", "price.update.propose", "inventory.adjust"], true),
     ],
   },
   {

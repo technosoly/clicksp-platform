@@ -9,6 +9,7 @@ import {
   resetAdminMfa,
   revokeAdminSessions,
   setAdminStatus,
+  setCategoryScopes,
   updateAdminUser,
   type ManageError,
 } from "../service/admin-users";
@@ -91,5 +92,14 @@ export async function revokeAdminSessionsAction(_prev: ActionState, form: FormDa
   return runAdminAction(form, async (actor) => {
     const result = await revokeAdminSessions(actor, text(form, "userId"));
     return result.status === "ok" ? { ok: true, message: "sessionsRevoked" } : failure(result);
+  });
+}
+
+/** Checkbox name: category (one per chosen category). */
+export async function setCategoryScopesAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return runAdminAction(form, async (actor) => {
+    const ids = form.getAll("category").filter((v): v is string => typeof v === "string");
+    const result = await setCategoryScopes(actor, text(form, "userId"), ids);
+    return result.status === "ok" ? { ok: true, message: "scopesSaved" } : failure(result);
   });
 }

@@ -97,7 +97,12 @@ describe("orders", () => {
         "SELECT from_status, to_status, actor_user_id FROM order_status_history WHERE order_id = $1 ORDER BY created_at, id",
         [orderId],
       );
-      expect(history.rows.map((h) => [h.from_status, h.to_status])).toEqual([
+      // Rows written in one transaction share created_at, and UUIDv7 ids from the
+      // same millisecond are not ordered: follow the chain from the first status.
+      const byFrom = new Map(history.rows.map((h) => [h.from_status, h]));
+      const chain: [string | null, string][] = [];
+      for (let h = byFrom.get(null); h; h = byFrom.get(h.to_status)) chain.push([h.from_status, h.to_status]);
+      expect(chain).toEqual([
         [null, "pending_payment"],
         ["pending_payment", "paid"],
         ["paid", "processing"],

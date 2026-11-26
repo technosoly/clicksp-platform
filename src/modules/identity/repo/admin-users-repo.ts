@@ -305,3 +305,50 @@ export async function revokeOtherSessions(client: DbClient, userId: string, keep
   });
   return result.count;
 }
+
+// ---------- scopes ----------
+
+/**
+ * The account's role assignments whose role grants category-scoped
+ * permissions, with those permission keys and the current category scope.
+ */
+export async function listCategoryScopedAssignments(client: DbClient, userId: string) {
+  const rows = await client.userRole.findMany({
+    where: { userId, role: { level: { gte: 1, lte: 3 }, permissions: { some: { isScoped: true, permission: { scopeType: "category" } } } } },
+    select: {
+      id: true,
+      role: {
+        select: {
+          key: true,
+          name: true,
+          permissions: { where: { isScoped: true, permission: { scopeType: "category" } }, select: { permission: { select: { key: true } } } },
+        },
+      },
+      scopes: { where: { scopeType: "category" }, select: { categoryId: true } },
+    },
+  });
+  return rows.map((r) => ({
+    userRoleId: r.id,
+    role: { key: r.role.key, name: r.role.name },
+    scopedKeys: r.role.permissions.map((p) => p.permission.key),
+    categoryIds: r.scopes.map((s) => s.categoryId).filter((v): v is string => v !== null),
+  }));
+}
+
+/** Replaces the category scope of one role assignment. */
+export async function replaceCategoryScopes(client: DbClient, userRoleId: string, categoryIds: string[]): Promise<void> {
+  await client.userRoleScope.deleteMany({ where: { userRoleId, scopeType: "category", categoryId: { notIn: categoryIds } } });
+  const existing = new Set(
+    (await client.userRoleScope.findMany({ where: { userRoleId, scopeType: "category" }, select: { categoryId: true } })).map((s) => s.categoryId),
+  );
+  const missing = categoryIds.filter((id) => !existing.has(id));
+  if (missing.length > 0) {
+    await client.userRoleScope.createMany({ data: missing.map((categoryId) => ({ userRoleId, scopeType: "category" as const, categoryId })) });
+  }
+}
+
+export async function existingCategoryIds(client: DbClient, ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await client.category.findMany({ where: { id: { in: ids }, deletedAt: null }, select: { id: true } });
+  return rows.map((r) => r.id);
+}

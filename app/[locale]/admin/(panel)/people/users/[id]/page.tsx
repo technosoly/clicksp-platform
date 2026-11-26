@@ -15,9 +15,13 @@ import {
   resetAdminMfaAction,
   revokeAdminSessionsAction,
   setAdminStatusAction,
+  setCategoryScopesAction,
   updateAdminUserAction,
 } from "@/modules/identity/api/people-actions";
-import { assignableRoles, getManagedAdmin } from "@/modules/identity/service/admin-users";
+import { categoryName } from "@/components/admin/catalog-fields";
+import { permissionLabel } from "@/components/admin/permission-label";
+import { categoryOptions } from "@/modules/catalog/service/categories";
+import { assignableRoles, getCategoryScopes, getManagedAdmin } from "@/modules/identity/service/admin-users";
 
 export default async function AdminUserPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
   const { locale, id } = await params;
@@ -26,7 +30,10 @@ export default async function AdminUserPage({ params }: { params: Promise<{ loca
     locale,
     async (actor) => {
       const detail = await getManagedAdmin(actor, id);
-      return { detail, roles: detail.status === "ok" ? await assignableRoles(actor) : [] };
+      if (detail.status !== "ok") return { detail, roles: [], scopes: null, categories: [] };
+      const scopes = await getCategoryScopes(actor, id);
+      const categories = scopes && scopes.length > 0 && actor.permissions.has("product.view") ? await categoryOptions(actor, "product.view") : [];
+      return { detail, roles: await assignableRoles(actor), scopes, categories };
     },
     `/admin/people/users/${id}`,
   );
@@ -35,6 +42,7 @@ export default async function AdminUserPage({ params }: { params: Promise<{ loca
   if (isSelf) redirect({ href: "/admin/account", locale });
   const t = await getTranslations("AdminPeople");
   const tAdmin = await getTranslations("Admin");
+  const tPerm = await getTranslations("Permissions");
   const loc = isLocale(locale) ? locale : "fa";
   const hidden = <input type="hidden" name="userId" value={user.id} />;
 
@@ -90,6 +98,27 @@ export default async function AdminUserPage({ params }: { params: Promise<{ loca
             </Field>
           </ActionForm>
         </Card>
+
+        {data.scopes && data.scopes.length > 0 ? (
+          <Card title={t("scopeTitle")} description={t("scopeHelp")} className="lg:col-span-2" testId="admin-user-scopes">
+            {data.categories.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("scopeNoCategories")}</p>
+            ) : (
+              <ActionForm action={setCategoryScopesAction} submitLabel={t("saveScope")} testId="admin-user-scope-form" namespace="AdminPeople">
+                {hidden}
+                <p className="text-xs text-muted-foreground">{t("scopeKeys", { keys: [...new Set(data.scopes.flatMap((s) => s.scopedKeys))].map((k) => permissionLabel(tPerm, k)).join(locale === "fa" ? "، " : ", ") })}</p>
+                <div className="grid max-h-72 gap-1 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+                  {data.categories.map((c) => (
+                    <label key={c.id} className="flex items-center gap-2 text-sm" style={{ paddingInlineStart: `${c.depth * 0.75}rem` }}>
+                      <input type="checkbox" name="category" value={c.id} defaultChecked={data.scopes!.some((s) => s.categoryIds.includes(c.id))} />
+                      {categoryName(c, locale)}
+                    </label>
+                  ))}
+                </div>
+              </ActionForm>
+            )}
+          </Card>
+        ) : null}
 
         <Card title={t("passwordTitle")} description={user.hasPassword ? t("passwordHelp") : t("inviteHelp")}>
           <ActionForm action={issuePasswordLinkAction} submitLabel={user.hasPassword ? t("issueReset") : t("issueInvite")} submitVariant="secondary" testId="admin-user-password-link" namespace="AdminPeople">

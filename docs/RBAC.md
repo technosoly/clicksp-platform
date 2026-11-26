@@ -45,7 +45,7 @@ Service rules on top (Phase 5, `src/modules/rbac/domain/escalation.ts`, used by 
 9. **Grant only what you hold:** a permission can be added, removed or re-scoped only by an actor holding it (`x.propose` counts as held through `x`). Cells the actor may not change keep their current state whatever the form sends. Above-ceiling permissions are never granted (and the database refuses them anyway). The same rule applies to **assigning a role**: an account can be given a role only when the actor holds every permission it grants (unscoped grants need the actor's own grant to be unscoped). Likewise every change to an account (password link, two-factor reset, role, status, sign-out) needs the actor to hold every permission the account's admin roles grant, so nobody takes over an account that can do more than they can.
 10. Changing an account's role, disabling it, removing its two-factor enrolment and using a password link **revoke all its sessions**. Changing the role or disabling the account also retires its unused password links, so a link issued for a Store Staff account can't be used after a promotion. Role permission edits apply at the members' next request (effective permissions are loaded per request), so sessions are kept.
 
-## Screens per level (Phase 5)
+## Screens per level (Phases 5-6)
 
 | Screen | Super Admin | Business Admin | Store Staff |
 |---|---|---|---|
@@ -53,15 +53,20 @@ Service rules on top (Phase 5, `src/modules/rbac/domain/escalation.ts`, used by 
 | People › Admins and staff (`/admin/people/users`) | all levels | Store Staff accounts only | 403 |
 | People › Roles and permissions (`/admin/people/roles`) | ✓ (edits levels 2-3) | 403 | 403 |
 | Audit log (`/admin/audit`) | everything + security events | business and staff actions only (`staff.*`, catalog, inventory, sales, finance, content) | 403 |
-| Catalog, inventory, orders, content areas | ✓ | ✓ | ✓ (scoped) |
-| Customers, approvals, accounting, reports, shipping, payment gateways, settings | ✓ | ✓ | 403 |
+| Products, categories (`/admin/products`, `/admin/categories`) | ✓ | ✓ | only inside their categories; prices by request |
+| Brands (`/admin/brands`) | ✓ | ✓ | ✓ |
+| Approvals (`/admin/approvals`) | review price requests | review price requests | their own requests |
+| Inventory, orders, content areas (coming in later parts of Phase 6) | ✓ | ✓ | ✓ (scoped) |
+| Customers, accounting, reports, shipping, payment gateways, settings | ✓ | ✓ | 403 |
 | Page builder, technical (integrations, backups, deployments, monitoring) | ✓ | 403 | 403 |
 
-The navigation (`src/components/admin/admin-nav.ts`) shows an area when the admin holds any one of its permissions; typed URLs of hidden areas answer **403** with a localized page (Next.js `forbidden()`). Areas marked "Coming soon" (catalog, inventory, orders, finance, content, settings, technical) are only reachable by the admins who will use them, and say that the screens arrive in Phase 6 or later.
+The navigation (`src/components/admin/admin-nav.ts`) shows an area when the admin holds any one of its permissions; typed URLs of hidden areas answer **403** with a localized page (Next.js `forbidden()`). Areas marked "Coming soon" (inventory, orders, finance, content, settings, technical) are only reachable by the admins who will use them, and say that the screens arrive in Phase 6 or later.
 
 Account lifecycle: a manager creates an account without a password and hands over a **one-time link** (72 hours) to set it; resets use a 30-minute link. Links are 256-bit random tokens, stored as SHA-256, single use, carried in the URL fragment (never sent to the server in a request line or Referer), and a new link retires older ones. Two-factor enrolment follows at the first sign-in. Lost phone and backup codes: a manager removes the enrolment. Owner locked out of the only Super Admin account: `pnpm admin:reset-link --username <name> [--reset-mfa]` on the server.
 
-Scopes (which categories or warehouses a Store Staff member covers) are stored per user-role but have no screen yet: categories and warehouses arrive in Phase 6, and until then scoped grants deny.
+Scopes (which categories or warehouses a Store Staff member covers) are stored per user-role. **Category scopes** are set on the account screen (People › the staff member › "Categories this person works on", Phase 6) by an admin who can manage the account; the admin can only hand out categories they cover themselves for every scoped permission of the role (`x.propose` counts as covered through `x`). A category scope covers the category **and everything below it** (expanded when permissions are loaded, per request). A product is in scope only when **all** its categories (primary and extra) are. No scope rows still means deny. Because a scope follows the tree, **moving a category** (changing its parent) changes what other staff can see, so it needs unscoped `category.manage` (Business or Super Admin); scoped staff can rename, switch off and add categories inside their area but not move them. Warehouse scopes get their screen with inventory.
+
+**Price approvals (Phase 6):** Store Staff with `price.update.propose` file a request (`admin_approvals`, action `price.update`, one open request per variant, expiring after `security.approval_ttl_hours`). Admins holding `price.update` for the product's categories approve or reject it at `/admin/approvals`; the requester can never decide their own request (service check and database CHECK). An approved change is applied in the same transaction with the approver as `product_prices.changed_by` and the request in `approval_id`; the write itself checks that the price is still the one the requester saw (a conditional UPDATE), and if it changed the request is marked failed instead of overwriting it. Requesters see their own requests only for products they can still view. New variants start switched off and can't be switched on before they have a price.
 
 ## Default bundles
 
