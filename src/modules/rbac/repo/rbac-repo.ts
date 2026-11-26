@@ -28,14 +28,29 @@ export async function loadGrantRows(client: DbClient, userId: string, now: Date)
      WHERE ur.user_id = ${userId}::uuid
        AND (ur.expires_at IS NULL OR ur.expires_at > ${now})
      GROUP BY ur.id, p.key, rp.is_scoped, p.requires_mfa, p.scope_type`;
+  // A category scope covers the category and everything below it.
+  const scopeRoots = [...new Set(rows.flatMap((r) => r.category_ids ?? []))];
+  const below = scopeRoots.length > 0 ? await categoryDescendants(client, scopeRoots) : new Map<string, string[]>();
   return rows.map((r) => ({
     key: r.key,
     isScoped: r.is_scoped,
     requiresMfa: r.requires_mfa,
     scopeType: r.scope_type,
-    categoryIds: r.category_ids ?? [],
+    categoryIds: [...new Set((r.category_ids ?? []).flatMap((id) => below.get(id) ?? [id]))],
     warehouseIds: r.warehouse_ids ?? [],
   }));
+}
+
+/** For each root category: itself and every category below it. */
+async function categoryDescendants(client: DbClient, roots: string[]): Promise<Map<string, string[]>> {
+  const rows = await client.$queryRaw<{ root: string; id: string }[]>`
+    WITH RECURSIVE t AS (
+      SELECT id AS root, id FROM categories WHERE id = ANY(${roots}::uuid[])
+      UNION SELECT t.root, c.id FROM categories c JOIN t ON c.parent_id = t.id)
+    SELECT root::text, id::text FROM t`;
+  const map = new Map<string, string[]>();
+  for (const row of rows) map.set(row.root, [...(map.get(row.root) ?? []), row.id]);
+  return map;
 }
 
 export async function primaryRole(client: DbClient, userId: string, now: Date) {

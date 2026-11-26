@@ -18,10 +18,10 @@ describe("admin navigation per level (default bundles)", () => {
     for (const hidden of ["/admin/people/roles", "/admin/page-builder", "/admin/system"]) expect(hrefs).not.toContain(hidden);
   });
 
-  it("Store Staff: catalog, stock, orders and content only", () => {
+  it("Store Staff: catalog, stock, orders, content and their own approval requests only", () => {
     const hrefs = hrefsFor("store_staff");
-    expect(hrefs).toEqual(expect.arrayContaining(["/admin", "/admin/products", "/admin/inventory", "/admin/orders", "/admin/content", "/admin/account"]));
-    for (const hidden of ["/admin/people/users", "/admin/people/roles", "/admin/accounting", "/admin/reports", "/admin/customers", "/admin/audit", "/admin/settings", "/admin/system", "/admin/approvals", "/admin/payments", "/admin/page-builder"]) {
+    expect(hrefs).toEqual(expect.arrayContaining(["/admin", "/admin/products", "/admin/inventory", "/admin/orders", "/admin/content", "/admin/approvals", "/admin/account"]));
+    for (const hidden of ["/admin/people/users", "/admin/people/roles", "/admin/accounting", "/admin/reports", "/admin/customers", "/admin/audit", "/admin/settings", "/admin/system", "/admin/payments", "/admin/page-builder"]) {
       expect(hrefs).not.toContain(hidden);
     }
   });

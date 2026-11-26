@@ -3,6 +3,7 @@ import { db, transaction } from "@/lib/db";
 import { randomToken, sha256Hex } from "@/lib/security/tokens";
 import { recordAudit, recordSecurityEvent } from "@/modules/audit/service/audit";
 import type { Actor } from "@/modules/rbac/domain/actor";
+import { decide } from "@/modules/rbac/domain/authorize";
 import { manageableLevels, ungrantableKeys, userManagementPermission, type ManagingActor } from "@/modules/rbac/domain/escalation";
 import { authorize, AuthzError } from "@/modules/rbac/service/authorize";
 import {
@@ -25,7 +26,10 @@ import {
   listActiveSessions,
   listAdminUsers as listAdminUserRows,
   listAssignableRoles,
+  existingCategoryIds,
+  listCategoryScopedAssignments,
   listRoleGrants,
+  replaceCategoryScopes,
   listUserAdminGrants,
   replaceAdminRole,
   retirePasswordLinks,
@@ -363,4 +367,61 @@ export async function revokeAdminSessions(actor: Actor, userId: string, now = ne
     return n;
   });
   return { status: "ok", count };
+}
+
+// ---------------------------------------------------------------------------
+// Category scopes (Store Staff)
+// ---------------------------------------------------------------------------
+
+/** The account's category-scoped role assignments and their current categories. */
+export async function getCategoryScopes(actor: Actor, userId: string) {
+  const target = await loadTarget(actor, userId, false);
+  if ("status" in target) return null;
+  return listCategoryScopedAssignments(db(), userId);
+}
+
+/**
+ * Sets which categories (each with everything below it) an account's scoped
+ * permissions cover. The actor must cover those categories themselves for
+ * every scoped permission of the role, so nobody hands out an area they
+ * don't have. An empty list means the scoped permissions allow nothing.
+ */
+export async function setCategoryScopes(actor: Actor, userId: string, categoryIdsInput: readonly string[]): Promise<{ status: "ok" } | ManageError> {
+  const target = await loadTarget(actor, userId, true);
+  if ("status" in target) return target;
+  if (userId === actor.userId) return { status: "self" };
+  const requested = [...new Set(categoryIdsInput.filter((id) => /^[0-9a-f-]{36}$/i.test(id)))];
+  if (requested.length !== categoryIdsInput.length || requested.length > 200) return { status: "invalid", field: "invalid_category" };
+  const categoryIds = await existingCategoryIds(db(), requested);
+  if (categoryIds.length !== requested.length) return { status: "invalid", field: "invalid_category" };
+  const assignments = await listCategoryScopedAssignments(db(), userId);
+  if (assignments.length === 0) return { status: "invalid", field: "no_scoped_role" };
+  for (const assignment of assignments) {
+    for (const key of assignment.scopedKeys) {
+      // A .propose permission is covered by the permission it proposes (price.update covers price.update.propose).
+      const covered = (k: string) => decide(actor.permissions, k, { categoryIds }).allowed;
+      const allowed = covered(key) || (key.endsWith(".propose") && covered(key.slice(0, -".propose".length)));
+      if (categoryIds.length > 0 && !allowed) {
+        await recordSecurityEvent(actor.meta, {
+          type: "authz.denied",
+          severity: "warning",
+          userId: actor.userId,
+          details: { permission: key, reason: "scope_exceeds_actor", resourceType: "user", resourceId: userId },
+        });
+        throw new AuthzError(key, "scope_exceeds_actor");
+      }
+    }
+  }
+  await transaction(async (tx) => {
+    for (const assignment of assignments) await replaceCategoryScopes(tx, assignment.userRoleId, categoryIds);
+    await recordAudit(tx, actor.meta, {
+      actorUserId: actor.userId,
+      action: accountAuditAction(target.level, "scopes_changed"),
+      entityType: "user",
+      entityId: userId,
+      before: { categoryIds: [...new Set(assignments.flatMap((a) => a.categoryIds))] },
+      after: { categoryIds },
+    });
+  });
+  return { status: "ok" };
 }
