@@ -10,7 +10,7 @@ Each phase ends with a report (what was implemented, files, tests run and result
 | 4 | Authentication and security: admin login with TOTP, customer SMS-code login, sessions, RBAC engine, audit and security events, first Super Admin CLI, minimal admin shell (password reset and CSP moved to Phase 5) | Done |
 | 5 | Administration: three-level admin shell, per-role navigation and 403 pages, admin accounts (invite links, roles, disable, password reset links, two-factor reset, sessions), role and permission editor, own password and devices, audit log viewer, recovery CLI, nonce CSP on admin routes | **In review** |
 | 6 | Business infrastructure (with Store Staff scope screens and the approvals inbox): catalog, motorcycles, compatibility, imports, inventory, orders, payment and shipping adapters, accounting, content, search, media storage | Planned |
-| 6b | Storefront: home, category, product, vehicle selector, search, cart, checkout, account | Planned |
+| 6b | Storefront: home, category, product, vehicle selector, search, cart, checkout, and the customer panel (profile, addresses, own order history and order detail; every query limited to the signed-in customer; accounts only by mobile number and SMS code) | Planned |
 | 7 | Page builder: component registry, editor, preview, revisions, rollback | Planned |
 | 8 | Skills and agents refresh to match the real implementation | Planned |
 | 9 | Quality and security: full test run, security review, DB integrity and currency audit | Planned |
