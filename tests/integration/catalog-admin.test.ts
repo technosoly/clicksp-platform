@@ -536,6 +536,34 @@ describe("product photos", () => {
     const customer: Actor = { ...staff, kind: "customer", level: null, permissions: new Map() };
     await expect(addProductImage(customer, inScope.productId, await file(), noAlt)).rejects.toBeInstanceOf(AuthzError);
     expect((await listProductImagesForAdmin(ba, outOfScope.productId)).length).toBe(1);
+    // Every other change to an out-of-scope photo is refused too.
+    await expect(updateProductImage(staff, outOfScope.productId, baImage.id, { fa: "x", en: "" })).rejects.toBeInstanceOf(AuthzError);
+    await expect(makePrimaryProductImage(staff, outOfScope.productId, baImage.id)).rejects.toBeInstanceOf(AuthzError);
+    await expect(reorderProductImage(staff, outOfScope.productId, baImage.id, "up")).rejects.toBeInstanceOf(AuthzError);
+    // product.update without media.upload can't add photos.
+    const noUpload: Actor = { ...ba, permissions: new Map([...ba.permissions].filter(([key]) => key !== "media.upload")) };
+    await expect(addProductImage(noUpload, inScope.productId, await file(), noAlt)).rejects.toBeInstanceOf(AuthzError);
+  });
+
+  it("refuses images above the pixel limit and counts every use before deleting", async () => {
+    const ba = await actorFor("business_admin");
+    const category = await newCategory(ba);
+    const { productId } = await newProduct(ba, category);
+    // 8000 × 6000 = 48 MP, a small file that would decode to ~144 MB.
+    const bomb = await sharp({ create: { width: 8000, height: 6000, channels: 3, background: "#000" } }).png({ compressionLevel: 9 }).toBuffer();
+    expect(bomb.length).toBeLessThan(2_000_000);
+    expect(await addProductImage(ba, productId, { name: "bomb.png", bytes: new Uint8Array(bomb) }, noAlt)).toEqual({ status: "invalid", field: "image_type" });
+
+    // An image still referenced elsewhere (here a category) is not deleted when one use goes away.
+    const added = await addProductImage(ba, productId, await file(), noAlt);
+    if (added.status !== "ok") throw new Error(added.status);
+    const [{ media_id: mediaId }] = (await q<{ media_id: string }>("SELECT media_id FROM product_images WHERE id = $1", [added.id])) as [{ media_id: string }];
+    await q("UPDATE categories SET image_media_id = $1 WHERE id = $2", [mediaId, category]);
+    expect(await removeProductImage(ba, productId, added.id)).toMatchObject({ status: "ok" });
+    const key = (await imageRenditions(mediaId))[0]!.key;
+    expect(await openPublicImage(key)).not.toBeNull();
+    expect(await setCategoryImage(ba, category, null)).toEqual({ status: "ok" });
+    expect(await openPublicImage(key)).toBeNull();
   });
 
   it("brand logos and category pictures can be set, replaced and removed", async () => {
@@ -562,8 +590,14 @@ describe("product photos", () => {
     expect(await setCategoryImage(staff, category, await file())).toEqual({ status: "ok" });
     await expect(setCategoryImage(staff, other, await file())).rejects.toBeInstanceOf(AuthzError);
     await expect(setBrandLogo(staff, brand.id, await file())).rejects.toBeInstanceOf(AuthzError);
+    // ...nor remove them.
+    expect(await setBrandLogo(ba, brand.id, await file())).toEqual({ status: "ok" });
+    await expect(setBrandLogo(staff, brand.id, null)).rejects.toBeInstanceOf(AuthzError);
+    expect(await logo()).not.toBeNull();
+    expect(await setCategoryImage(ba, other, await file())).toEqual({ status: "ok" });
+    await expect(setCategoryImage(staff, other, null)).rejects.toBeInstanceOf(AuthzError);
     expect(await setCategoryImage(ba, category, { name: "x", bytes: new TextEncoder().encode("not an image at all") })).toEqual({ status: "invalid", field: "image_type" });
     const actions = (await q<{ action: string }>("SELECT action FROM audit_logs WHERE entity_id = $1 ORDER BY seq", [brand.id])).map((a) => a.action);
-    expect(actions.filter((a) => a === "brand.logo_changed").length).toBe(3);
+    expect(actions.filter((a) => a === "brand.logo_changed").length).toBe(4);
   });
 });

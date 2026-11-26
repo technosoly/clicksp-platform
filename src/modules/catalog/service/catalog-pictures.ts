@@ -54,6 +54,9 @@ async function swap(
 export async function setBrandLogo(actor: Actor, brandId: string, file: UploadedFile | null): Promise<PictureResult> {
   if (!IS_UUID.test(brandId)) return { status: "not_found" };
   await authorize(actor, "brand.manage", { type: "brand", id: brandId });
+  // Removing needs the upload permission too (a brand has no category, so
+  // only unscoped uploaders): Store Staff can neither set nor clear logos.
+  if (!file) await authorize(actor, "media.upload", { type: "brand", id: brandId });
   if (!(await getBrand(db(), brandId))) return { status: "not_found" };
   return swap(actor, { kind: "brand", id: brandId }, file, undefined);
 }
@@ -61,6 +64,7 @@ export async function setBrandLogo(actor: Actor, brandId: string, file: Uploaded
 export async function setCategoryImage(actor: Actor, categoryId: string, file: UploadedFile | null): Promise<PictureResult> {
   if (!IS_UUID.test(categoryId)) return { status: "not_found" };
   await authorize(actor, "category.manage", { type: "category", id: categoryId, categoryIds: [categoryId] });
+  if (!file) await authorize(actor, "media.upload", { type: "category", id: categoryId, categoryIds: [categoryId] });
   if (!(await getCategory(db(), categoryId))) return { status: "not_found" };
   return swap(actor, { kind: "category", id: categoryId }, file, [categoryId]);
 }

@@ -1,5 +1,5 @@
 /** Database access for media files (the media_library table). */
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import type { DbClient } from "@/lib/db";
 import type { Rendition } from "../domain/image-rules";
 
@@ -67,13 +67,38 @@ export async function isServableKey(client: DbClient, mediaId: string, key: stri
   return rows[0]?.ok === true;
 }
 
-/** How many places still use this image (products, brands, categories, banners, articles). */
+export async function lockImageRow(tx: Tx, mediaId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM media_library WHERE id = ${mediaId}::uuid AND deleted_at IS NULL FOR UPDATE`;
+  return rows.length === 1;
+}
+
+let referencing: { table: string; column: string }[] | undefined;
+
+/**
+ * Every column that references media_library, read from the database's own
+ * foreign keys, so a table added later is counted without code changes.
+ */
+export async function mediaReferences(client: DbClient): Promise<{ table: string; column: string }[]> {
+  referencing ??= await client.$queryRaw<{ table: string; column: string }[]>`
+    SELECT c.conrelid::regclass::text AS "table", a.attname::text AS "column"
+    FROM pg_constraint c
+    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+    WHERE c.contype = 'f' AND c.confrelid = 'media_library'::regclass
+    ORDER BY 1, 2`;
+  return referencing;
+}
+
+const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
+
+/** How many rows anywhere still reference this image. */
 export async function imageUseCount(client: DbClient, mediaId: string): Promise<number> {
-  const rows = await client.$queryRaw<{ n: bigint }[]>`
-    SELECT (
-      (SELECT count(*) FROM product_images WHERE media_id = ${mediaId}::uuid) +
-      (SELECT count(*) FROM brands WHERE logo_media_id = ${mediaId}::uuid) +
-      (SELECT count(*) FROM categories WHERE image_media_id = ${mediaId}::uuid)
-    ) AS n`;
-  return Number(rows[0]?.n ?? 0n);
+  let total = 0;
+  for (const ref of await mediaReferences(client)) {
+    // Names come from pg_constraint, never from input; checked anyway.
+    if (!IDENTIFIER.test(ref.table) || !IDENTIFIER.test(ref.column)) throw new Error(`unexpected media reference ${ref.table}.${ref.column}`);
+    const rows = await client.$queryRaw<{ n: bigint }[]>`
+      SELECT count(*) AS n FROM ${Prisma.raw(`"${ref.table}"`)} WHERE ${Prisma.raw(`"${ref.column}"`)} = ${mediaId}::uuid`;
+    total += Number(rows[0]?.n ?? 0n);
+  }
+  return total;
 }

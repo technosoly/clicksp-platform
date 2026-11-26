@@ -16,6 +16,10 @@ All ports bind to `127.0.0.1` only. A reverse proxy (Caddy or nginx) will termin
 
 **Uploaded images** (Phase 6) are stored on the server's disk in `MEDIA_STORAGE_DIR` (Docker: the `media-data` volume at `/app/.data/media`; with `pnpm start`, set an absolute path, because the standalone server runs from `.next/standalone`). Back this folder up together with the database: the database lists the files, the folder holds them. The app serves them itself at `/media/...` with year-long immutable caching, so a CDN or the reverse proxy can cache them. Image processing uses `sharp` (prebuilt libvips binaries, no build step). An S3-compatible adapter (MinIO is no longer published on Docker Hub; a managed Iranian S3 such as ArvanCloud Object Storage is an option) plugs in behind the same storage interface once the owner picks a provider; the `S3_*` variables are not read yet.
 
+Upload limits and caching to set at the reverse proxy (Phase 10):
+- Server Actions accept bodies up to 11 MB (`next.config.ts`) so admins can upload photos; Next.js applies that limit to every Server Action. Cap request bodies at the proxy at 1 MB everywhere except `/fa/admin/*` and `/en/admin/*` (nginx `client_max_body_size`), so anonymous requests can't send large bodies.
+- `/media/*` responses are `immutable` for a year. A removed image stops being served by the app at once, but copies already in browsers or a proxy cache stay until they expire; purge the proxy cache when an image must disappear immediately.
+
 ## Authentication settings
 
 - `AUTH_SECRET` (required in production, at least 32 characters): encrypts TOTP secrets and keys SMS-code hashes. Keep it in the server's secret store, back it up with the database, and do not rotate it casually: a new value makes existing two-factor enrolments unreadable (admins must enrol again).

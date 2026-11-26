@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
-import sharp, { type Sharp } from "sharp";
+import sharp, { type OutputInfo } from "sharp";
 import { db, transaction } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import type { Actor } from "@/modules/rbac/domain/actor";
@@ -15,7 +15,7 @@ import {
   type ImageProblem,
   type Rendition,
 } from "../domain/image-rules";
-import { getImageRow, imageUseCount, insertImageRow, isServableKey, softDeleteImageRow } from "../repo/media-repo";
+import { getImageRow, imageUseCount, insertImageRow, isServableKey, lockImageRow, softDeleteImageRow } from "../repo/media-repo";
 import { objectStorage } from "../storage/object-storage";
 
 /**
@@ -35,35 +35,26 @@ export interface UploadedFile {
 }
 
 async function encode(bytes: Uint8Array): Promise<{ width: number; height: number; outputs: { width: number; height: number; data: Buffer }[] } | ImageProblem> {
-  let base: Sharp;
-  let width: number;
-  let height: number;
+  let pixels: { data: Buffer; info: OutputInfo };
   try {
-    // rotate() applies the EXIF orientation; metadata is not copied to the output.
-    base = sharp(bytes, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: "error", animated: false }).rotate();
-    const meta = await base.metadata();
-    if (!meta.width || !meta.height) return "image_type";
-    // Orientations 5-8 swap width and height once rotated.
-    const swapped = (meta.orientation ?? 1) >= 5;
-    width = swapped ? meta.height : meta.width;
-    height = swapped ? meta.width : meta.height;
+    // Decoded once (first frame only, under the pixel limit), with the EXIF
+    // orientation applied. Nothing of the original file is carried over.
+    pixels = await sharp(bytes, { limitInputPixels: MAX_IMAGE_PIXELS, failOn: "error", animated: false })
+      .rotate()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
   } catch {
     return "image_type";
   }
+  const { width, height, channels } = pixels.info;
   if (Math.min(width, height) < MIN_IMAGE_SIDE) return "image_too_small";
   const outputs = [];
-  try {
-    // Encoding decodes the whole file: a broken or truncated image fails here.
-    for (const w of renditionWidths(width)) {
-      const { data, info } = await base
-        .clone()
-        .resize({ width: w, withoutEnlargement: true })
-        .webp({ quality: 80, effort: 4 })
-        .toBuffer({ resolveWithObject: true });
-      outputs.push({ width: info.width, height: info.height, data });
-    }
-  } catch {
-    return "image_type";
+  for (const w of renditionWidths(width)) {
+    const { data, info } = await sharp(pixels.data, { raw: { width, height, channels } })
+      .resize({ width: w, withoutEnlargement: true })
+      .webp({ quality: 80, effort: 4 })
+      .toBuffer({ resolveWithObject: true });
+    outputs.push({ width: info.width, height: info.height, data });
   }
   return { width, height, outputs };
 }
@@ -121,11 +112,16 @@ async function removeFiles(renditions: readonly Rendition[]): Promise<void> {
 
 /**
  * Deletes an image once nothing uses it any more (call after the record that
- * used it is gone). Internal: callers have authorized the change that freed it.
+ * used it is gone). Internal: callers have authorized the change that freed
+ * it. The image row is locked while its uses are counted, so a reference
+ * added at the same time (which locks the row too) can't be missed.
  */
 export async function releaseImage(mediaId: string): Promise<void> {
-  if ((await imageUseCount(db(), mediaId)) > 0) return;
-  const renditions = await transaction((tx) => softDeleteImageRow(tx, mediaId));
+  const renditions = await transaction(async (tx) => {
+    if (!(await lockImageRow(tx, mediaId))) return [];
+    if ((await imageUseCount(tx, mediaId)) > 0) return [];
+    return softDeleteImageRow(tx, mediaId);
+  });
   await removeFiles(renditions);
 }
 
