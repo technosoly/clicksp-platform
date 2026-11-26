@@ -68,6 +68,8 @@ Scopes (which categories or warehouses a Store Staff member covers) are stored p
 
 **Price approvals (Phase 6):** Store Staff with `price.update.propose` file a request (`admin_approvals`, action `price.update`, one open request per variant, expiring after `security.approval_ttl_hours`). Admins holding `price.update` for the product's categories approve or reject it at `/admin/approvals`; the requester can never decide their own request (service check and database CHECK). An approved change is applied in the same transaction with the approver as `product_prices.changed_by` and the request in `approval_id`; the write itself checks that the price is still the one the requester saw (a conditional UPDATE), and if it changed the request is marked failed instead of overwriting it. Requesters see their own requests only for products they can still view. New variants start switched off and can't be switched on before they have a price.
 
+**Pictures (Phase 6, part 2a):** adding a product photo needs `product.update` and `media.upload` on all the product's categories; changing its description, order or main photo, or removing it, needs `product.update`. A category picture needs `category.manage` and `media.upload` on that category. A brand logo needs `brand.manage` and an **unscoped** `media.upload` (a brand has no category, so scoped Store Staff can't set logos).
+
 ## Default bundles
 
 `SA` Super Admin, `BA` Business Admin, `ST` Store Staff. `S` = granted scoped (category or warehouse). `max` = level ceiling (1 = Super Admin only, can never be given to BA or Staff). `MFA` = step-up MFA required.

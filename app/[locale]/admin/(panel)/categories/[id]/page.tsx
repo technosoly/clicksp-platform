@@ -5,7 +5,8 @@ import { Card, Field, PageHeader, selectClass } from "@/components/admin/admin-u
 import { CategoryOptions, categoryName, NameFields } from "@/components/admin/catalog-fields";
 import { Input } from "@/components/ui/input";
 import { Link } from "@/lib/i18n/navigation";
-import { updateCategoryAction } from "@/modules/catalog/api/catalog-actions";
+import { PictureCard } from "@/components/admin/picture-card";
+import { categoryImageAction, updateCategoryAction } from "@/modules/catalog/api/catalog-actions";
 import { getCategoryForAdmin } from "@/modules/catalog/service/categories";
 import { adminPage } from "@/modules/identity/api/admin-page";
 
@@ -14,7 +15,7 @@ export default async function AdminCategoryPage({ params }: { params: Promise<{ 
   setRequestLocale(locale);
   const { data } = await adminPage(locale, (actor) => getCategoryForAdmin(actor, id), `/admin/categories/${id}`);
   if (!data) notFound();
-  const { category, parents, canMakeRoot } = data;
+  const { category, parents, canMakeRoot, image, canSetImage } = data;
   const t = await getTranslations("AdminCatalog");
 
   return (
@@ -47,6 +48,16 @@ export default async function AdminCategoryPage({ params }: { params: Promise<{ 
           </div>
         </ActionForm>
       </Card>
+      <PictureCard
+        title={t("categoryImageTitle")}
+        help={t("categoryImageHelp")}
+        renditions={image}
+        alt={categoryName(category, locale)}
+        action={categoryImageAction}
+        hidden={{ name: "categoryId", value: category.id }}
+        canEdit={canSetImage}
+        testId="admin-category-image"
+      />
       <Link href="/admin/categories" className="inline-block text-sm text-brand-orange-strong underline">
         {t("backToCategories")}
       </Link>

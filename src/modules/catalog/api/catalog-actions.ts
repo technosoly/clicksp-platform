@@ -2,8 +2,18 @@
 
 import { redirect } from "@/lib/i18n/navigation";
 import { localeOf, runAdminAction, text, type ActionState } from "@/modules/identity/api/admin-action";
+import type { UploadedFile } from "@/modules/media/service/images";
 import { createBrand, updateBrand } from "../service/brands";
+import { setBrandLogo, setCategoryImage, type PictureResult } from "../service/catalog-pictures";
 import { createCategory, updateCategory, type CatalogResult } from "../service/categories";
+import {
+  addProductImage,
+  makePrimaryProductImage,
+  removeProductImage,
+  reorderProductImage,
+  updateProductImage,
+  type ImageResult,
+} from "../service/product-images";
 import { cancelOwnPriceRequest, decidePriceRequest, type ApprovalResult } from "../service/price-approvals";
 import {
   addIdentifier,
@@ -215,4 +225,79 @@ export async function decidePriceRequestAction(_prev: ActionState, form: FormDat
 
 export async function cancelPriceRequestAction(_prev: ActionState, form: FormData): Promise<ActionState> {
   return runAdminAction(form, async (actor) => approvalState(await cancelOwnPriceRequest(actor, text(form, "approvalId"))));
+}
+
+// Product photos ------------------------------------------------------------
+
+function imageState(result: ImageResult, message: string): ActionState {
+  if (result.status === "ok") return { ok: true, message };
+  return { error: result.status === "invalid" ? result.field : result.status };
+}
+
+export async function addProductImageAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return runAdminAction(form, async (actor) => {
+    const file = form.get("image");
+    if (!(file instanceof File) || file.size === 0) return { error: "image_missing" };
+    const result = await addProductImage(
+      actor,
+      text(form, "productId"),
+      { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) },
+      { fa: text(form, "altFa"), en: text(form, "altEn") },
+    );
+    return imageState(result, "imageAdded");
+  });
+}
+
+export async function updateProductImageAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return runAdminAction(form, async (actor) =>
+    imageState(await updateProductImage(actor, text(form, "productId"), text(form, "imageId"), { fa: text(form, "altFa"), en: text(form, "altEn") }), "saved"),
+  );
+}
+
+export async function productImageCommandAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return runAdminAction(form, async (actor) => {
+    const productId = text(form, "productId");
+    const imageId = text(form, "imageId");
+    switch (text(form, "command")) {
+      case "primary":
+        return imageState(await makePrimaryProductImage(actor, productId, imageId), "imagePrimary");
+      case "up":
+      case "down":
+        return imageState(await reorderProductImage(actor, productId, imageId, text(form, "command")), "imageMoved");
+      case "remove":
+        return imageState(await removeProductImage(actor, productId, imageId), "imageRemoved");
+      default:
+        return { error: "invalid" };
+    }
+  });
+}
+
+// Brand logos and category pictures -----------------------------------------
+
+async function pictureFile(form: FormData): Promise<UploadedFile | "missing" | null> {
+  if (text(form, "command") === "remove") return null;
+  const file = form.get("image");
+  if (!(file instanceof File) || file.size === 0) return "missing";
+  return { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) };
+}
+
+function pictureState(result: PictureResult, removed: boolean): ActionState {
+  if (result.status === "ok") return { ok: true, message: removed ? "imageRemoved" : "imageAdded" };
+  return { error: result.status === "invalid" ? result.field : result.status };
+}
+
+export async function brandLogoAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return runAdminAction(form, async (actor) => {
+    const file = await pictureFile(form);
+    if (file === "missing") return { error: "image_missing" };
+    return pictureState(await setBrandLogo(actor, text(form, "brandId"), file), file === null);
+  });
+}
+
+export async function categoryImageAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return runAdminAction(form, async (actor) => {
+    const file = await pictureFile(form);
+    if (file === "missing") return { error: "image_missing" };
+    return pictureState(await setCategoryImage(actor, text(form, "categoryId"), file), file === null);
+  });
 }

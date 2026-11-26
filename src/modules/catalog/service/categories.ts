@@ -1,4 +1,5 @@
 import "server-only";
+import { imageRenditions } from "@/modules/media/service/images";
 import { db, transaction } from "@/lib/db";
 import { recordAudit } from "@/modules/audit/service/audit";
 import type { Actor } from "@/modules/rbac/domain/actor";
@@ -62,7 +63,8 @@ export async function getCategoryForAdmin(actor: Actor, id: string) {
   const subtree = new Set(await categoryWithDescendants(db(), id));
   const all = await listCategoryRows(db());
   const parents = all.filter((r) => !subtree.has(r.id) && (canMove || r.id === category.parentId));
-  return { category, parents, canMakeRoot: canMove };
+  const image = category.imageMediaId ? await imageRenditions(category.imageMediaId) : [];
+  return { category, parents, canMakeRoot: canMove, image, canSetImage: allows(actor, "media.upload", [id]) };
 }
 
 function failure(error: unknown): CatalogResult {

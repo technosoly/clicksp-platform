@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6, part 2a: images)
+- **Product photos** on the product screen: upload (JPEG, PNG, WebP or AVIF up to 10 MB), descriptions in Persian and English (the product name by default), order, main photo, remove. **Brand logos** and **category pictures** on their screens. Until a picture is added, a neutral placeholder is shown.
+- Uploads are checked by their bytes, fully decoded with a pixel limit and re-encoded to WebP in four sizes; location data and anything else hidden in a file is dropped. Files are kept in `MEDIA_STORAGE_DIR` (a Docker volume) and served at `/media/...` only while the image is in use.
+- Store Staff manage photos only for products and categories in their area; brand logos need an unscoped upload permission.
+- Tests: unit (172 in total), integration on PostgreSQL (158 in total), E2E (46 in total, desktop and mobile).
+
 ### Added (Phase 6, part 1: catalog)
 - Admin screens for **categories** (tree with Persian and English names and addresses, motorcycle systems, switch off instead of delete), **brands**, and **products**: details in both languages, primary and extra categories, brand, warranty, variants with SKU, size and order limits, prices typed in the store's display unit (Toman by default) and stored as integer Rial, price history with who changed it, cost prices for finance roles only, OEM / manufacturer / alternative part numbers and barcodes (found whatever the separators or digits), and publish / back to draft / archive.
 - **Store Staff category scopes**: on a staff member's account screen, a Business or Super Admin picks the categories they work on. A category covers everything below it; a product is in scope only when all its categories are. Staff can't create top-level categories or move categories (moving one changes what other staff can see).

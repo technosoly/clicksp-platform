@@ -14,7 +14,7 @@ Phase 2 covers local development and the container build. Staging and production
 
 All ports bind to `127.0.0.1` only. A reverse proxy (Caddy or nginx) will terminate TLS in production (Phase 10).
 
-Object storage is not in the stack yet. The community MinIO images are no longer published on Docker Hub, so the S3-compatible service (or a managed Iranian S3 such as ArvanCloud Object Storage) is chosen with the media module in Phase 6.
+**Uploaded images** (Phase 6) are stored on the server's disk in `MEDIA_STORAGE_DIR` (Docker: the `media-data` volume at `/app/.data/media`; with `pnpm start`, set an absolute path, because the standalone server runs from `.next/standalone`). Back this folder up together with the database: the database lists the files, the folder holds them. The app serves them itself at `/media/...` with year-long immutable caching, so a CDN or the reverse proxy can cache them. Image processing uses `sharp` (prebuilt libvips binaries, no build step). An S3-compatible adapter (MinIO is no longer published on Docker Hub; a managed Iranian S3 such as ArvanCloud Object Storage is an option) plugs in behind the same storage interface once the owner picks a provider; the `S3_*` variables are not read yet.
 
 ## Authentication settings
 

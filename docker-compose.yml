@@ -2,7 +2,8 @@
 # Development services only:     docker compose up -d postgres redis meilisearch
 # Full stack including the app:  docker compose --profile app up -d --build
 # Secrets come from .env (copy .env.example); nothing secret is hardcoded here.
-# Object storage (S3-compatible) is added with the media module in Phase 6.
+# Uploaded images are kept in the media-data volume (MEDIA_STORAGE_DIR); back it
+# up with the database. An S3-compatible store can replace it later.
 
 name: clicksp
 
@@ -85,6 +86,9 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       MEILISEARCH_HOST: http://meilisearch:7700
       MEILISEARCH_API_KEY: ${MEILI_MASTER_KEY}
+      MEDIA_STORAGE_DIR: /app/.data/media
+    volumes:
+      - media-data:/app/.data/media
     ports:
       - "127.0.0.1:${APP_PORT:-3000}:3000"
     depends_on:
@@ -101,3 +105,4 @@ volumes:
   postgres-data:
   redis-data:
   meili-data:
+  media-data:

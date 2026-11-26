@@ -9,6 +9,9 @@ import { formatDate } from "@/lib/i18n/dates";
 import { Link } from "@/lib/i18n/navigation";
 import {
   addIdentifierAction,
+  addProductImageAction,
+  productImageCommandAction,
+  updateProductImageAction,
   addVariantAction,
   changeCostAction,
   changePriceAction,
@@ -20,7 +23,9 @@ import {
 import { IDENTIFIER_TYPES } from "@/modules/catalog/domain/catalog-input";
 import { brandOptions } from "@/modules/catalog/service/brands";
 import { categoryOptions } from "@/modules/catalog/service/categories";
+import { listProductImagesForAdmin } from "@/modules/catalog/service/product-images";
 import { getProductForAdmin } from "@/modules/catalog/service/products";
+import { CatalogImage } from "@/components/media/catalog-image";
 import { adminPage } from "@/modules/identity/api/admin-page";
 
 const STATUS_TONE = { draft: "neutral", active: "success", archived: "danger" } as const;
@@ -44,6 +49,7 @@ export default async function AdminProductPage({
       const editable = detail.can.edit;
       return {
         detail,
+        images: await listProductImagesForAdmin(actor, id),
         categories: editable ? await categoryOptions(actor, "product.update") : [],
         brands: editable ? await brandOptions(actor) : [],
       };
@@ -211,6 +217,86 @@ export default async function AdminProductPage({
           </Card>
         ) : null}
       </section>
+
+      <Card title={t("imagesTitle")} description={t("imagesHelp")} testId="admin-product-images">
+        {data.images.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="admin-images-empty">
+            {t("imagesEmpty")}
+          </p>
+        ) : (
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {data.images.map((image, index) => (
+              <li key={image.id} className="space-y-2 rounded-lg border p-3" data-testid="admin-image-row">
+                <div className="relative overflow-hidden rounded-md">
+                  <CatalogImage renditions={image.renditions} alt={(loc === "en" ? image.alt.en : undefined) ?? image.alt.fa} sizes="(min-width: 1024px) 20rem, 50vw" width={320} />
+                  {image.isPrimary ? (
+                    <span className="absolute start-2 top-2">
+                      <Badge tone="success" testId="admin-image-primary">
+                        {t("primaryImage")}
+                      </Badge>
+                    </span>
+                  ) : null}
+                </div>
+                {can.edit ? (
+                  <>
+                    <ActionForm action={updateProductImageAction} submitLabel={t("saveAlt")} submitVariant="secondary" namespace="AdminCatalog">
+                      {hiddenProduct}
+                      <input type="hidden" name="imageId" value={image.id} />
+                      <Field label={t("fields.altFa")} htmlFor={`altFa-${image.id}`}>
+                        <Input id={`altFa-${image.id}`} name="altFa" defaultValue={image.alt.fa} maxLength={250} dir="rtl" lang="fa" />
+                      </Field>
+                      <Field label={t("fields.altEn")} htmlFor={`altEn-${image.id}`}>
+                        <Input id={`altEn-${image.id}`} name="altEn" defaultValue={image.alt.en ?? ""} maxLength={250} dir="ltr" lang="en" />
+                      </Field>
+                    </ActionForm>
+                    <div className="flex flex-wrap gap-2">
+                      {(
+                        [
+                          ["primary", t("makePrimary"), !image.isPrimary],
+                          ["up", t("moveUp"), index > 0],
+                          ["down", t("moveDown"), index < data.images.length - 1],
+                          ["remove", t("remove"), true],
+                        ] as const
+                      )
+                        .filter(([, , shown]) => shown)
+                        .map(([command, label]) => (
+                          <ActionForm
+                            key={command}
+                            action={productImageCommandAction}
+                            submitLabel={label}
+                            submitVariant={command === "remove" ? "destructive" : "ghost"}
+                            namespace="AdminCatalog"
+                            testId={`admin-image-${command}`}
+                          >
+                            {hiddenProduct}
+                            <input type="hidden" name="imageId" value={image.id} />
+                            <input type="hidden" name="command" value={command} />
+                          </ActionForm>
+                        ))}
+                    </div>
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        {can.edit ? (
+          <ActionForm action={addProductImageAction} submitLabel={t("addImage")} submitVariant="secondary" testId="admin-image-add" namespace="AdminCatalog" className="mt-4">
+            {hiddenProduct}
+            <Field label={t("fields.image")} htmlFor="image" hint={t("fields.imageHint")}>
+              <input id="image" name="image" type="file" accept="image/jpeg,image/png,image/webp,image/avif" required className="block w-full text-sm" />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={t("fields.altFa")} htmlFor="altFa" hint={t("fields.altHint")}>
+                <Input id="altFa" name="altFa" maxLength={250} dir="rtl" lang="fa" />
+              </Field>
+              <Field label={t("fields.altEn")} htmlFor="altEn">
+                <Input id="altEn" name="altEn" maxLength={250} dir="ltr" lang="en" />
+              </Field>
+            </div>
+          </ActionForm>
+        ) : null}
+      </Card>
 
       <Card title={t("identifiersTitle")} description={t("identifiersHelp")} testId="admin-product-identifiers">
         {product.identifiers.length === 0 ? (

@@ -38,6 +38,13 @@ export const serverEnvSchema = z.object({
   MEILISEARCH_HOST: z.url().optional(),
   MEILISEARCH_API_KEY: z.string().optional(),
 
+  /**
+   * Where uploaded images are kept when no S3-compatible storage is set up
+   * (the default: a folder on the server, included in backups). Relative
+   * paths are resolved from the app's working directory.
+   */
+  MEDIA_STORAGE_DIR: z.string().default(".data/media"),
+
   S3_ENDPOINT: z.url().optional(),
   S3_REGION: z.string().optional(),
   S3_BUCKET: z.string().optional(),

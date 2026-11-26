@@ -2,6 +2,7 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import pg from "pg";
+import sharp from "sharp";
 import { hashPassword } from "../src/lib/security/password";
 import { totp } from "../src/lib/security/totp";
 
@@ -116,6 +117,23 @@ test.describe("catalog", () => {
     await page.locator("#identifierValue").fill(`${id}-KZ ۰۱`);
     await page.getByTestId("admin-identifier-add-submit").click();
     await expect(page.getByTestId("admin-identifier-row")).toContainText(`${id}-KZ 01`);
+
+    // A photo: uploaded, shown resized, made the main one by default, then removed.
+    await expect(page.getByTestId("admin-images-empty")).toBeVisible();
+    const photo = await sharp({ create: { width: 800, height: 600, channels: 3, background: "#e85d1a" } }).jpeg().toBuffer();
+    await page.getByTestId("admin-image-add").locator('input[type="file"]').setInputFiles({ name: "pads.jpg", mimeType: "image/jpeg", buffer: photo });
+    await page.getByTestId("admin-image-add-submit").click();
+    await expect(page.getByTestId("admin-image-row")).toHaveCount(1);
+    await expect(page.getByTestId("admin-image-primary")).toBeVisible();
+    const img = page.getByTestId("admin-image-row").locator("img");
+    await expect(img).toHaveAttribute("alt", `E2E Brake pads ${id}`);
+    await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth)).toBeGreaterThan(0);
+    const src = (await img.getAttribute("src"))!;
+    const served = await page.request.get(src);
+    expect(served.headers()["content-type"]).toBe("image/webp");
+    await page.getByTestId("admin-image-remove-submit").click();
+    await expect(page.getByTestId("admin-images-empty")).toBeVisible();
+    expect((await page.request.get(src)).status()).toBe(404);
 
     // Found by part number whatever the separators.
     await page.goto(`/en/admin/products?q=${id}kz01`);
