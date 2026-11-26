@@ -1,11 +1,12 @@
 import "server-only";
+import { imageRenditions } from "@/modules/media/service/images";
 import { db, transaction } from "@/lib/db";
 import { recordAudit } from "@/modules/audit/service/audit";
 import type { Actor } from "@/modules/rbac/domain/actor";
 import { authorize } from "@/modules/rbac/service/authorize";
 import { brandInputSchema, firstIssue, type BrandData, type BrandInput } from "../domain/catalog-input";
 import { databaseMessage, getBrand, insertBrand, isUniqueViolation, listBrands, updateBrandRow } from "../repo/catalog-repo";
-import { adminId, IS_UUID } from "./catalog-access";
+import { adminId, allows, IS_UUID } from "./catalog-access";
 import type { CatalogResult } from "./categories";
 
 /** Brands (brand.manage, held by every admin level by default). Deactivated, never deleted. */
@@ -26,7 +27,14 @@ export async function brandOptions(actor: Actor) {
 export async function getBrandForAdmin(actor: Actor, id: string) {
   if (!IS_UUID.test(id)) return null;
   await authorize(actor, "brand.manage", { type: "brand", id }, { stepUp: false });
-  return getBrand(db(), id);
+  const brand = await getBrand(db(), id);
+  if (!brand) return null;
+  return {
+    ...brand,
+    logo: brand.logoMediaId ? await imageRenditions(brand.logoMediaId) : [],
+    // A brand has no category, so only unscoped uploaders can set its logo.
+    canSetLogo: allows(actor, "media.upload", undefined),
+  };
 }
 
 function failure(error: unknown): CatalogResult {

@@ -5,7 +5,8 @@ import { Card, Field, PageHeader } from "@/components/admin/admin-ui";
 import { categoryName, NameFields } from "@/components/admin/catalog-fields";
 import { Input } from "@/components/ui/input";
 import { Link } from "@/lib/i18n/navigation";
-import { updateBrandAction } from "@/modules/catalog/api/catalog-actions";
+import { PictureCard } from "@/components/admin/picture-card";
+import { brandLogoAction, updateBrandAction } from "@/modules/catalog/api/catalog-actions";
 import { getBrandForAdmin } from "@/modules/catalog/service/brands";
 import { adminPage } from "@/modules/identity/api/admin-page";
 
@@ -37,6 +38,16 @@ export default async function AdminBrandPage({ params }: { params: Promise<{ loc
           </div>
         </ActionForm>
       </Card>
+      <PictureCard
+        title={t("brandLogoTitle")}
+        help={t("brandLogoHelp")}
+        renditions={brand.logo}
+        alt={categoryName(brand, locale)}
+        action={brandLogoAction}
+        hidden={{ name: "brandId", value: brand.id }}
+        canEdit={brand.canSetLogo}
+        testId="admin-brand-logo"
+      />
       <Link href="/admin/brands" className="inline-block text-sm text-brand-orange-strong underline">
         {t("backToBrands")}
       </Link>

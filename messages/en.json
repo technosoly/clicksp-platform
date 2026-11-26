@@ -560,7 +560,12 @@
       "maxQty": "Maximum order",
       "identifierType": "Type",
       "identifierValue": "Number",
-      "identifierHint": "Type it as printed; Persian digits, spaces and dashes are fine."
+      "identifierHint": "Type it as printed; Persian digits, spaces and dashes are fine.",
+      "image": "Photo file",
+      "imageHint": "JPEG, PNG, WebP or AVIF, up to 10 MB, at least 200 pixels on each side.",
+      "altFa": "Photo description (Persian)",
+      "altEn": "Photo description (English)",
+      "altHint": "Read aloud to blind visitors and used by search engines. Left empty, the product name is used."
     },
     "categoriesTitle": "Categories",
     "categoriesIntro": "The category tree customers browse. Categories are switched off, never deleted.",
@@ -624,7 +629,11 @@
       "priceProposed": "Price change sent for approval.",
       "unchanged": "Nothing changed.",
       "identifierAdded": "Number added.",
-      "identifierRemoved": "Number removed."
+      "identifierRemoved": "Number removed.",
+      "imageAdded": "Photo uploaded.",
+      "imagePrimary": "Main photo changed.",
+      "imageMoved": "Order changed.",
+      "imageRemoved": "Photo removed."
     },
     "publish": "Publish",
     "unpublish": "Back to draft",
@@ -704,8 +713,31 @@
       "no_price": "To publish, the main variant needs a price.",
       "pending_exists": "A price change for this item is already waiting for approval.",
       "taken": "Already used.",
-      "variant_unpriced": "Set a price before switching this variant on."
-    }
+      "variant_unpriced": "Set a price before switching this variant on.",
+      "image_missing": "Choose a photo file.",
+      "image_too_large": "The photo is larger than 10 MB.",
+      "image_type": "That file isn't a photo we can use (JPEG, PNG, WebP or AVIF).",
+      "image_too_small": "The photo is too small (at least 200 pixels on each side).",
+      "alt_fa_required": "Enter a Persian description.",
+      "invalid_alt": "The description is too long.",
+      "invalid": "That action isn't possible."
+    },
+    "imagesTitle": "Photos",
+    "imagesHelp": "The main photo is shown in lists and first on the product page. Photos are resized for phones automatically; location data and anything else hidden in the file is removed.",
+    "imagesEmpty": "No photos yet. The shop shows a placeholder until you add one.",
+    "addImage": "Upload photo",
+    "makePrimary": "Make main photo",
+    "primaryImage": "Main photo",
+    "moveUp": "Move earlier",
+    "moveDown": "Move later",
+    "saveAlt": "Save description",
+    "replaceImage": "Replace picture",
+    "removeImage": "Remove picture",
+    "imageNoPermission": "You can't change this picture.",
+    "categoryImageTitle": "Category picture",
+    "categoryImageHelp": "Shown on the category's card in the shop. Until you add one, a placeholder is shown.",
+    "brandLogoTitle": "Brand logo",
+    "brandLogoHelp": "Shown next to the brand's products and on its page. Until you add one, a placeholder is shown."
   },
   "AdminApprovals": {
     "title": "Approvals",

@@ -8,7 +8,18 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { db as prisma, transaction } from "@/lib/db";
 import type { RequestMeta } from "@/lib/http/request-meta";
+import sharp from "sharp";
 import { setVariantPriceIfUnchanged } from "@/modules/catalog/repo/catalog-repo";
+import {
+  addProductImage,
+  listProductImagesForAdmin,
+  makePrimaryProductImage,
+  removeProductImage,
+  reorderProductImage,
+  updateProductImage,
+} from "@/modules/catalog/service/product-images";
+import { imageRenditions, openPublicImage } from "@/modules/media/service/images";
+import { setBrandLogo, setCategoryImage } from "@/modules/catalog/service/catalog-pictures";
 import { createBrand, updateBrand } from "@/modules/catalog/service/brands";
 import { createCategory, listCategoriesForAdmin, updateCategory } from "@/modules/catalog/service/categories";
 import { cancelOwnPriceRequest, decidePriceRequest, listApprovalInbox, listOwnApprovalRequests } from "@/modules/catalog/service/price-approvals";
@@ -417,5 +428,176 @@ describe("Store Staff category scopes", () => {
     await expect(setCategoryScopes(other, staff.userId, [a])).rejects.toBeInstanceOf(AuthzError);
     const audit = await q("SELECT 1 FROM audit_logs WHERE entity_id = $1 AND action = 'staff.scopes_changed'", [staff.userId]);
     expect(audit.length).toBe(1);
+  });
+});
+
+describe("product photos", () => {
+  const png = (width: number, height: number) =>
+    sharp({ create: { width, height, channels: 3, background: "#e85d1a" } })
+      .withExif({ IFD0: { Copyright: "secret-exif-marker" } })
+      .png()
+      .toBuffer();
+  const file = async (width = 900, height = 600) => ({ name: "photo.png", bytes: new Uint8Array(await png(width, height)) });
+  const noAlt = { fa: "", en: "" };
+  const readAll = async (stream: ReadableStream<Uint8Array>) => Buffer.from(await new Response(stream).arrayBuffer());
+
+  it("uploads are re-encoded to WebP sizes, served, ordered and removed", async () => {
+    const ba = await actorFor("business_admin");
+    const category = await newCategory(ba);
+    const { productId } = await newProduct(ba, category);
+
+    const first = await addProductImage(ba, productId, await file(), noAlt);
+    if (first.status !== "ok") throw new Error(JSON.stringify(first));
+    const second = await addProductImage(ba, productId, await file(1500, 1000), { fa: "نمای کنار", en: "Side view" });
+    if (second.status !== "ok") throw new Error(JSON.stringify(second));
+
+    let images = await listProductImagesForAdmin(ba, productId);
+    expect(images.map((i) => i.id)).toEqual([first.id, second.id]);
+    expect(images[0]!.isPrimary).toBe(true);
+    // The alt text defaults to the product name.
+    expect(images[0]!.alt.fa).toMatch(/^TEST لنت ترمز/);
+    expect(images[0]!.renditions.map((r) => r.width)).toEqual([320, 640, 900]);
+    expect(images[1]!.renditions.map((r) => r.width)).toEqual([320, 640, 1200, 1500]);
+
+    // Served as WebP, without the original's metadata.
+    const served = await openPublicImage(images[0]!.renditions[1]!.key);
+    if (!served) throw new Error("not served");
+    const body = await readAll(served.body);
+    expect(body.subarray(8, 12).toString("ascii")).toBe("WEBP");
+    expect(body.includes("secret-exif-marker")).toBe(false);
+    expect((await sharp(body).metadata()).width).toBe(640);
+
+    expect(await reorderProductImage(ba, productId, second.id, "up")).toMatchObject({ status: "ok" });
+    expect(await makePrimaryProductImage(ba, productId, second.id)).toMatchObject({ status: "ok" });
+    expect(await updateProductImage(ba, productId, first.id, { fa: "  نمای   جلو ", en: "" })).toMatchObject({ status: "ok" });
+    expect(await updateProductImage(ba, productId, first.id, { fa: "", en: "x" })).toEqual({ status: "invalid", field: "alt_fa_required" });
+    images = await listProductImagesForAdmin(ba, productId);
+    expect(images.map((i) => [i.id, i.isPrimary])).toEqual([
+      [second.id, true],
+      [first.id, false],
+    ]);
+    expect(images[1]!.alt).toEqual({ fa: "نمای جلو" });
+
+    // Removing the main photo makes the next one main and deletes the files.
+    const removedKey = images[0]!.renditions[0]!.key;
+    expect(await removeProductImage(ba, productId, second.id)).toMatchObject({ status: "ok" });
+    expect(await openPublicImage(removedKey)).toBeNull();
+    images = await listProductImagesForAdmin(ba, productId);
+    expect(images.map((i) => [i.id, i.isPrimary])).toEqual([[first.id, true]]);
+    expect(await removeProductImage(ba, productId, second.id)).toEqual({ status: "not_found" });
+
+    const actions = (await q<{ action: string }>("SELECT action FROM audit_logs WHERE entity_id = $1 AND action LIKE 'product.image%' ORDER BY seq", [productId])).map((a) => a.action);
+    expect(actions).toEqual(["product.image_added", "product.image_added", "product.image_moved", "product.image_primary", "product.image_updated", "product.image_removed"]);
+  });
+
+  it("refuses files that aren't usable photos", async () => {
+    const ba = await actorFor("business_admin");
+    const category = await newCategory(ba);
+    const { productId } = await newProduct(ba, category);
+    const svg = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    expect(await addProductImage(ba, productId, { name: "x.png", bytes: svg }, noAlt)).toEqual({ status: "invalid", field: "image_type" });
+    // A PNG signature followed by garbage.
+    const fake = new Uint8Array(4096);
+    fake.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(await addProductImage(ba, productId, { name: "x.png", bytes: fake }, noAlt)).toEqual({ status: "invalid", field: "image_type" });
+    // Truncated real image.
+    const real = await png(800, 800);
+    expect(await addProductImage(ba, productId, { name: "x.png", bytes: new Uint8Array(real.subarray(0, real.length / 2)) }, noAlt)).toEqual({
+      status: "invalid",
+      field: "image_type",
+    });
+    expect(await addProductImage(ba, productId, await file(150, 600), noAlt)).toEqual({ status: "invalid", field: "image_too_small" });
+    expect(await listProductImagesForAdmin(ba, productId)).toEqual([]);
+    // Unknown, deleted or path-like keys are never served.
+    expect(await openPublicImage("img/2026/01/../../../etc/passwd")).toBeNull();
+    expect(await openPublicImage("img/2026/01/0193e9c2-7a4b-7c3d-8e9f-0123456789ab/640.webp")).toBeNull();
+  });
+
+  it("Store Staff manage photos only in their categories; others are refused", async () => {
+    const ba = await actorFor("business_admin");
+    const mine = await newCategory(ba);
+    const other = await newCategory(ba);
+    const staff = await actorFor("store_staff", [mine]);
+    const inScope = await newProduct(ba, mine);
+    const outOfScope = await newProduct(ba, other);
+
+    const added = await addProductImage(staff, inScope.productId, await file(), noAlt);
+    expect(added).toMatchObject({ status: "ok" });
+    await expect(addProductImage(staff, outOfScope.productId, await file(), noAlt)).rejects.toBeInstanceOf(AuthzError);
+    const baImage = await addProductImage(ba, outOfScope.productId, await file(), noAlt);
+    if (baImage.status !== "ok") throw new Error(baImage.status);
+    await expect(removeProductImage(staff, outOfScope.productId, baImage.id)).rejects.toBeInstanceOf(AuthzError);
+    // An image id from another product is not found, even with the right product.
+    expect(await removeProductImage(staff, inScope.productId, baImage.id)).toEqual({ status: "not_found" });
+    // Staff with no categories can do nothing.
+    const none = await actorFor("store_staff");
+    await expect(addProductImage(none, inScope.productId, await file(), noAlt)).rejects.toBeInstanceOf(AuthzError);
+    // A customer-like actor is refused.
+    const customer: Actor = { ...staff, kind: "customer", level: null, permissions: new Map() };
+    await expect(addProductImage(customer, inScope.productId, await file(), noAlt)).rejects.toBeInstanceOf(AuthzError);
+    expect((await listProductImagesForAdmin(ba, outOfScope.productId)).length).toBe(1);
+    // Every other change to an out-of-scope photo is refused too.
+    await expect(updateProductImage(staff, outOfScope.productId, baImage.id, { fa: "x", en: "" })).rejects.toBeInstanceOf(AuthzError);
+    await expect(makePrimaryProductImage(staff, outOfScope.productId, baImage.id)).rejects.toBeInstanceOf(AuthzError);
+    await expect(reorderProductImage(staff, outOfScope.productId, baImage.id, "up")).rejects.toBeInstanceOf(AuthzError);
+    // product.update without media.upload can't add photos.
+    const noUpload: Actor = { ...ba, permissions: new Map([...ba.permissions].filter(([key]) => key !== "media.upload")) };
+    await expect(addProductImage(noUpload, inScope.productId, await file(), noAlt)).rejects.toBeInstanceOf(AuthzError);
+  });
+
+  it("refuses images above the pixel limit and counts every use before deleting", async () => {
+    const ba = await actorFor("business_admin");
+    const category = await newCategory(ba);
+    const { productId } = await newProduct(ba, category);
+    // 8000 × 6000 = 48 MP, a small file that would decode to ~144 MB.
+    const bomb = await sharp({ create: { width: 8000, height: 6000, channels: 3, background: "#000" } }).png({ compressionLevel: 9 }).toBuffer();
+    expect(bomb.length).toBeLessThan(2_000_000);
+    expect(await addProductImage(ba, productId, { name: "bomb.png", bytes: new Uint8Array(bomb) }, noAlt)).toEqual({ status: "invalid", field: "image_type" });
+
+    // An image still referenced elsewhere (here a category) is not deleted when one use goes away.
+    const added = await addProductImage(ba, productId, await file(), noAlt);
+    if (added.status !== "ok") throw new Error(added.status);
+    const [{ media_id: mediaId }] = (await q<{ media_id: string }>("SELECT media_id FROM product_images WHERE id = $1", [added.id])) as [{ media_id: string }];
+    await q("UPDATE categories SET image_media_id = $1 WHERE id = $2", [mediaId, category]);
+    expect(await removeProductImage(ba, productId, added.id)).toMatchObject({ status: "ok" });
+    const key = (await imageRenditions(mediaId))[0]!.key;
+    expect(await openPublicImage(key)).not.toBeNull();
+    expect(await setCategoryImage(ba, category, null)).toEqual({ status: "ok" });
+    expect(await openPublicImage(key)).toBeNull();
+  });
+
+  it("brand logos and category pictures can be set, replaced and removed", async () => {
+    const ba = await actorFor("business_admin");
+    const brand = await createBrand(ba, { ...names("برند"), isGenuine: false, isActive: true, sortOrder: "0" });
+    if (brand.status !== "ok") throw new Error(brand.status);
+    const logo = async () => (await q<{ logo_media_id: string | null }>("SELECT logo_media_id FROM brands WHERE id = $1", [brand.id]))[0]!.logo_media_id;
+
+    expect(await setBrandLogo(ba, brand.id, await file())).toEqual({ status: "ok" });
+    const firstMedia = (await logo())!;
+    const firstKey = (await imageRenditions(firstMedia))[0]!.key;
+    expect(await openPublicImage(firstKey)).not.toBeNull();
+    expect(await setBrandLogo(ba, brand.id, await file(600, 600))).toEqual({ status: "ok" });
+    expect(await logo()).not.toBe(firstMedia);
+    // The replaced logo's files are gone.
+    expect(await openPublicImage(firstKey)).toBeNull();
+    expect(await setBrandLogo(ba, brand.id, null)).toEqual({ status: "ok" });
+    expect(await logo()).toBeNull();
+
+    const category = await newCategory(ba);
+    const other = await newCategory(ba);
+    const staff = await actorFor("store_staff", [category]);
+    // Store Staff may picture their categories, but not brands (a brand has no category) or other categories.
+    expect(await setCategoryImage(staff, category, await file())).toEqual({ status: "ok" });
+    await expect(setCategoryImage(staff, other, await file())).rejects.toBeInstanceOf(AuthzError);
+    await expect(setBrandLogo(staff, brand.id, await file())).rejects.toBeInstanceOf(AuthzError);
+    // ...nor remove them.
+    expect(await setBrandLogo(ba, brand.id, await file())).toEqual({ status: "ok" });
+    await expect(setBrandLogo(staff, brand.id, null)).rejects.toBeInstanceOf(AuthzError);
+    expect(await logo()).not.toBeNull();
+    expect(await setCategoryImage(ba, other, await file())).toEqual({ status: "ok" });
+    await expect(setCategoryImage(staff, other, null)).rejects.toBeInstanceOf(AuthzError);
+    expect(await setCategoryImage(ba, category, { name: "x", bytes: new TextEncoder().encode("not an image at all") })).toEqual({ status: "invalid", field: "image_type" });
+    const actions = (await q<{ action: string }>("SELECT action FROM audit_logs WHERE entity_id = $1 ORDER BY seq", [brand.id])).map((a) => a.action);
+    expect(actions.filter((a) => a === "brand.logo_changed").length).toBe(4);
   });
 });

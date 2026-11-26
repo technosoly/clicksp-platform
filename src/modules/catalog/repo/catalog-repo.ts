@@ -106,6 +106,7 @@ export async function getCategory(client: DbClient, id: string) {
       isVehicleSystem: true,
       isActive: true,
       sortOrder: true,
+      imageMediaId: true,
       translations: { select: { locale: true, name: true, slug: true } },
     },
   });
@@ -201,7 +202,7 @@ export async function listBrands(client: DbClient): Promise<BrandRow[]> {
 export async function getBrand(client: DbClient, id: string) {
   const row = await client.brand.findFirst({
     where: { id, deletedAt: null },
-    select: { id: true, isGenuine: true, isActive: true, sortOrder: true, translations: { select: { locale: true, name: true, slug: true } } },
+    select: { id: true, isGenuine: true, isActive: true, sortOrder: true, logoMediaId: true, translations: { select: { locale: true, name: true, slug: true } } },
   });
   return row ? { ...row, names: namesOf(row.translations) } : null;
 }
@@ -657,4 +658,106 @@ export async function finishApprovalRow(tx: Tx, approvalId: string, outcome: { s
     where: { id: approvalId },
     data: { status: outcome.status, executedAt: outcome.status === "executed" ? outcome.at : null, error: outcome.error },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Product images
+// ---------------------------------------------------------------------------
+
+export interface ImageAlt {
+  fa: string;
+  en?: string;
+}
+
+export async function listProductImages(client: DbClient, productId: string) {
+  const rows = await client.productImage.findMany({
+    where: { productId },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, mediaId: true, alt: true, isPrimary: true, sortOrder: true, variantId: true },
+  });
+  return rows.map((r) => ({ ...r, alt: r.alt as unknown as ImageAlt }));
+}
+
+export async function getProductImage(client: DbClient, productId: string, imageId: string) {
+  const row = await client.productImage.findFirst({
+    where: { id: imageId, productId },
+    select: { id: true, mediaId: true, alt: true, isPrimary: true, sortOrder: true },
+  });
+  return row ? { ...row, alt: row.alt as unknown as ImageAlt } : null;
+}
+
+/** Adds an image at the end; the first image of a product becomes its main one. */
+export async function insertProductImage(tx: Tx, productId: string, mediaId: string, alt: ImageAlt): Promise<string> {
+  // Serialize additions for this product so order and the main image stay consistent.
+  await tx.$queryRaw`SELECT id FROM products WHERE id = ${productId}::uuid FOR UPDATE`;
+  const agg = await tx.productImage.aggregate({ where: { productId }, _max: { sortOrder: true }, _count: { _all: true } });
+  const row = await tx.productImage.create({
+    data: {
+      productId,
+      mediaId,
+      alt: alt as unknown as Prisma.InputJsonValue,
+      isPrimary: agg._count._all === 0,
+      sortOrder: (agg._max.sortOrder ?? -1) + 1,
+    },
+    select: { id: true },
+  });
+  return row.id;
+}
+
+export async function updateProductImageAlt(tx: Tx, imageId: string, alt: ImageAlt): Promise<void> {
+  await tx.productImage.update({ where: { id: imageId }, data: { alt: alt as unknown as Prisma.InputJsonValue } });
+}
+
+export async function setPrimaryProductImage(tx: Tx, productId: string, imageId: string): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM products WHERE id = ${productId}::uuid FOR UPDATE`;
+  await tx.productImage.updateMany({ where: { productId, isPrimary: true }, data: { isPrimary: false } });
+  await tx.productImage.update({ where: { id: imageId }, data: { isPrimary: true } });
+}
+
+/** Swaps an image with its neighbour in display order. Returns false at either end. */
+export async function moveProductImage(tx: Tx, productId: string, imageId: string, direction: "up" | "down"): Promise<boolean> {
+  await tx.$queryRaw`SELECT id FROM products WHERE id = ${productId}::uuid FOR UPDATE`;
+  const rows = await tx.productImage.findMany({
+    where: { productId },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true },
+  });
+  const index = rows.findIndex((r) => r.id === imageId);
+  const other = direction === "up" ? index - 1 : index + 1;
+  if (index < 0 || other < 0 || other >= rows.length) return false;
+  [rows[index], rows[other]] = [rows[other]!, rows[index]!];
+  // Renumber 0..n so the order is always well defined.
+  for (const [i, r] of rows.entries()) await tx.productImage.update({ where: { id: r.id }, data: { sortOrder: i } });
+  return true;
+}
+
+/** Removes an image; when it was the main one, the next image takes over. */
+export async function deleteProductImage(tx: Tx, productId: string, imageId: string): Promise<string | null> {
+  await tx.$queryRaw`SELECT id FROM products WHERE id = ${productId}::uuid FOR UPDATE`;
+  const row = await tx.productImage.findFirst({ where: { id: imageId, productId }, select: { mediaId: true, isPrimary: true } });
+  if (!row) return null;
+  await tx.productImage.delete({ where: { id: imageId } });
+  if (row.isPrimary) {
+    const next = await tx.productImage.findFirst({ where: { productId }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true } });
+    if (next) await tx.productImage.update({ where: { id: next.id }, data: { isPrimary: true } });
+  }
+  return row.mediaId;
+}
+
+// ---------------------------------------------------------------------------
+// Brand logos and category pictures
+// ---------------------------------------------------------------------------
+
+/** Sets (or clears) a brand's logo; returns the previous media id. */
+export async function setBrandLogoRow(tx: Tx, brandId: string, mediaId: string | null): Promise<string | null> {
+  const [row] = await tx.$queryRaw<{ logo_media_id: string | null }[]>`SELECT logo_media_id FROM brands WHERE id = ${brandId}::uuid FOR UPDATE`;
+  await tx.brand.update({ where: { id: brandId }, data: { logoMediaId: mediaId } });
+  return row?.logo_media_id ?? null;
+}
+
+/** Sets (or clears) a category's picture; returns the previous media id. */
+export async function setCategoryImageRow(tx: Tx, categoryId: string, mediaId: string | null): Promise<string | null> {
+  const [row] = await tx.$queryRaw<{ image_media_id: string | null }[]>`SELECT image_media_id FROM categories WHERE id = ${categoryId}::uuid FOR UPDATE`;
+  await tx.category.update({ where: { id: categoryId }, data: { imageMediaId: mediaId } });
+  return row?.image_media_id ?? null;
 }

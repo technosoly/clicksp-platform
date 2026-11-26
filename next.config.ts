@@ -25,10 +25,17 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // forbidden() and forbidden.tsx: admin pages answer 403 to a typed URL the
   // admin has no permission for (Next.js 16, still marked experimental).
-  experimental: { authInterrupts: true },
+  experimental: {
+    authInterrupts: true,
+    // Product photos are uploaded through Server Actions: 10 MB per image
+    // (MAX_IMAGE_BYTES) plus multipart overhead. Both limits must allow it.
+    serverActions: { bodySizeLimit: "11mb" },
+    proxyClientMaxBodySize: "11mb",
+  },
   images: {
     formats: ["image/avif", "image/webp"],
-    // Remote product images will come from our own S3-compatible storage only.
+    // Product images are served by app/media from our own storage, already
+    // resized to several widths, so next/image optimization isn't used for them.
     remotePatterns: [],
   },
   async headers() {
