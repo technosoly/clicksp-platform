@@ -25,6 +25,12 @@ Implemented so far:
 | `src/modules/accounting/domain/journal.ts` | Pure double-entry balance and reversal rules |
 | `src/modules/rbac/domain/permission-catalogue.ts` | Permission keys, level ceilings and default bundles of the three admin levels |
 | `src/modules/settings/domain/default-settings.ts` | Required settings with safe defaults |
+| `src/modules/identity` | Admin password + TOTP sign-in, customer SMS-code sign-in, sessions, SMS adapter, cookie and guard glue (`api/`) |
+| `src/modules/rbac/service/authorize.ts` | The `authorize()` gate every service calls; pure decision logic in `rbac/domain/authorize.ts` |
+| `src/modules/audit` | Audit log and security event writers (secrets redacted) |
+| `src/lib/security` | Random tokens, Argon2id, TOTP, AES-256-GCM |
+| `app/[locale]/admin` | Admin sign-in, two-factor steps and the admin panel shell |
+| `scripts/admin-create-super.ts` | First Super Admin CLI |
 | `prisma/schema/` | Full database schema (137 tables), one file per area; see [DATABASE.md](DATABASE.md) and [ERD.md](ERD.md) |
 | `prisma/migrations/` | Generated schema migration plus hand-written SQL for constraints and triggers |
 | `prisma/seed.ts` | Idempotent system seed (locales, IRR, permissions, roles, settings; no business data) |
@@ -33,7 +39,7 @@ Implemented so far:
 
 | Decision | Why |
 |---|---|
-| Next.js 16 App Router, Server Components first | Small client bundles for slow mobile networks; the only client component today is the language switcher. |
+| Next.js 16 App Router, Server Components first | Small client bundles for slow mobile networks; client components are only the language switcher and the sign-in forms. |
 | Pages are statically generated per locale | `setRequestLocale` in every layout/page lets `/fa` and `/en` prerender (verified in the build output). |
 | next-intl with `localePrefix: "always"`, `localeDetection: false` | Every URL carries its language (clean hreflang and caching). `/` always opens Persian, the store's default, regardless of browser language. |
 | TypeScript 6.0 rather than 7.0 | TypeScript 7 (native compiler) is newer than the support range of typescript-eslint and Next.js tooling at the time of writing. |
@@ -46,7 +52,9 @@ Implemented so far:
 | System seed with node-postgres, not the Prisma client | Runs under plain Node (type stripping) in the migrate container; never overwrites admin changes. |
 | Vazirmatn self-hosted via `@fontsource-variable/vazirmatn` | Fonts are bundled into the build with unicode-range subsets; no Google Fonts (unreliable from Iran). |
 | Tailwind CSS 4 with CSS-variable tokens | Brand palette from the logo (orange `#DE803C`, charcoal `#272A2D`, cream `#F4F1D4`) in one place; shadcn/ui reads the same token names. Layout uses logical properties (`ms-`, `start-`) for RTL/LTR. |
-| Security headers in `next.config.ts` | `nosniff`, `X-Frame-Options: DENY`, referrer and permissions policies, HSTS. A nonce-based CSP comes with Phase 4. |
+| Security headers in `next.config.ts` | `nosniff`, `X-Frame-Options: DENY`, referrer and permissions policies, HSTS. A nonce-based CSP for the (dynamic) admin and account routes is planned for Phase 5. |
+| Own authentication code, rate limits in PostgreSQL | Hashed tokens and codes, separate admin/customer realms and audit-in-transaction fit the Phase 3 schema better than adapting Better Auth. See [ADR 0002](adr/0002-own-authentication.md). |
+| Sign-in through Server Actions | Same-origin checks by Next.js (CSRF), no client-side token handling, works with JS disabled-ish forms; admin pages render per request (`force-dynamic`), storefront pages stay static. |
 | `robots.txt` disallows everything | The store is not open; Phase 6b ships the real robots rules and sitemap. |
 
 ## Not implemented yet
