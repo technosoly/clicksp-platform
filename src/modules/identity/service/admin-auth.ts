@@ -13,7 +13,7 @@ import type { Actor } from "@/modules/rbac/domain/actor";
 import type { EffectivePermissions } from "@/modules/rbac/domain/authorize";
 import { loadEffectivePermissions } from "@/modules/rbac/service/authorize";
 import { getSecurityPolicy } from "@/modules/settings/service/security-policy";
-import { isMfaRequired, MFA, type SecurityPolicy } from "../domain/policy";
+import { ACCOUNT_LOGIN_HARD_LIMIT, isMfaRequired, MFA, type SecurityPolicy } from "../domain/policy";
 import {
   adminLevel,
   completeMfaEnrolment,
@@ -23,7 +23,8 @@ import {
   getMfa,
   getUserSummary,
   recordLoginAttempt,
-  recordMfaFailure,
+  lockMfa,
+  reserveMfaAttempt,
   recordMfaSuccess,
   revokeSession,
   savePendingMfa,
@@ -116,15 +117,30 @@ export async function adminPasswordLogin(
   const policy = await getSecurityPolicy();
   const since = new Date(now.getTime() - policy.loginWindowMinutes * 60_000);
 
-  const [byAccount, byIp] = await Promise.all([
+  // Limits (requests without a valid client IP share one "unknown" bucket, so
+  // a missing or spoofed header never switches a limit off):
+  // - per account AND IP: stops guessing without letting a stranger lock the
+  //   owner out from their own address;
+  // - per IP: stops spraying many accounts;
+  // - per account from anywhere, a high hard limit against distributed guessing.
+  const [byAccountIp, byIp, byAccount] = await Promise.all([
+    countFailedLogins(db(), { identifier, ipAddress: meta.ipAddress, since }),
+    countFailedLogins(db(), { ipAddress: meta.ipAddress, since }),
     countFailedLogins(db(), { identifier, since }),
-    meta.ipAddress ? countFailedLogins(db(), { ipAddress: meta.ipAddress, since }) : Promise.resolve(0),
   ]);
-  if (byAccount >= policy.loginMaxPerAccount || byIp >= policy.loginMaxPerIp) {
+  const scope =
+    byAccountIp >= policy.loginMaxPerAccount
+      ? "account_ip"
+      : byIp >= policy.loginMaxPerIp
+        ? "ip"
+        : byAccount >= ACCOUNT_LOGIN_HARD_LIMIT
+          ? "account"
+          : null;
+  if (scope) {
     await recordSecurityEvent(meta, {
       type: "login.rate_limited",
-      severity: "warning",
-      details: { scope: byAccount >= policy.loginMaxPerAccount ? "account" : "ip", identifier },
+      severity: scope === "account" ? "critical" : "warning",
+      details: { scope, identifier },
     });
     return { status: "rate_limited" };
   }
@@ -215,7 +231,9 @@ export async function verifyAdminMfa(ctx: AdminContext, code: string, meta: Requ
   const userId = ctx.session.userId;
   const mfa = await getMfa(db(), userId);
   if (!mfa || !mfa.isVerified) return { status: "not_allowed" };
-  if (mfa.lockedUntil && mfa.lockedUntil > now) {
+  // Reserve the attempt first (atomic), so parallel guesses can't exceed the limit.
+  const attempt = await reserveMfaAttempt(db(), userId, MFA.maxFailures, now);
+  if (attempt === null) {
     await recordSecurityEvent(meta, { type: "mfa.locked_attempt", userId });
     return { status: "locked" };
   }
@@ -236,7 +254,8 @@ export async function verifyAdminMfa(ctx: AdminContext, code: string, meta: Requ
   }
 
   if (!ok) {
-    const { locked } = await recordMfaFailure(db(), userId, MFA.maxFailures, new Date(now.getTime() + MFA.lockMinutes * 60_000));
+    const locked = attempt >= MFA.maxFailures;
+    if (locked) await lockMfa(db(), userId, new Date(now.getTime() + MFA.lockMinutes * 60_000));
     await recordSecurityEvent(meta, {
       type: locked ? "mfa.locked" : "mfa.failed",
       severity: locked ? "critical" : "warning",
@@ -280,7 +299,7 @@ export async function startMfaEnrolment(ctx: AdminContext): Promise<MfaEnrolment
   const user = await getUserSummary(db(), ctx.session.userId);
   if (!user) return null;
   const secret = generateTotpSecret();
-  await savePendingMfa(db(), user.id, encryptString(totpKey(), secret, user.id));
+  if (!(await savePendingMfa(db(), user.id, encryptString(totpKey(), secret, user.id)))) return null;
   return { secret, uri: totpUri(secret, user.username ?? user.email ?? "admin", ISSUER) };
 }
 
@@ -326,7 +345,8 @@ export async function confirmMfaEnrolment(
   // 8 characters from a 32-letter alphabet (40 bits); 50 bits would need longer codes.
   const backupCodes = Array.from({ length: MFA.backupCodeCount }, newBackupCode);
   const session = await transaction(async (tx) => {
-    await completeMfaEnrolment(tx, userId, backupCodes.map((c) => sha256Hex(c)), new Date(step * TOTP_STEP_SECONDS * 1000));
+    const completed = await completeMfaEnrolment(tx, userId, backupCodes.map((c) => sha256Hex(c)), new Date(step * TOTP_STEP_SECONDS * 1000));
+    if (!completed) return null;
     await revokeSession(tx, ctx.session.sessionId, "rotated_after_mfa", now);
     const issued = await issueSession(tx, { userId, kind: "admin", mfaVerifiedAt: now, mfaPending: false, meta, policy: ctx.policy, now });
     await setLastLogin(tx, userId, now);
@@ -334,6 +354,7 @@ export async function confirmMfaEnrolment(
     await recordAudit(tx, meta, { actorUserId: userId, action: "auth.admin_login", entityType: "session", entityId: issued.sessionId, after: { mfa: "totp" } });
     return issued;
   });
+  if (!session) return { status: "not_allowed" };
   return {
     status: "ok",
     session,

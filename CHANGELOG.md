@@ -13,7 +13,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - `authorize(actor, permission, resource)`: deny-by-default permission engine with category/warehouse scopes, step-up two-factor for sensitive permissions, and a security event for every denial.
 - Rate limits for admin sign-in, two-factor codes and SMS codes; login attempts, security events and audit log rows for sign-in, sign-out, enrolment and registration.
 - `src/lib/security` (tokens, Argon2id, TOTP, AES-256-GCM), `src/lib/http` (client IP and request id), `AUTH_SECRET` setting.
-- Tests: 63 new unit tests, 33 new integration tests on PostgreSQL (including every permission × every admin level), 10 new E2E tests (desktop and mobile).
+- Tests: unit (117 in total), integration on PostgreSQL (120 in total, including every permission × every admin level, parallel two-factor guessing and enrolment races), E2E (26 in total, desktop and mobile).
+- Fixes from the independent security review: one trusted client-IP header with a shared bucket for unknown IPs, atomic two-factor attempt reservation, per-IP and global SMS-code limits, per-account-and-IP login limits, `__Host-` Secure cookies in production, conditional enrolment, previous session revoked at sign-in, CLI refuses when any Super Admin exists, AES-GCM tag length pinned.
 - ADR 0002: own authentication code instead of Better Auth; login and SMS rate limits counted in PostgreSQL.
 
 ### Fixed (Phase 4)
@@ -21,7 +22,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed (Phase 4)
 - Store header has a "My account" link.
-- Two integration tests (audit chain, system roles) no longer assume the database holds only their own rows.
+- Three integration tests (audit chain, system roles, movement ledger order) no longer assume the database holds only their own rows or that rows written in the same millisecond are ordered.
 
 ### Added (Phase 3: database)
 - Full PostgreSQL schema in `prisma/schema/` (137 tables, one file per area): identity, RBAC and audit; catalog (products, variants, prices, attributes, images, documents, OEM and part-number identifiers, relations); motorcycle catalog (manufacturer, make, model, generation, variant, specifications) and verifiable fitment with sources; multi-warehouse inventory; carts, wishlists, orders, returns, refunds, coupons, invoices; payments; double-entry accounting and reconciliation; shipping; content and page builder; system settings, SEO, feature flags, releases and deployments, jobs, imports and exports, outbox, idempotency keys, notifications.

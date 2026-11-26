@@ -36,6 +36,8 @@ export async function adminLoginAction(_prev: FormState, form: FormData): Promis
     const result = await adminPasswordLogin(parsed.data, await currentRequestMeta());
     if (result.status === "rate_limited") return { error: "rate_limited" };
     if (result.status === "invalid") return { error: "invalid_credentials" };
+    // A new sign-in in this browser ends the previous admin session, if any.
+    await endSession(await readSessionToken("admin"), "admin");
     await setSessionCookie("admin", result.session);
     next = result.next === "challenge" ? "/admin/mfa" : result.next === "setup" ? "/admin/mfa/setup" : "/admin";
   } catch (error) {

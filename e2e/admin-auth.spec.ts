@@ -78,7 +78,7 @@ test.describe("admin sign-in", () => {
     await expect(page).toHaveURL(/\/en\/admin$/);
     await expect(page.getByTestId("admin-role")).toHaveText("Business Admin");
     await expect(page.getByTestId("admin-mfa-status")).toHaveText("On");
-    const cookie = (await context.cookies()).find((c) => c.name === "clicksp_admin");
+    const cookie = (await context.cookies()).find((c) => c.name.endsWith("clicksp_admin"));
     expect(cookie?.httpOnly).toBe(true);
     expect(cookie?.sameSite).toBe("Strict");
 

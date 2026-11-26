@@ -20,7 +20,8 @@ Object storage is not in the stack yet. The community MinIO images are no longer
 
 - `AUTH_SECRET` (required in production, at least 32 characters): encrypts TOTP secrets and keys SMS-code hashes. Keep it in the server's secret store, back it up with the database, and do not rotate it casually: a new value makes existing two-factor enrolments unreadable (admins must enrol again).
 - `SMS_PROVIDER`: `none` until a real provider adapter exists. `console` is refused in production.
-- The reverse proxy must set `X-Real-IP` (or `X-Forwarded-For`) to the client address and strip any value sent by the client; the app uses it for per-IP rate limits and security logs.
+- `TRUSTED_IP_HEADER` (`x-real-ip` default, or `x-forwarded-for`): the reverse proxy must **overwrite** that header with the client address (nginx: `proxy_set_header X-Real-IP $remote_addr;`). With `x-forwarded-for` the app uses the last entry, which the proxy appends. The app uses it for per-IP rate limits and security logs.
+- Session cookies are `Secure` with the `__Host-` prefix in production builds, so the site must be served over HTTPS (local `http://localhost` works in Chrome and Firefox).
 - First Super Admin: `docker compose --profile app run --rm migrate pnpm admin:create-super` (or `pnpm admin:create-super` on a checkout with `DATABASE_URL`). There is no web sign-up for admins.
 
 ## Endpoints for monitoring

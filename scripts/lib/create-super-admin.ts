@@ -64,11 +64,9 @@ export async function insertFirstSuperAdmin(
   const role = await db.query<{ id: string }>("SELECT id FROM roles WHERE key = 'super_admin' AND level = 1");
   const roleId = role.rows[0]?.id;
   if (!roleId) return { ok: false, error: "roles_not_seeded" };
-  const existing = await db.query(
-    `SELECT 1 FROM user_roles ur JOIN users u ON u.id = ur.user_id
-      WHERE ur.role_id = $1 AND u.status = 'active' LIMIT 1`,
-    [roleId],
-  );
+  // Any Super Admin assignment counts, also of a disabled or locked user: the
+  // CLI is for an empty system only, never a way around a disabled account.
+  const existing = await db.query(`SELECT 1 FROM user_roles WHERE role_id = $1 LIMIT 1`, [roleId]);
   if (existing.rowCount) return { ok: false, error: "super_admin_exists" };
   const taken = await db.query("SELECT 1 FROM users WHERE username = $1 OR (email IS NOT NULL AND email = $2)", [
     username,

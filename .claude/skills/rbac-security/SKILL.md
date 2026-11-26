@@ -43,7 +43,7 @@ Deny-by-default, server-enforced, permission-based authorization with resource s
 - Customers: mobile number + SMS OTP through the SMS adapter (`src/modules/identity/sms`; provider pluggable; the `console` provider is for development only and is refused when `NODE_ENV` or `APP_ENV` is production).
 - Sessions: opaque random token in `HttpOnly; Secure; SameSite=Lax; Path=/` cookie; stored hashed in `sessions`; admin cookie name differs from customer cookie. Idle timeout 30 min / absolute 12 h for admins; rotate on login and privilege change; revoke on password reset and on role change.
 - Password reset: single-use token, stored hashed, 30-minute expiry, same response whether the account exists or not.
-- Rate limits (counted in PostgreSQL from `login_attempts`, `verification_tokens` and `security_events`, ADR 0002): login 5 failures/15 min per account and 20/15 min per IP; OTP send 3/10 min per phone and 10/10 min per IP; 5 tries per OTP code; TOTP locks for 15 min after 5 wrong codes. Exceeding writes `security_events`.
+- Rate limits (counted in PostgreSQL from `login_attempts`, `verification_tokens` and `security_events`, ADR 0002): login 5 failures/15 min per account+IP, 20 per IP, 50 per account overall; OTP send 3/10 min and 10/day per phone, 10/10 min per IP, 300/10 min globally; 5 tries per OTP code and 20 wrong codes/10 min per IP; TOTP locks for 15 min after 5 wrong codes (attempts reserved atomically). Missing/invalid client IP = one shared bucket, never "no limit". Exceeding writes `security_events`.
 - Implementation (ADR 0002): own code in `src/modules/identity` on `node:crypto` + Argon2id; no Better Auth.
 - First Super Admin is created by a server CLI command (`pnpm admin:create-super`), never by a web form.
 

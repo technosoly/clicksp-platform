@@ -111,7 +111,8 @@ export async function recordLoginAttempt(
 
 export async function countFailedLogins(
   client: DbClient,
-  filter: { identifier?: string; ipAddress?: string; since: Date },
+  /** ipAddress null = the shared bucket of requests without a valid client IP. */
+  filter: { identifier?: string; ipAddress?: string | null; failureReason?: string; since: Date },
 ): Promise<number> {
   return client.loginAttempt.count({
     where: {
@@ -119,6 +120,7 @@ export async function countFailedLogins(
       createdAt: { gte: filter.since },
       ...(filter.identifier !== undefined ? { identifier: filter.identifier } : {}),
       ...(filter.ipAddress !== undefined ? { ipAddress: filter.ipAddress } : {}),
+      ...(filter.failureReason !== undefined ? { failureReason: filter.failureReason } : {}),
     },
   });
 }
@@ -207,13 +209,19 @@ export async function getMfa(client: DbClient, userId: string) {
   return client.userMfa.findUnique({ where: { userId } });
 }
 
-/** Starts (or restarts) TOTP enrolment with a new, not yet verified secret. */
-export async function savePendingMfa(client: DbClient, userId: string, secretEncrypted: string): Promise<void> {
-  await client.userMfa.upsert({
-    where: { userId },
-    create: { userId, secretEncrypted, backupCodeHashes: [], isVerified: false },
-    update: { secretEncrypted, backupCodeHashes: [], isVerified: false, failedVerificationCount: 0, lockedUntil: null },
-  });
+/**
+ * Starts (or restarts) TOTP enrolment with a new, not yet verified secret.
+ * Never touches a verified enrolment; false in that case.
+ */
+export async function savePendingMfa(client: DbClient, userId: string, secretEncrypted: string): Promise<boolean> {
+  const count = await client.$executeRaw`
+    INSERT INTO user_mfa (user_id, secret_encrypted, backup_code_hashes, is_verified)
+    VALUES (${userId}::uuid, ${secretEncrypted}, '{}', false)
+    ON CONFLICT (user_id) DO UPDATE
+       SET secret_encrypted = EXCLUDED.secret_encrypted, backup_code_hashes = '{}',
+           failed_verification_count = 0, locked_until = NULL, updated_at = now()
+     WHERE user_mfa.is_verified = false`;
+  return count === 1;
 }
 
 export async function completeMfaEnrolment(
@@ -221,31 +229,37 @@ export async function completeMfaEnrolment(
   userId: string,
   backupCodeHashes: string[],
   usedAt: Date,
-): Promise<void> {
-  await client.userMfa.update({
-    where: { userId },
+): Promise<boolean> {
+  // Conditional: of two concurrent confirmations only one completes.
+  const result = await client.userMfa.updateMany({
+    where: { userId, isVerified: false },
     data: { isVerified: true, backupCodeHashes, failedVerificationCount: 0, lockedUntil: null, lastUsedAt: usedAt },
   });
+  if (result.count !== 1) return false;
   await client.user.update({ where: { id: userId }, data: { twoFactorEnabled: true } });
+  return true;
 }
 
-/** Counts a failed code; locks MFA for lockMinutes once maxFailures is reached. */
-export async function recordMfaFailure(
-  client: DbClient,
-  userId: string,
-  maxFailures: number,
-  lockUntil: Date,
-): Promise<{ locked: boolean }> {
-  const mfa = await client.userMfa.update({
-    where: { userId },
-    data: { failedVerificationCount: { increment: 1 } },
-    select: { failedVerificationCount: true },
-  });
-  if (mfa.failedVerificationCount >= maxFailures) {
-    await client.userMfa.update({ where: { userId }, data: { lockedUntil: lockUntil, failedVerificationCount: 0 } });
-    return { locked: true };
-  }
-  return { locked: false };
+/**
+ * Reserves one code attempt atomically BEFORE the code is checked, so
+ * concurrent requests can never get more than maxFailures guesses per lock
+ * period. Returns the attempt number, or null when locked / used up.
+ * A success resets the counter (recordMfaSuccess, consumeBackupCode).
+ */
+export async function reserveMfaAttempt(client: DbClient, userId: string, maxFailures: number, now: Date): Promise<number | null> {
+  const rows = await client.$queryRaw<{ n: number }[]>`
+    UPDATE user_mfa
+       SET failed_verification_count = failed_verification_count + 1, updated_at = ${now}
+     WHERE user_id = ${userId}::uuid
+       AND (locked_until IS NULL OR locked_until <= ${now})
+       AND failed_verification_count < ${maxFailures}
+    RETURNING failed_verification_count AS n`;
+  return rows[0]?.n ?? null;
+}
+
+/** Locks TOTP until lockUntil and starts a fresh attempt count for afterwards. */
+export async function lockMfa(client: DbClient, userId: string, lockUntil: Date): Promise<void> {
+  await client.userMfa.update({ where: { userId }, data: { lockedUntil: lockUntil, failedVerificationCount: 0 } });
 }
 
 /**
@@ -320,11 +334,16 @@ export async function consumeVerificationToken(client: DbClient, tokenId: string
   return result.count === 1;
 }
 
+/** identifier omitted = every number (global send cap). */
 export async function countVerificationTokens(
   client: DbClient,
-  filter: { purpose: "phone_otp"; identifier: string; since: Date },
+  filter: { purpose: "phone_otp"; identifier?: string; since: Date },
 ): Promise<number> {
   return client.verificationToken.count({
-    where: { purpose: filter.purpose, identifier: filter.identifier, createdAt: { gte: filter.since } },
+    where: {
+      purpose: filter.purpose,
+      createdAt: { gte: filter.since },
+      ...(filter.identifier !== undefined ? { identifier: filter.identifier } : {}),
+    },
   });
 }

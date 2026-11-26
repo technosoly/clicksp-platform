@@ -59,7 +59,9 @@ describe("inventory ledger", () => {
         "SELECT type, on_hand_after, actor_user_id FROM inventory_movements WHERE variant_id = $1 ORDER BY occurred_at, id",
         [p.variantId],
       );
-      expect(ledger.rows.map((r) => r.on_hand_after)).toEqual(steps.map((s) => s[2]));
+      // Rows written in the same millisecond have no defined UUIDv7 order, so
+      // match each movement (one per type) to its recorded balance.
+      expect(new Map(ledger.rows.map((r) => [r.type, r.on_hand_after]))).toEqual(new Map(steps.map((s) => [s[0], s[2]])));
       expect(new Set(ledger.rows.map((r) => r.actor_user_id))).toEqual(new Set([user]));
     });
   });

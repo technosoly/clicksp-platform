@@ -59,6 +59,7 @@ async function verifyOtp(prev: OtpFormState, form: FormData): Promise<OtpFormSta
       }
       return { step: "code", phone: phone.data, error: result.status };
     }
+    await endSession(await readSessionToken("customer"), "customer");
     await setSessionCookie("customer", result.session);
   } catch (error) {
     logger.error("OTP verification failed", { error: String(error) });

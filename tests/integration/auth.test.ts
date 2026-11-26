@@ -177,15 +177,35 @@ describe("admin password sign-in", () => {
     expect((await adminPasswordLogin({ identifier: customer.username, password: PASSWORD }, freshMeta())).status).toBe("invalid");
   });
 
-  it("rate-limits an account after 5 failures, even with the right password", async () => {
+  it("rate-limits an account from one address after 5 failures, without locking the owner out elsewhere", async () => {
     const admin = await createAdmin("business_admin");
+    const attacker = freshMeta();
     for (let i = 0; i < 5; i += 1) {
-      await adminPasswordLogin({ identifier: admin.username, password: `wrong-${i}-password` }, freshMeta());
+      await adminPasswordLogin({ identifier: admin.username, password: `wrong-${i}-password` }, attacker);
     }
-    expect(await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, freshMeta())).toEqual({ status: "rate_limited" });
+    expect(await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, attacker)).toEqual({ status: "rate_limited" });
+    expect((await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, freshMeta())).status).toBe("ok");
     await one(pool as never, "SELECT 1 FROM security_events WHERE type = 'login.rate_limited' AND details->>'identifier' = $1 LIMIT 1", [
       admin.username,
     ]);
+  });
+
+  it("rate-limits an account after 50 failures from many addresses", async () => {
+    const admin = await createAdmin("business_admin");
+    for (let i = 0; i < 50; i += 1) {
+      await adminPasswordLogin({ identifier: admin.username, password: `wrong-${i}-password` }, freshMeta());
+    }
+    expect(await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, freshMeta())).toEqual({ status: "rate_limited" });
+  });
+
+  it("puts requests without a valid client IP in one shared bucket instead of skipping the IP limit", async () => {
+    const noIp: RequestMeta = { ipAddress: null, userAgent: "vitest", requestId: null };
+    for (let i = 0; i < 20; i += 1) {
+      await adminPasswordLogin({ identifier: `test-noip-${i}-${uid()}`, password: "x" }, noIp);
+    }
+    const admin = await createAdmin(await viewerRoleKey());
+    expect(await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, noIp)).toEqual({ status: "rate_limited" });
+    expect((await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, freshMeta())).status).toBe("ok");
   });
 
   it("rate-limits an IP address after 20 failures across accounts", async () => {
@@ -294,6 +314,37 @@ describe("two-factor sign-in (TOTP)", () => {
     if (relogin.status !== "ok") throw new Error("login failed");
     const fresh = await context(relogin.session.token, afterLock);
     expect((await verifyAdminMfa(fresh, totp(admin.secret, afterLock.getTime()), admin.meta, afterLock)).status).toBe("ok");
+  });
+
+  it("never allows more than 5 guesses, even in parallel", async () => {
+    const now = new Date();
+    const admin = await enrolledAdmin("business_admin", now);
+    const later = new Date(now.getTime() + 60_000);
+    const login = await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, freshMeta(), later);
+    if (login.status !== "ok") throw new Error("login failed");
+    const pending = await context(login.session.token, later);
+    const results = await Promise.all(Array.from({ length: 15 }, () => verifyAdminMfa(pending, "111111", admin.meta, later)));
+    expect(results.filter((r) => r.status === "invalid").length).toBeLessThanOrEqual(4);
+    expect(results.filter((r) => r.status === "locked").length).toBeGreaterThanOrEqual(11);
+    const failures = await pool.query("SELECT count(*)::int AS n FROM security_events WHERE type IN ('mfa.failed', 'mfa.locked') AND user_id = $1", [
+      admin.userId,
+    ]);
+    expect(failures.rows[0].n).toBe(5);
+  });
+
+  it("completes an enrolment only once when confirmed twice in parallel", async () => {
+    const now = new Date();
+    const admin = await createAdmin("business_admin");
+    const meta = freshMeta();
+    const login = await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, meta, now);
+    if (login.status !== "ok") throw new Error("login failed");
+    const pending = await context(login.session.token, now);
+    const enrolment = await startMfaEnrolment(pending);
+    const code = totp(enrolment!.secret, now.getTime());
+    const results = await Promise.all([confirmMfaEnrolment(pending, code, meta, now), confirmMfaEnrolment(pending, code, meta, now)]);
+    expect(results.filter((r) => r.status === "ok")).toHaveLength(1);
+    // A verified enrolment is never replaced by a new pending secret.
+    expect(await startMfaEnrolment(pending)).toBeNull();
   });
 
   it("requires TOTP for Store Staff with pricing permissions, not for staff without money access", async () => {
@@ -470,6 +521,20 @@ describe("customer sign-in with mobile number and SMS code", () => {
     for (let i = 0; i < 11; i += 1) byIp.push((await requestPhoneOtp({ phone: phone(), renderText: render }, meta)).status);
     expect(byIp.filter((s) => s === "sent")).toHaveLength(10);
     expect(byIp[10]).toBe("rate_limited");
+  });
+
+  it("limits wrong codes per IP address across numbers", async () => {
+    const meta = freshMeta();
+    const statuses: string[] = [];
+    for (let n = 0; n < 5; n += 1) {
+      const number = phone();
+      await requestPhoneOtp({ phone: number, renderText: render }, freshMeta());
+      const code = codeFrom(outbox.at(-1));
+      const wrong = code === "000000" ? "111111" : "000000";
+      for (let i = 0; i < 5; i += 1) statuses.push((await verifyPhoneOtp({ phone: number, code: wrong }, meta)).status);
+    }
+    expect(statuses.slice(0, 20).every((s) => s === "invalid_code")).toBe(true);
+    expect(statuses.slice(20).every((s) => s === "rate_limited")).toBe(true);
   });
 
   it("refuses disabled customers", async () => {

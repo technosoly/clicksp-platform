@@ -34,6 +34,14 @@ export const DEFAULT_SECURITY_POLICY: SecurityPolicy = {
   loginWindowMinutes: 15,
 };
 
+/**
+ * Failed sign-ins for one account from all addresses together in the login
+ * window. High on purpose: the per-account-and-IP limit (5) stops guessing,
+ * this one stops guessing spread over many addresses, and stays high so a
+ * stranger can't cheaply lock the owner out.
+ */
+export const ACCOUNT_LOGIN_HARD_LIMIT = 50;
+
 /** A signed-in admin who still has to pass (or enrol) TOTP gets this long. */
 export const ADMIN_PENDING_MFA_MINUTES = 10;
 
@@ -52,6 +60,12 @@ export const OTP = {
   maxSendsPerPhone: 3,
   /** Sends per IP address in the window (one household, many phones). */
   maxSendsPerIp: 10,
+  /** Sends to all numbers together in the window (SMS cost and abuse cap). */
+  maxSendsGlobal: 300,
+  /** Sends per number per 24 hours. */
+  maxSendsPerPhonePerDay: 10,
+  /** Wrong codes per IP address in the window, across all numbers. */
+  maxFailedVerifiesPerIp: 20,
   windowMinutes: 10,
 } as const;
 

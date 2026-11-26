@@ -6,6 +6,7 @@ import type { RequestMeta } from "@/lib/http/request-meta";
 import { deriveKey } from "@/lib/security/encryption";
 import { hmacSha256Hex, randomNumericCode, safeEqual } from "@/lib/security/tokens";
 import { logger } from "@/lib/logger";
+import { toEnDigits } from "@/lib/persian-text";
 import { recordAudit, recordSecurityEvent } from "@/modules/audit/service/audit";
 import { countSecurityEvents } from "@/modules/audit/repo/audit-repo";
 import { getSecurityPolicy } from "@/modules/settings/service/security-policy";
@@ -13,6 +14,7 @@ import { maskPhone, normalizeIranianMobile } from "../domain/phone";
 import { OTP } from "../domain/policy";
 import {
   consumeVerificationToken,
+  countFailedLogins,
   countVerificationTokens,
   createCustomer,
   createVerificationToken,
@@ -80,16 +82,29 @@ export async function requestPhoneOtp(
   if (!sms.enabled) return { status: "unavailable" };
 
   const since = new Date(now.getTime() - OTP.windowMinutes * 60_000);
-  const [byPhone, byIp] = await Promise.all([
+  const day = new Date(now.getTime() - 24 * 60 * 60_000);
+  // Requests without a valid client IP share one "unknown" bucket (null).
+  const [byPhone, byPhoneDay, byIp, global] = await Promise.all([
     countVerificationTokens(db(), { purpose: "phone_otp", identifier: phone, since }),
-    meta.ipAddress
-      ? countSecurityEvents(db(), { type: "otp.requested", ipAddress: meta.ipAddress, since })
-      : Promise.resolve(0),
+    countVerificationTokens(db(), { purpose: "phone_otp", identifier: phone, since: day }),
+    countSecurityEvents(db(), { type: "otp.requested", ipAddress: meta.ipAddress, since }),
+    countVerificationTokens(db(), { purpose: "phone_otp", since }),
   ]);
-  if (byPhone >= OTP.maxSendsPerPhone || byIp >= OTP.maxSendsPerIp) {
+  const scope =
+    byPhone >= OTP.maxSendsPerPhone
+      ? "phone"
+      : byPhoneDay >= OTP.maxSendsPerPhonePerDay
+        ? "phone_day"
+        : byIp >= OTP.maxSendsPerIp
+          ? "ip"
+          : global >= OTP.maxSendsGlobal
+            ? "global"
+            : null;
+  if (scope) {
     await recordSecurityEvent(meta, {
       type: "otp.rate_limited",
-      details: { scope: byPhone >= OTP.maxSendsPerPhone ? "phone" : "ip", phone: maskPhone(phone) },
+      severity: scope === "global" ? "critical" : "warning",
+      details: { scope, phone: maskPhone(phone) },
     });
     return { status: "rate_limited" };
   }
@@ -124,6 +139,7 @@ export type OtpVerifyResult =
   | { status: "invalid_code" }
   | { status: "expired" }
   | { status: "too_many_attempts" }
+  | { status: "rate_limited" }
   | { status: "account_disabled" };
 
 export async function verifyPhoneOtp(
@@ -133,7 +149,13 @@ export async function verifyPhoneOtp(
 ): Promise<OtpVerifyResult> {
   const phone = normalizeIranianMobile(input.phone);
   if (!phone) return { status: "invalid_phone" };
-  const code = input.code.replace(/\s/g, "");
+  const code = toEnDigits(input.code).replace(/\s/g, "");
+  const since = new Date(now.getTime() - OTP.windowMinutes * 60_000);
+  const failedFromIp = await countFailedLogins(db(), { ipAddress: meta.ipAddress, failureReason: "invalid_code", since });
+  if (failedFromIp >= OTP.maxFailedVerifiesPerIp) {
+    await recordSecurityEvent(meta, { type: "otp.verify_rate_limited", details: { phone: maskPhone(phone) } });
+    return { status: "rate_limited" };
+  }
   const token = await latestVerificationToken(db(), "phone_otp", phone);
   if (!token || token.consumedAt || token.expiresAt <= now) return { status: "expired" };
   if (!(await spendVerificationAttempt(db(), token.id, OTP.maxAttempts))) {

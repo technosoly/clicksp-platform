@@ -27,6 +27,12 @@ export const serverEnvSchema = z.object({
    */
   AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters").optional(),
 
+  /**
+   * The one request header the reverse proxy sets to the client IP (used for
+   * rate limits and security logs). The proxy must overwrite it.
+   */
+  TRUSTED_IP_HEADER: z.enum(["x-real-ip", "x-forwarded-for"]).default("x-real-ip"),
+
   REDIS_URL: z.string().optional(),
 
   MEILISEARCH_HOST: z.url().optional(),
