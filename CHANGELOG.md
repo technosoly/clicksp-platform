@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6, part 1: catalog)
+- Admin screens for **categories** (tree with Persian and English names and addresses, motorcycle systems, switch off instead of delete), **brands**, and **products**: details in both languages, primary and extra categories, brand, warranty, variants with SKU, size and order limits, prices typed in the store's display unit (Toman by default) and stored as integer Rial, price history with who changed it, cost prices for finance roles only, OEM / manufacturer / alternative part numbers and barcodes (found whatever the separators or digits), and publish / back to draft / archive.
+- **Store Staff category scopes**: on a staff member's account screen, a Business or Super Admin picks the categories they work on. A category covers everything below it; a product is in scope only when all its categories are. Staff can't create top-level categories or move anything out of their area.
+- **Price approvals** (`/admin/approvals`): Store Staff propose prices; admins holding `price.update` approve or reject. An approved change is applied at once and recorded with the request; a request fails instead of overwriting a price that changed after it was made. Staff see and can withdraw their own requests.
+- Tests: unit (168 in total), integration on PostgreSQL (152 in total), E2E (46 in total, desktop and mobile).
+
+### Fixed (Phase 6, part 1)
+- Two integration tests (order status history, price history) no longer depend on the order of UUIDv7 ids created in the same millisecond.
+
 ### Added (Phase 5: administration)
 - Redesigned admin panel: navigation grouped by area and filtered by permission, a dashboard listing the admin's areas, plain "coming in a later phase" pages for areas not built yet, and a 403 page for typed URLs. Mobile menu with the language switcher.
 - People screens: Super Admins manage every admin, Business Admins manage Store Staff only. Create an account (it gets a one-time "set your password" link, valid 72 hours), edit details, change role, disable or enable, issue a password reset link (30 minutes), reset two-factor, sign the account out everywhere.

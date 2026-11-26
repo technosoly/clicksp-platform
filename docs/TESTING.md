@@ -18,6 +18,7 @@
 | `src/modules/rbac/tests/escalation.test.ts` | Who may manage which admin level, role-level editing, granting only held permissions (`.propose` covered by its base key), assigning only roles whose grants the actor holds, grant diffs |
 | `src/modules/identity/tests/admin-account.test.ts` | Account form validation (username normalization, digits), password-link lifetimes and paths, audit action names, safe return paths after two-factor |
 | `src/lib/security/tests/csp.test.ts` | Which paths get the strict nonce CSP, nonce format, policy directives in development and production |
+| `src/modules/catalog/tests/catalog-input.test.ts` | Slugs from Persian and English names, bilingual category and product input, SKU normalization, prices typed in Toman or Rial with Persian digits to integer Rial, part number and barcode rules, publish requirements |
 | `src/components/admin/admin-nav.test.ts` | Navigation per admin level, empty groups dropped, upcoming sections |
 
 ## End-to-end tests (Playwright)
@@ -26,6 +27,8 @@
 The server and the admin E2E test need `DATABASE_URL` (migrated and seeded) and `AUTH_SECRET`; the test creates its own synthetic `test-e2e-*` Business Admin.
 
 `e2e/admin-management.spec.ts` covers navigation and 403 pages per admin level, inviting a staff member and setting the password from the one-time link (works once), disabling an account, the two-factor step-up before a change, changing one's own password, an invalid link, the role permission editor and the nonce CSP on admin pages. It creates its own synthetic accounts; run it on a freshly migrated and seeded database, because failed sign-ins from earlier runs count toward the shared rate limit.
+
+`e2e/catalog.spec.ts` covers a Business Admin creating a category, a brand and a product, pricing it in Toman, publishing it and finding it by part number, and a Store Staff member limited to one category proposing a price that a Business Admin approves.
 
 To use an already installed Chromium instead of Playwright's download, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE=/path/to/chrome`.
 
@@ -49,4 +52,5 @@ TEST_DATABASE_URL=postgresql://clicksp:<password>@localhost:5432/clicksp_test pn
 | `inventory.test.ts` | Every movement type, no negative stock, no direct balance writes, append-only ledger, warehouse/location match, transfers, reservations (over-reserve, release once, consume then sell), **12 concurrent checkouts for 5 units sell exactly 5** |
 | `sales-payments.test.ts` | Order totals at commit, formulas, state machine with history and actor, paid only with a matching succeeded payment, no refunds before payment, frozen amounts and lines, snapshots, refund cap and idempotency key, return quantity cap, coupons, addresses, invoice immutability, one successful payment per order, unique gateway references, immutable final payments |
 | `admin-management.test.ts` | Who manages which accounts (every level, denied cases recorded), self-management refused, step-up for changes but not reads, invitation and reset links (hash only, single use, expiry, earlier links retired, retired on promotion and disable, per-IP limit, sessions signed out), assigning only roles whose permissions the actor holds, session revocation on role change, disable and two-factor reset, the recovery CLI, own password change and its lockout, roles and permission matrix guards, the audit view per level, admin phone numbers never get a customer session |
+| `catalog-admin.test.ts` | Categories (tree, scoped Staff only below their categories, no top level, no moving out, cycles, slugs), brands, products per level (create, edit, scope of every category, listing filtered by scope, archive only for Business Admins), prices (Toman input to Rial, history with actor, compare-at rules), price requests (one open per variant, Staff can't approve, approval applies with the request recorded, stale request fails, reject, withdraw, expiry, nobody decides their own), variants and part numbers (normalized, unique), cost prices for finance roles only, Store Staff category scopes (only within the assigning admin's own coverage) |
 | `accounting-content.test.ts` | Balanced posting, no entries slipping into a journal being posted (two connections), unbalanced and one-line refusals, one-sided lines, posted immutability, reversals net to zero and only once, draft-first flow, closed periods, dates outside period, overlapping periods, idempotent source key, postable accounts and account tree, page revision immutability, media and link allow-lists, UUIDv7 format |

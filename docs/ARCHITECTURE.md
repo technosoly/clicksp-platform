@@ -27,6 +27,8 @@ Implemented so far:
 | `src/modules/settings/domain/default-settings.ts` | Required settings with safe defaults |
 | `src/modules/identity` | Admin password + TOTP sign-in, customer SMS-code sign-in, sessions, SMS adapter, cookie and guard glue (`api/`) |
 | `src/modules/rbac/service/authorize.ts` | The `authorize()` gate every service calls; pure decision logic in `rbac/domain/authorize.ts` |
+| `src/modules/catalog` | Categories, brands, products, variants, prices, part numbers and price approvals (Phase 6): input rules in `domain/`, Prisma in `repo/`, authorization and audit in `service/`, Server Actions in `api/` |
+| `src/modules/settings/service/catalog-settings.ts` | Store display unit (Toman or Rial) and approval lifetime, validated with safe defaults |
 | `src/modules/audit` | Audit log and security event writers (secrets redacted) |
 | `src/lib/security` | Random tokens, Argon2id, TOTP, AES-256-GCM |
 | `app/[locale]/admin` | Admin sign-in, two-factor steps and the admin panel shell |
@@ -60,4 +62,4 @@ Implemented so far:
 
 ## Not implemented yet
 
-Business services and screens (catalog, motorcycles, inventory, orders, accounting, payments, shipping, content), search indexing, object storage, background jobs, page builder. The database tables for all of them exist (Phase 3); the admin navigation already lists their areas as "Coming soon". See [ROADMAP.md](ROADMAP.md).
+Business services and screens for motorcycles and fitment, inventory, orders, accounting, payments, shipping and content; product images and media storage; search indexing; background jobs; page builder. The catalog screens exist (Phase 6, part 1). The database tables for the rest exist (Phase 3); the admin navigation lists their areas as "Coming soon". See [ROADMAP.md](ROADMAP.md).
