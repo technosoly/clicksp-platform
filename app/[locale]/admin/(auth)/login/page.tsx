@@ -1,6 +1,6 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { AdminLoginForm } from "@/components/admin/admin-login-form";
-import { redirect } from "@/lib/i18n/navigation";
+import { Link, redirect } from "@/lib/i18n/navigation";
 import { currentAdmin } from "@/modules/identity/api/admin-guard";
 
 export default async function AdminLoginPage({ params }: { params: Promise<{ locale: string }> }) {
@@ -18,6 +18,9 @@ export default async function AdminLoginPage({ params }: { params: Promise<{ loc
         <p className="text-sm text-muted-foreground">{t("loginSubtitle")}</p>
       </div>
       <AdminLoginForm />
+      <Link href="/admin/forgot-password" className="block text-center text-sm text-brand-orange-strong underline" data-testid="admin-forgot-password">
+        {t("forgotLink")}
+      </Link>
     </div>
   );
 }

@@ -1,17 +1,94 @@
 /**
- * Admin navigation. Each item names the permission that reveals it; the page
- * behind it still authorizes on the server. Phase 4 has only the dashboard;
- * Phase 5 adds users, roles and the other sections here.
+ * Admin navigation, grouped by area. Each item lists the permissions that
+ * reveal it (any one is enough; empty = every signed-in admin). Hiding an
+ * item is only a convenience: the page behind it authorizes on the server
+ * and answers 403 to a typed URL.
+ *
+ * `ready: false` marks areas whose screens arrive in a later phase: the item
+ * is shown to the admins who will use it, and its page says so plainly.
  */
 export interface AdminNavItem {
   href: string;
   labelKey: string;
-  /** null = every signed-in admin. */
-  permission: string | null;
+  anyOf: readonly string[];
+  ready: boolean;
 }
 
-export const ADMIN_NAV: readonly AdminNavItem[] = [{ href: "/admin", labelKey: "dashboard", permission: null }];
-
-export function visibleNav(items: readonly AdminNavItem[], holds: (key: string) => boolean): AdminNavItem[] {
-  return items.filter((item) => item.permission === null || holds(item.permission));
+export interface AdminNavGroup {
+  labelKey: string;
+  items: readonly AdminNavItem[];
 }
+
+const item = (href: string, labelKey: string, anyOf: readonly string[], ready = false): AdminNavItem => ({ href, labelKey, anyOf, ready });
+
+export const ADMIN_NAV: readonly AdminNavGroup[] = [
+  { labelKey: "overview", items: [item("/admin", "dashboard", [], true)] },
+  {
+    labelKey: "catalog",
+    items: [
+      item("/admin/products", "products", ["product.view"]),
+      item("/admin/categories", "categories", ["category.manage"]),
+      item("/admin/brands", "brands", ["brand.manage"]),
+      item("/admin/motorcycles", "motorcycles", ["vehicle.manage", "compatibility.manage"]),
+    ],
+  },
+  {
+    labelKey: "operations",
+    items: [
+      item("/admin/inventory", "inventory", ["inventory.view"]),
+      item("/admin/orders", "orders", ["order.view"]),
+      item("/admin/customers", "customers", ["customer.view"]),
+      item("/admin/approvals", "approvals", ["price.update", "inventory.adjust"]),
+    ],
+  },
+  {
+    labelKey: "finance",
+    items: [
+      item("/admin/accounting", "accounting", ["accounting.view"]),
+      item("/admin/reports", "reports", ["report.sales", "report.financial"]),
+      item("/admin/shipping", "shipping", ["shipping.configure"]),
+      item("/admin/payments", "payments", ["payment_provider.view"]),
+    ],
+  },
+  {
+    labelKey: "website",
+    items: [
+      item("/admin/content", "content", ["content.manage", "article.manage", "menu.manage", "banner.manage"]),
+      item("/admin/page-builder", "pageBuilder", ["pagebuilder.edit"]),
+    ],
+  },
+  {
+    labelKey: "people",
+    items: [
+      item("/admin/people/users", "users", ["user.manage_staff", "user.manage_admins"], true),
+      item("/admin/people/roles", "roles", ["role.manage"], true),
+      item("/admin/audit", "audit", ["audit.view_all", "audit.view_business"], true),
+    ],
+  },
+  {
+    labelKey: "system",
+    items: [
+      item("/admin/settings", "settings", ["settings.store", "settings.system"]),
+      item("/admin/system", "technical", ["settings.system", "integration.manage", "backup.view", "deployment.view", "monitoring.view"]),
+    ],
+  },
+  { labelKey: "you", items: [item("/admin/account", "account", [], true)] },
+];
+
+export function canSee(navItem: AdminNavItem, holds: (key: string) => boolean): boolean {
+  return navItem.anyOf.length === 0 || navItem.anyOf.some(holds);
+}
+
+/** The groups and items this admin may see; empty groups are dropped. */
+export function visibleNav(groups: readonly AdminNavGroup[], holds: (key: string) => boolean): AdminNavGroup[] {
+  return groups
+    .map((group) => ({ ...group, items: group.items.filter((i) => canSee(i, holds)) }))
+    .filter((group) => group.items.length > 0);
+}
+
+/** Areas that arrive in later phases, by URL segment (/admin/<segment>). */
+export const UPCOMING_SECTIONS: ReadonlyMap<string, AdminNavItem> = new Map(
+  ADMIN_NAV.flatMap((g) => g.items)
+    .filter((i) => !i.ready)
+    .map((i) => [i.href.slice("/admin/".length), i]),
+);
