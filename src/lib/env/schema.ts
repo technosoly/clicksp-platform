@@ -1,0 +1,51 @@
+import { z } from "zod";
+
+/**
+ * Server-side environment schema. Values are validated once at startup.
+ * Only variables listed here may be read by application code.
+ * Optional integrations (SMS, payments, S3, search) stay optional so the
+ * site builds and runs without them; each adapter checks its own config.
+ */
+export const serverEnvSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  APP_ENV: z.enum(["development", "staging", "production"]).default("development"),
+  APP_URL: z.url().default("http://localhost:3000"),
+  LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+
+  DATABASE_URL: z
+    .string()
+    .min(1)
+    .refine((v) => v.startsWith("postgres://") || v.startsWith("postgresql://"), {
+      message: "DATABASE_URL must be a PostgreSQL connection string",
+    }),
+
+  REDIS_URL: z.string().optional(),
+
+  MEILISEARCH_HOST: z.url().optional(),
+  MEILISEARCH_API_KEY: z.string().optional(),
+
+  S3_ENDPOINT: z.url().optional(),
+  S3_REGION: z.string().optional(),
+  S3_BUCKET: z.string().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+
+  // Pluggable providers, chosen later by the owner. "none" keeps them disabled.
+  SMS_PROVIDER: z.enum(["none", "console"]).default("none"),
+  PAYMENT_PROVIDERS: z.string().default(""),
+});
+
+export type ServerEnv = z.infer<typeof serverEnvSchema>;
+
+export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
+  const result = serverEnvSchema.safeParse(source);
+  if (!result.success) {
+    // List only the variable names and problems, never the values.
+    const problems = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    throw new Error(`Invalid server environment: ${problems}`);
+  }
+  if (result.data.APP_ENV === "production" && result.data.SMS_PROVIDER === "console") {
+    throw new Error("Invalid server environment: SMS_PROVIDER=console is not allowed in production");
+  }
+  return result.data;
+}
