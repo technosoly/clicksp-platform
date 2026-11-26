@@ -36,12 +36,17 @@ export async function loadEffectivePermissions(userId: string, now = new Date())
  * The authorization gate every service method calls first. Deny by default:
  * a denial writes a security_events row and throws AuthzError. Permissions
  * marked requiresMfa also need a TOTP check within the step-up window.
+ *
+ * `stepUp: false` is only for read-only screens of a sensitive permission
+ * (e.g. the admin user list behind user.manage_staff): the grant and scope are
+ * still checked, but the TOTP re-check is left to the actions that change
+ * something, so an admin isn't asked for a code every time a list loads.
  */
 export async function authorize(
   actor: Actor,
   permission: string,
   resource?: ResourceScope & { type?: string; id?: string },
-  options: { now?: Date; policy?: SecurityPolicy } = {},
+  options: { now?: Date; policy?: SecurityPolicy; stepUp?: boolean } = {},
 ): Promise<void> {
   const decision = actor.kind === "system" ? { allowed: true as const, requiresMfa: false } : decide(actor.permissions, permission, resource);
   if (!decision.allowed) {
@@ -53,7 +58,7 @@ export async function authorize(
     });
     throw new AuthzError(permission, decision.reason);
   }
-  if (decision.requiresMfa) {
+  if (decision.requiresMfa && options.stepUp !== false) {
     const policy = options.policy ?? (await getSecurityPolicy());
     if (!isMfaFresh(actor.mfaVerifiedAt, options.now ?? new Date(), policy)) {
       await recordSecurityEvent(actor.meta, {
@@ -65,4 +70,21 @@ export async function authorize(
       throw new MfaRequiredError(permission);
     }
   }
+}
+
+/**
+ * For screens that any one of several permissions opens (e.g. a navigation
+ * area): allowed when the actor holds at least one of them, in any scope.
+ * Read-only: no step-up check. A denial is recorded like authorize().
+ */
+export async function authorizeAny(actor: Actor, permissions: readonly string[], area: string): Promise<void> {
+  if (actor.kind === "system" || permissions.length === 0) return;
+  if (permissions.some((key) => actor.permissions.has(key))) return;
+  await recordSecurityEvent(actor.meta, {
+    type: "authz.denied",
+    severity: "warning",
+    userId: actor.userId,
+    details: { permission: permissions.join("|"), reason: "not_granted", resourceType: "admin_area", resourceId: area },
+  });
+  throw new AuthzError(permissions[0] ?? area, "not_granted");
 }
