@@ -1,0 +1,30 @@
+{
+  "Metadata": {
+    "siteName": "Clicksp Spare Parts",
+    "title": "Clicksp Spare Parts | Motorcycle parts and accessories",
+    "description": "Online store for motorcycle spare parts and accessories."
+  },
+  "Common": {
+    "skipToContent": "Skip to main content",
+    "brandTagline": "Motorcycle spare parts and accessories"
+  },
+  "LanguageSwitcher": {
+    "label": "Language",
+    "fa": "فارسی",
+    "en": "English"
+  },
+  "Home": {
+    "heading": "Clicksp Spare Parts",
+    "subheading": "Motorcycle spare parts and accessories, searchable by motorcycle model and part number.",
+    "comingSoon": "The store is opening soon.",
+    "comingSoonDetail": "We are preparing the product catalog. Please check back soon."
+  },
+  "Footer": {
+    "rights": "All rights reserved, {name}."
+  },
+  "NotFound": {
+    "title": "Page not found",
+    "description": "The page you are looking for does not exist or has moved.",
+    "backHome": "Back to the home page"
+  }
+}

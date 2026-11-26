@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/*
+ * Clicksp design tokens. Brand colours are sampled from the logo:
+ *   burnt orange #DE803C, charcoal #272A2D, cream #F4F1D4.
+ * Components use the semantic tokens (primary, background, ...) only, so the
+ * theme can be adjusted later from one place. shadcn/ui reads the same names.
+ */
+:root {
+  --brand-orange: #de803c;
+  --brand-orange-strong: #b8611f; /* AA contrast for text on cream/white */
+  --brand-charcoal: #272a2d;
+  --brand-cream: #f4f1d4;
+
+  --background: #ffffff;
+  --foreground: var(--brand-charcoal);
+  --muted: #f6f5ef;
+  --muted-foreground: #5c6166;
+  --card: #ffffff;
+  --card-foreground: var(--brand-charcoal);
+  --primary: var(--brand-orange);
+  --primary-foreground: #1b1d1f;
+  --secondary: var(--brand-charcoal);
+  --secondary-foreground: var(--brand-cream);
+  --accent: var(--brand-cream);
+  --accent-foreground: var(--brand-charcoal);
+  --destructive: #c0352b;
+  --destructive-foreground: #ffffff;
+  --success: #2f7d4f;
+  --border: #e4e2d6;
+  --input: #d8d5c4;
+  --ring: var(--brand-orange);
+  --radius: 0.625rem;
+}
+
+@theme inline {
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-orange-strong: var(--brand-orange-strong);
+  --color-brand-charcoal: var(--brand-charcoal);
+  --color-brand-cream: var(--brand-cream);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: "Vazirmatn Variable", Tahoma, "Segoe UI", system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    line-height: 1.7;
+    text-rendering: optimizeLegibility;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
