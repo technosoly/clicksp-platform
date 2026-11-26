@@ -32,6 +32,8 @@ enum VerificationPurpose {
   password_reset
   phone_otp
   email_verification
+  /// One-time "set your password" link for a new admin account (Phase 5).
+  admin_invite
 
   @@map("verification_purpose")
 }

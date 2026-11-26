@@ -66,3 +66,56 @@ export async function countSecurityEvents(
     },
   });
 }
+
+export interface AuditListFilter {
+  /** Only actions starting with one of these prefixes (null = all). */
+  actionPrefixes: readonly string[] | null;
+  /** Optional exact entity filter (e.g. one user's history). */
+  entityId?: string;
+  page: number;
+  pageSize: number;
+}
+
+/** Newest first, with the actor's display name. */
+export async function listAuditLogs(client: DbClient, filter: AuditListFilter) {
+  const where = {
+    ...(filter.actionPrefixes ? { OR: filter.actionPrefixes.map((p) => ({ action: { startsWith: p } })) } : {}),
+    ...(filter.entityId ? { entityId: filter.entityId } : {}),
+  };
+  const [rows, total] = await Promise.all([
+    client.auditLog.findMany({
+      where,
+      orderBy: { seq: "desc" },
+      skip: (filter.page - 1) * filter.pageSize,
+      take: filter.pageSize,
+      select: {
+        id: true,
+        seq: true,
+        occurredAt: true,
+        actorType: true,
+        action: true,
+        entityType: true,
+        entityId: true,
+        before: true,
+        after: true,
+        ipAddress: true,
+        actorUser: { select: { id: true, username: true, name: true } },
+      },
+    }),
+    client.auditLog.count({ where }),
+  ]);
+  return { rows, total };
+}
+
+export async function listSecurityEvents(client: DbClient, filter: { page: number; pageSize: number }) {
+  const [rows, total] = await Promise.all([
+    client.securityEvent.findMany({
+      orderBy: { occurredAt: "desc" },
+      skip: (filter.page - 1) * filter.pageSize,
+      take: filter.pageSize,
+      select: { id: true, type: true, severity: true, occurredAt: true, ipAddress: true, details: true, user: { select: { username: true, name: true } } },
+    }),
+    client.securityEvent.count(),
+  ]);
+  return { rows, total };
+}

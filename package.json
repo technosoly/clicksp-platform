@@ -25,6 +25,7 @@
     "db:seed": "node prisma/seed.ts",
     "db:drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code",
     "admin:create-super": "node scripts/admin-create-super.ts",
+    "admin:reset-link": "node scripts/admin-reset-link.ts",
     "skills:validate": "node scripts/validate-claude-config.mjs",
     "postinstall": "prisma generate"
   },

@@ -47,7 +47,7 @@ Each rule below has an integration test in `tests/integration/`.
 
 ### Identity, RBAC, audit
 - Users are never deleted (disable instead). E-mail is stored lower-case, phone numbers in E.164, at least one identifier is required.
-- Sessions and verification tokens store only SHA-256 hashes (CHECK on hex format).
+- Sessions and verification tokens store only SHA-256 hashes (CHECK on hex format). Admin password links use the `verification_purpose` values `admin_invite` (72 hours, migration `20261127090000_admin_invite_tokens`) and `password_reset` (30 minutes); a link is used through a conditional `UPDATE` (single use), and issuing a link, changing the account's role or disabling it retires every unused link.
 - **Permission ceiling:** each permission has a `max_level`. A role can hold a permission only if `1 <= role.level <= max_level`, so no Business Admin or Staff role, system or custom, can ever hold a Super Admin-only permission (role management, system and security settings, deployments, backups, integrations, payment gateway configuration, page builder, full audit log). Customer roles hold no permissions. Lowering a ceiling or changing a role's level is refused when it would break this.
 - **Permission keys are immutable** (code checks keys, so a rename could move a Super Admin-only meaning onto a lower grant). A permission's scope type cannot change while it is granted scoped.
 - System roles cannot be deleted or have their key, level or system flag changed.

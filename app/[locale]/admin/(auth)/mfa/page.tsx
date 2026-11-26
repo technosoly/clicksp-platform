@@ -2,10 +2,18 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { MfaCodeForm } from "@/components/admin/mfa-code-form";
 import { redirect } from "@/lib/i18n/navigation";
 import { currentAdmin } from "@/modules/identity/api/admin-guard";
+import { safeAdminReturnPath } from "@/modules/identity/domain/admin-account";
 
 /** TOTP step of sign-in, and re-verification (step-up) for sensitive actions. */
-export default async function AdminMfaPage({ params }: { params: Promise<{ locale: string }> }) {
+export default async function AdminMfaPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>;
+  searchParams: Promise<{ next?: string | string[] }>;
+}) {
   const { locale } = await params;
+  const next = safeAdminReturnPath((await searchParams).next);
   setRequestLocale(locale);
   const admin = await currentAdmin();
   if (!admin) redirect({ href: "/admin/login", locale });
@@ -20,7 +28,7 @@ export default async function AdminMfaPage({ params }: { params: Promise<{ local
         </h1>
         <p className="text-sm text-muted-foreground">{t("mfaSubtitle")}</p>
       </div>
-      <MfaCodeForm />
+      <MfaCodeForm next={next} />
     </div>
   );
 }

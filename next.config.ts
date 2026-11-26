@@ -4,9 +4,8 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin("./src/lib/i18n/request.ts");
 
 /**
- * Security headers applied to every response.
- * A nonce-based Content-Security-Policy for the admin and account routes is
- * planned for Phase 5 (it needs per-request nonces from the proxy).
+ * Security headers applied to every response. The Content-Security-Policy is
+ * set in proxy.ts (a per-request nonce on admin and account pages).
  */
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -24,6 +23,9 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
+  // forbidden() and forbidden.tsx: admin pages answer 403 to a typed URL the
+  // admin has no permission for (Next.js 16, still marked experimental).
+  experimental: { authInterrupts: true },
   images: {
     formats: ["image/avif", "image/webp"],
     // Remote product images will come from our own S3-compatible storage only.

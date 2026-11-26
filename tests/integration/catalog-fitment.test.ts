@@ -75,7 +75,9 @@ describe("catalog constraints", () => {
       await db.query("UPDATE product_variants SET price = 1200000 WHERE id = $1", [a.variantId]);
       await db.query("UPDATE product_variants SET weight_grams = 500 WHERE id = $1", [a.variantId]);
       const history = await db.query<{ price: string; changed_by: string }>(
-        "SELECT price::text AS price, changed_by FROM product_prices WHERE variant_id = $1 ORDER BY created_at, id",
+        // Both rows share one transaction timestamp and UUIDv7 ids within the same
+        // millisecond are not ordered, so order by the (increasing) price itself.
+        "SELECT price::text AS price, changed_by FROM product_prices WHERE variant_id = $1 ORDER BY price",
         [a.variantId],
       );
       expect(history.rows).toEqual([
