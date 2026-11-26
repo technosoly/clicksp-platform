@@ -26,6 +26,7 @@ import {
   setLastLogin,
   spendVerificationAttempt,
 } from "../repo/identity-repo";
+import { isCustomerAccount } from "../repo/admin-users-repo";
 import { createSmsSender, disabledSmsSender, type SmsSender } from "../sms/sms-adapter";
 import { issueSession, resolveSession, type IssuedSession } from "./sessions";
 
@@ -178,6 +179,12 @@ export async function verifyPhoneOtp(
 
   const existing = await findUserIdByPhone(db(), phone);
   if (existing && existing.status !== "active") return fail("account_disabled", existing.id);
+  // Admin accounts never get a customer session, even with a verified phone
+  // number: they sign in at /admin with a password and two-factor.
+  if (existing && !(await isCustomerAccount(db(), existing.id))) {
+    await recordSecurityEvent(meta, { type: "otp.admin_phone_refused", severity: "warning", userId: existing.id });
+    return fail("account_disabled", existing.id);
+  }
 
   const policy = await getSecurityPolicy();
   return transaction(async (tx) => {
@@ -206,6 +213,7 @@ export async function getCustomer(token: string | undefined, now = new Date()) {
   const policy = await getSecurityPolicy();
   const session = await resolveSession(token, "customer", policy, now);
   if (!session) return null;
+  if (!(await isCustomerAccount(db(), session.userId))) return null;
   const user = await getUserSummary(db(), session.userId);
   if (!user) return null;
   return { session, user };

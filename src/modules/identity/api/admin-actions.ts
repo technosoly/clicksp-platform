@@ -12,6 +12,7 @@ import {
   verifyAdminMfa,
 } from "../service/admin-auth";
 import { endSession } from "../service/sessions";
+import { safeAdminReturnPath } from "../domain/admin-account";
 import { currentAdmin } from "./admin-guard";
 import { clearSessionCookie, readSessionToken, setSessionCookie } from "./cookies";
 
@@ -65,7 +66,7 @@ export async function adminMfaAction(_prev: FormState, form: FormData): Promise<
     logger.error("admin MFA failed", { error: String(error) });
     return { error: "unexpected" };
   }
-  redirect({ href: "/admin", locale });
+  redirect({ href: safeAdminReturnPath(form.get("next")), locale });
 }
 
 export async function adminMfaSetupAction(_prev: FormState, form: FormData): Promise<FormState> {
