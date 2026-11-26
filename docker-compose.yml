@@ -79,6 +79,8 @@ services:
       APP_ENV: ${APP_ENV:-development}
       APP_URL: ${APP_URL:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in .env (openssl rand -base64 48)}
+      SMS_PROVIDER: ${SMS_PROVIDER:-none}
       DATABASE_URL: postgresql://${POSTGRES_USER:-clicksp}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-clicksp}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       MEILISEARCH_HOST: http://meilisearch:7700

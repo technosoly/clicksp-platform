@@ -26,7 +26,7 @@ Deny-by-default, server-enforced, permission-based authorization with resource s
    ```ts
    await authorize(actor, 'product.update', { type: 'product', id, categoryIds })
    ```
-   `authorize` loads the actor's effective permissions (cached per request), checks scope against the resource, writes a `security_events` row on denial, and throws `AuthzError`.
+   `authorize` (`src/modules/rbac/service/authorize.ts`) checks the actor's effective permissions (loaded once per request from the session), checks scope against the resource, writes a `security_events` row on denial and throws `AuthzError`; for permissions marked `requiresMfa` it throws `MfaRequiredError` unless the session passed TOTP within `security.step_up_mfa_seconds`.
 2. **Never check role names** (`if (role === 'admin')` is forbidden). Hard-coded checks allowed only for the escalation guards below.
 3. **Escalation guards** (in `rbac/service`, independent of permission data):
    - Only level 1 actors can assign level 1 roles or edit level 1 users.
@@ -39,11 +39,12 @@ Deny-by-default, server-enforced, permission-based authorization with resource s
 7. Update `docs/RBAC.md` matrix whenever defaults change.
 
 ## Technical requirements: authentication
-- Admins: email/username + password (Argon2id) + **mandatory TOTP** for levels 1 and 2 and any Staff with financial/pricing permissions. Recovery codes stored hashed.
-- Customers: mobile number + SMS OTP through the SMS adapter (provider pluggable; a `ConsoleSmsAdapter` is used in development only and refuses to run when `NODE_ENV=production`).
+- Admins: email/username + password (Argon2id) + **mandatory TOTP** for levels 1 and 2 and any Staff with financial/pricing permissions (`FINANCIAL_PERMISSIONS` in `identity/domain/policy.ts`; the default Store Staff bundle includes `price.update.propose`, so default Staff use TOTP too). Recovery codes stored hashed.
+- Customers: mobile number + SMS OTP through the SMS adapter (`src/modules/identity/sms`; provider pluggable; the `console` provider is for development only and is refused when `NODE_ENV` or `APP_ENV` is production).
 - Sessions: opaque random token in `HttpOnly; Secure; SameSite=Lax; Path=/` cookie; stored hashed in `sessions`; admin cookie name differs from customer cookie. Idle timeout 30 min / absolute 12 h for admins; rotate on login and privilege change; revoke on password reset and on role change.
 - Password reset: single-use token, stored hashed, 30-minute expiry, same response whether the account exists or not.
-- Rate limits (Redis): login 5/15 min per account and 20/15 min per IP; OTP send 3/10 min per phone; reset 3/h per account. Exceeding logs `login_attempts` and `security_events`.
+- Rate limits (counted in PostgreSQL from `login_attempts`, `verification_tokens` and `security_events`, ADR 0002): login 5 failures/15 min per account+IP, 20 per IP, 50 per account overall; OTP send 3/10 min and 10/day per phone, 10/10 min per IP, 300/10 min globally; 5 tries per OTP code and 20 wrong codes/10 min per IP; TOTP locks for 15 min after 5 wrong codes (attempts reserved atomically). Missing/invalid client IP = one shared bucket, never "no limit". Exceeding writes `security_events`.
+- Implementation (ADR 0002): own code in `src/modules/identity` on `node:crypto` + Argon2id; no Better Auth.
 - First Super Admin is created by a server CLI command (`pnpm admin:create-super`), never by a web form.
 
 ## Security requirements
@@ -58,7 +59,6 @@ Deny-by-default, server-enforced, permission-based authorization with resource s
 - `security-auditor` review note on the PR.
 
 ## Documentation references
-- Better Auth: https://www.better-auth.com/docs
 - OWASP ASVS: https://owasp.org/www-project-application-security-verification-standard/
 - OWASP Authorization Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html
 - OWASP Session Management: https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html

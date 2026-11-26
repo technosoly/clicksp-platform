@@ -22,16 +22,16 @@ Never trade a higher priority for a lower one without an Architecture Decision R
 | UI | Tailwind CSS, shadcn/ui, Motion (sparingly) |
 | i18n | next-intl, routes `/fa` (default) and `/en` |
 | DB | PostgreSQL (self-hosted), Prisma ORM + raw SQL migrations for triggers/constraints |
-| Auth | Better Auth (DB sessions, TOTP) + the project's own RBAC engine |
+| Auth | Own implementation on `node:crypto` + Argon2id (`@node-rs/argon2`): DB sessions, TOTP, SMS OTP, plus the project's own RBAC engine (ADR 0002) |
 | Jobs | pg-boss (queue in PostgreSQL) |
-| Cache / rate limit | Redis |
+| Cache / rate limit | Redis for caches; login/OTP rate limits counted in PostgreSQL (ADR 0002) |
 | Search | Meilisearch + PostgreSQL `pg_trgm` / full-text fallback |
 | Storage | S3-compatible API (MinIO or an Iranian S3 provider) |
 | Validation | Zod at every boundary |
 | Tests | Vitest (unit + integration on real PostgreSQL), Playwright (E2E) |
 | Deploy | Docker, Docker Compose, GitHub Actions, Linux VPS |
 
-Before implementing or upgrading an important integration (Next.js caching, Prisma, Better Auth, Meilisearch, payment or shipping providers), read the **current official documentation** (Context7 if installed, otherwise the vendor's docs site). Record the version and doc URL in the PR description.
+Before implementing or upgrading an important integration (Next.js caching, Prisma, Meilisearch, payment or shipping providers), read the **current official documentation** (Context7 if installed, otherwise the vendor's docs site). Record the version and doc URL in the PR description.
 
 Do not add a dependency without stating why an existing one or a few lines of code are not enough. Prefer packages with active maintenance and no native build step.
 

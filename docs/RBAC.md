@@ -1,6 +1,23 @@
 # Roles and permissions
 
-What is implemented (Phase 3): the data model, the permission catalogue, the default bundles of the three admin levels, and the database-level escalation guards. The `authorize()` engine, sessions, MFA and the admin screens come in Phase 4 and 5.
+What is implemented: the data model, the permission catalogue, the default bundles of the three admin levels and the database-level escalation guards (Phase 3); the `authorize()` engine, admin and customer sign-in, sessions and TOTP (Phase 4). Screens to manage users, roles and permissions come in Phase 5.
+
+## Checking a permission (Phase 4)
+
+```ts
+await authorize(actor, "product.update", { type: "product", id, categoryIds })
+```
+
+- `actor` comes from the session (`requireAdmin()` in pages/actions); never from request data.
+- Deny by default: a key the actor's active, unexpired roles don't grant is refused with `AuthzError` (403) and a `security_events` row (`authz.denied`).
+- Scoped grants (Store Staff) need the resource's categories or warehouses, and every one of them must be in the user's scope. Missing resource information denies.
+- Permissions marked MFA also need a TOTP check in the last `security.step_up_mfa_seconds` (300 s), otherwise `MfaRequiredError`; the admin re-enters a code at `/admin/mfa`.
+- The admin navigation hides links the user does not hold, but only `authorize()` grants access.
+- Tested for **every permission × each of the three admin levels** (allowed and denied, in and out of scope) on PostgreSQL in `tests/integration/auth.test.ts`, and on the pure engine in `src/modules/rbac/tests/authorize.test.ts`.
+
+## Who must use two-factor sign-in
+
+Super Admin and Business Admin always (`security.mfa_required_levels`, levels 1 and 2 can't be removed from it), plus any user holding a permission in `FINANCIAL_PERMISSIONS` (`src/modules/identity/domain/policy.ts`: prices, discounts, coupons, refunds, payment data, costs, accounting, financial reports, payment providers). The default Store Staff bundle includes `price.update.propose`, so default Staff use TOTP too.
 
 ## Model
 
@@ -20,7 +37,7 @@ Enforced by database triggers (tested in `tests/integration/rbac-audit.test.ts`)
 4. Permission keys can't be renamed, and a scope type can't change while the permission is granted scoped.
 5. Approval requests can't be edited, decisions are final, and the requester can't decide.
 
-Further guards (only level 1 can assign level 1 roles, nobody grants a permission they lack, nobody edits their own roles) are service rules in Phase 4.
+Further guards (only level 1 can assign level 1 roles, nobody grants a permission they lack, nobody edits their own roles) are service rules of the role and user management services in Phase 5. Until then the only way to create an admin is the first-Super-Admin CLI.
 
 ## Default bundles
 

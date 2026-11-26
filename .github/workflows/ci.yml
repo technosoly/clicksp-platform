@@ -33,6 +33,8 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       DATABASE_URL: postgresql://clicksp:ci-only-password@localhost:5432/clicksp_ci
+      # Not a secret: only for the throwaway CI database and E2E server.
+      AUTH_SECRET: ci-only-auth-secret-not-used-anywhere-else-0123456789
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -51,7 +53,7 @@ jobs:
         run: pnpm db:drift
       - name: System seed (run twice to prove it is idempotent)
         run: pnpm db:seed && pnpm db:seed
-      - name: Integration tests on PostgreSQL (constraints, triggers, seed, concurrency)
+      - name: Integration tests on PostgreSQL (constraints, triggers, seed, concurrency, auth and permissions)
         env:
           PGPASSWORD: ci-only-password
           TEST_DATABASE_URL: postgresql://clicksp:ci-only-password@localhost:5432/clicksp_test

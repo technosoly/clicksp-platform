@@ -5,8 +5,8 @@ const withNextIntl = createNextIntlPlugin("./src/lib/i18n/request.ts");
 
 /**
  * Security headers applied to every response.
- * A nonce-based Content-Security-Policy is added in Phase 4 (authentication
- * and security), because it needs per-request nonces from the proxy.
+ * A nonce-based Content-Security-Policy for the admin and account routes is
+ * planned for Phase 5 (it needs per-request nonces from the proxy).
  */
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },

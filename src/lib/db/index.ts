@@ -1,6 +1,6 @@
 import "server-only";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@/generated/prisma/client";
+import { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { env } from "@/lib/env";
 
 /**
@@ -31,4 +31,12 @@ export async function pingDatabase(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** A client or an open transaction: repositories accept either. */
+export type DbClient = PrismaClient | Prisma.TransactionClient;
+
+/** Runs fn in one database transaction (critical writes, see CLAUDE.md). */
+export function transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  return db().$transaction(fn);
 }

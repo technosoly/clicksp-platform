@@ -129,6 +129,5 @@ Locally and in CI the app connects as the table owner, so these triggers are a c
 
 ## Not implemented yet
 
-- Application services and repositories on top of the schema (Phase 4 identity/RBAC, Phase 6 business modules).
+- Application services and repositories for the business modules (Phase 6). Identity, RBAC, audit and the security-policy settings have them since Phase 4.
 - A separate least-privilege application database role (no DDL) distinct from the migration role: documented for Phase 10 deployment.
-- Better Auth integration (Phase 4): the identity tables are shaped so its `modelName`/`fields` mapping can use them; the exact mapping is confirmed against its docs in Phase 4.
