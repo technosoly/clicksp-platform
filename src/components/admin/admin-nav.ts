@@ -37,7 +37,7 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
     items: [
       item("/admin/inventory", "inventory", ["inventory.view"], true),
       item("/admin/warehouses", "warehouses", ["warehouse.manage"], true),
-      item("/admin/orders", "orders", ["order.view"]),
+      item("/admin/orders", "orders", ["order.view"], true),
       item("/admin/customers", "customers", ["customer.view"]),
       item("/admin/approvals", "approvals", ["price.update", "price.update.propose", "inventory.adjust"], true),
     ],

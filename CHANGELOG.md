@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6b, part 4: orders in the admin)
+- **Orders** (`/admin/orders`): every order, newest first, filtered by status; Store Staff see only orders with stock held or taken in their warehouses. The order screen shows the customer and their mobile number, the parts, delivery and total, the address, where the stock is held, and the history (who did what and why).
+- Super and Business Admins can **cancel** an order that awaits payment, with a reason: its stock is released, the change is audited and kept in the order's history.
+- Tests: unit (186 in total), integration on PostgreSQL (201 in total), E2E (58 in total, desktop and mobile).
+
 ### Added (Phase 6b, part 3: checkout)
 - **Shipping** in the admin (`/admin/shipping`, Super and Business Admin): your own delivery methods (post, courier, freight or pickup, with names in both languages and delivery days), zones made of provinces, and each method's price per zone: a base price plus an amount per started kilogram, optionally free above an order amount, optionally for a weight band. Nothing is pre-filled. Every change is audited.
 - **Checkout** (`/checkout`) for signed-in customers (a guest is sent to sign in and comes back): delivery address with all 31 provinces, delivery options priced for the province and the parcel's weight, a note, and "remember this address". Placing the order prices everything again on the server, holds the stock for 24 hours (from the highest-priority warehouses first), empties the cart and records the order as awaiting payment. Two customers can never be sold the same last unit, and a double click places one order.

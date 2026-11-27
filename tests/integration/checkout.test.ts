@@ -8,6 +8,8 @@ import type { Actor } from "@/modules/rbac/domain/actor";
 import { addToCart, viewCart } from "@/modules/sales/service/cart";
 import { checkoutShipping, expireUnpaidOrders, myOrder, myOrders, placeOrder } from "@/modules/sales/service/checkout";
 import { addRate, createMethod, createZone } from "@/modules/shipping/service/shipping-admin";
+import { cancelOrderByAdmin, orderForAdmin, ordersForAdmin } from "@/modules/sales/service/orders-admin";
+import { AuthzError } from "@/modules/rbac/service/authorize";
 import { actorFor, q, testNames } from "./admin-actors";
 import { uid } from "./helpers";
 
@@ -200,5 +202,42 @@ describe("checkout", () => {
     expect(await placeOrder(c, { ...address(methodId), provinceCode: "IR-99" }, "fa")).toEqual({ status: "invalid", field: "invalid_province" });
     expect(await placeOrder(c, { ...address(methodId), provinceCode: "IR-23" }, "fa")).toEqual({ status: "shipping_unavailable" });
     expect(await placeOrder(c, { ...address("00000000-0000-4000-8000-000000000000") }, "fa")).toEqual({ status: "shipping_unavailable" });
+  });
+});
+
+describe("orders in the admin", () => {
+  it("shows Store Staff only orders in their warehouses, and only admins cancel", async () => {
+    const { methodId, ba } = await setup();
+    const p = await part(3);
+    const c = await customer();
+    ok(await addToCart(c, { variantId: p.variantId, quantity: "1" }));
+    const placed = ok(await placeOrder(c, address(methodId), "fa"));
+    const number = placed.orderNumber.toString();
+    const [{ warehouse_id: warehouseId }] = (await q<{ warehouse_id: string }>(
+      "SELECT b.warehouse_id FROM stock_reservations r JOIN inventory_balances b ON b.variant_id = r.variant_id AND b.location_id = r.location_id JOIN orders o ON o.id = r.order_id WHERE o.order_number = $1",
+      [number],
+    )) as [{ warehouse_id: string }];
+
+    expect((await ordersForAdmin(ba, null)).rows.some((o) => o.orderNumber === placed.orderNumber)).toBe(true);
+    expect((await orderForAdmin(ba, number))?.order.customerPhone).toBe(c.phone);
+
+    const here = await actorFor("store_staff", [], [warehouseId]);
+    expect((await ordersForAdmin(here, "pending_payment")).rows.some((o) => o.orderNumber === placed.orderNumber)).toBe(true);
+    expect((await orderForAdmin(here, number))?.canCancel).toBe(false);
+    await expect(cancelOrderByAdmin(here, number, "TEST reason")).rejects.toBeInstanceOf(AuthzError);
+
+    const elsewhere = await actorFor("store_staff", [], [(await q<{ id: string }>("INSERT INTO warehouses (code, name) VALUES ($1, 'TEST') RETURNING id", [`X-${uid()}`.toUpperCase().slice(0, 30)]))[0]!.id]);
+    expect((await ordersForAdmin(elsewhere, null)).rows.some((o) => o.orderNumber === placed.orderNumber)).toBe(false);
+    await expect(orderForAdmin(elsewhere, number)).rejects.toBeInstanceOf(AuthzError);
+    await expect(ordersForAdmin({ ...ba, kind: "customer" }, null)).rejects.toBeInstanceOf(AuthzError);
+
+    expect(await cancelOrderByAdmin(ba, number, "x")).toEqual({ status: "invalid", field: "reason_required" });
+    expect(await cancelOrderByAdmin(ba, number, "TEST customer asked")).toEqual({ status: "ok" });
+    expect(await cancelOrderByAdmin(ba, number, "TEST again")).toEqual({ status: "not_cancellable" });
+    const detail = (await orderForAdmin(ba, number))!;
+    expect(detail.order.status).toBe("cancelled");
+    expect(detail.order.reservations.map((r) => r.status)).toEqual(["released"]);
+    expect(detail.order.statusHistory.at(-1)).toMatchObject({ toStatus: "cancelled", reason: "TEST customer asked" });
+    expect(await q("SELECT action FROM audit_logs WHERE entity_id = $1", [detail.order.id])).toEqual([{ action: "order.cancelled" }]);
   });
 });

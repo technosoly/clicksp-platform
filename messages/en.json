@@ -1351,5 +1351,39 @@
     "deliverTo": "Deliver to",
     "allOrders": "All your orders",
     "addressSeparator": ", "
+  },
+  "AdminOrders": {
+    "title": "Orders",
+    "intro": "Orders placed in the shop, newest first.",
+    "filter": "Filter by status",
+    "all": "All",
+    "empty": "No orders here.",
+    "limited": "Showing the latest 100.",
+    "orderNumber": "Order {number}",
+    "back": "Back to orders",
+    "customer": "Customer",
+    "items": "Parts",
+    "stock": "Stock held",
+    "stockHelp": "Where the order's parts are held or were taken from.",
+    "history": "History",
+    "expiredReason": "Not paid in time",
+    "holds": {
+      "active": "Held",
+      "consumed": "Sent",
+      "released": "Released",
+      "expired": "Expired"
+    },
+    "cancelTitle": "Cancel order",
+    "cancelHelp": "Only orders awaiting payment can be cancelled here. The held stock is released.",
+    "reason": "Reason (kept in the order history)",
+    "cancel": "Cancel order",
+    "errors": {
+      "reason_required": "Write a reason (3 to 500 characters).",
+      "not_cancellable": "This order can no longer be cancelled here.",
+      "not_found": "Order not found."
+    },
+    "messages": {
+      "cancelled": "Order cancelled; stock released."
+    }
   }
 }

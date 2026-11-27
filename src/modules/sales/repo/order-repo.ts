@@ -3,7 +3,7 @@
  * rest: orders start in pending_payment, lines are immutable snapshots, totals
  * must match the lines at commit, and every status change is logged.
  */
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma, type OrderStatus } from "@/generated/prisma/client";
 import type { DbClient } from "@/lib/db";
 
 type Tx = Prisma.TransactionClient;
@@ -182,5 +182,38 @@ export async function customerOrders(client: DbClient, userId: string, take: num
     orderBy: [{ placedAt: "desc" }, { id: "desc" }],
     take,
     select: { id: true, orderNumber: true, status: true, grandTotal: true, placedAt: true, _count: { select: { items: true } } },
+  });
+}
+
+// Admin ----------------------------------------------------------------------------
+
+/** Orders with stock held or taken in these warehouses (null = every order). */
+const inWarehouses = (warehouseIds: readonly string[] | null): Prisma.OrderWhereInput =>
+  warehouseIds === null ? {} : { reservations: { some: { balance: { warehouseId: { in: [...warehouseIds] } } } } };
+
+export async function adminOrderList(client: DbClient, warehouseIds: readonly string[] | null, status: OrderStatus | null, take: number) {
+  return client.order.findMany({
+    where: { ...inWarehouses(warehouseIds), ...(status ? { status } : {}) },
+    orderBy: [{ placedAt: "desc" }, { id: "desc" }],
+    take,
+    select: { id: true, orderNumber: true, status: true, grandTotal: true, placedAt: true, customerName: true, customerPhone: true, _count: { select: { items: true } } },
+  });
+}
+
+export async function adminOrder(client: DbClient, orderNumber: bigint) {
+  return client.order.findUnique({
+    where: { orderNumber },
+    select: {
+      ...orderSelect,
+      userId: true,
+      customerName: true,
+      customerPhone: true,
+      cancelReason: true,
+      statusHistory: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { fromStatus: true, toStatus: true, reason: true, createdAt: true, actor: { select: { name: true } } } },
+      reservations: {
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { variantId: true, quantity: true, status: true, expiresAt: true, balance: { select: { warehouseId: true, warehouse: { select: { code: true } }, location: { select: { code: true } } } } },
+      },
+    },
   });
 }
