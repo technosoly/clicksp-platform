@@ -2353,6 +2353,135 @@
     "title": "Articles",
     "intro": "Guides and news about motorcycle parts and care.",
     "empty": "No articles yet.",
-    "persianOnly": "This article is available in Persian only."
+    "persianOnly": "This article is available in Persian only.",
+    "all": "All articles"
+  },
+  "AdminBuilder": {
+    "title": "Page builder",
+    "intro": "Arrange the home page from ready-made sections. Changes are saved as a draft; visitors see them only after you publish.",
+    "preview": "Preview draft",
+    "previewNotice": "Preview of the home page draft. Visitors don't see this version yet.",
+    "backToEditor": "Back to the editor",
+    "source": {
+      "draft": "Editing a draft",
+      "published": "Showing the published page",
+      "default": "Showing the default layout"
+    },
+    "draftBy": "Draft saved {date} by {name}",
+    "publishedBy": "Published version #{n}, {date}, by {name}",
+    "noDraft": "No unpublished changes. Your next change starts a draft.",
+    "publish": "Publish",
+    "note": "Note (optional)",
+    "publishNotAllowed": "Only the Super Admin can publish.",
+    "discard": "Discard draft",
+    "discardConfirm": "Yes, discard all unpublished changes",
+    "saveSection": "Save section",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove",
+    "removeConfirm": "Yes, remove this section",
+    "limited": "Limited visibility",
+    "empty": "The page has no sections.",
+    "addTitle": "Add a section",
+    "addHelp": "New sections go to the end of the page (up to {max}).",
+    "add": "Add",
+    "type": "Section type",
+    "historyTitle": "Published versions",
+    "historyHelp": "Bringing back an earlier version publishes it again as a new version.",
+    "historyEmpty": "Nothing published yet.",
+    "historyLine": "{date}, {name}, {n} sections",
+    "restore": "Publish this version again",
+    "restoreConfirm": "Yes, publish it",
+    "revision": {
+      "published": "Live",
+      "superseded": "Earlier"
+    },
+    "persian": "Persian",
+    "english": "English",
+    "visibility": "Show on",
+    "breakpoints": {
+      "mobile": "Mobile",
+      "tablet": "Tablet",
+      "desktop": "Desktop"
+    },
+    "tones": {
+      "charcoal": "Charcoal",
+      "orange": "Orange",
+      "light": "Light"
+    },
+    "fields": {
+      "title": "Title",
+      "subtitle": "Text",
+      "showLogo": "Show the logo",
+      "showSearch": "Show the search box",
+      "tone": "Colour",
+      "heading": "Heading",
+      "limit": "How many",
+      "content": "Content",
+      "text": "Text",
+      "cta": "Button text",
+      "href": "Button link"
+    },
+    "blocksHint": "Blank line = new paragraph, ## = heading, - = list item.",
+    "numberHint": "Between {min} and {max}.",
+    "hrefHint": "A store address such as /c/brakes, or a full https:// address.",
+    "types": {
+      "bannerSlider": {
+        "label": "Banner slider",
+        "help": "Shows the active home page banners (edit them under Banners)."
+      },
+      "hero": {
+        "label": "Welcome section",
+        "help": "Large title, short text, the logo and the search box."
+      },
+      "motorcycles": {
+        "label": "Motorcycles",
+        "help": "Links to motorcycle models, for finding parts by motorcycle."
+      },
+      "categories": {
+        "label": "Categories",
+        "help": "Tiles of the main categories."
+      },
+      "latestProducts": {
+        "label": "Newest products",
+        "help": "The most recently published products."
+      },
+      "latestArticles": {
+        "label": "Latest articles",
+        "help": "The newest published articles; hidden when there are none."
+      },
+      "richText": {
+        "label": "Text",
+        "help": "Headings, paragraphs and lists you write."
+      },
+      "callout": {
+        "label": "Call to action box",
+        "help": "A coloured box with a title, text and an optional button link."
+      }
+    },
+    "errors": {
+      "stale": "Someone else changed the page meanwhile. Reload the page and try again.",
+      "not_found": "That version was not found.",
+      "invalid": "Something in this section is not valid.",
+      "section_missing": "That section no longer exists. Reload the page.",
+      "too_many_sections": "The page has the most sections allowed.",
+      "nothing_to_publish": "There are no changes to publish.",
+      "visibility_required": "Choose at least one screen size and one language.",
+      "persian_first": "Write the Persian text first; English is optional.",
+      "text_too_long": "A text is too long.",
+      "invalid_number": "Enter a whole number in the allowed range.",
+      "invalid_link": "Use a store address starting with / or a full https:// address.",
+      "cta_needs_link": "A button needs a link.",
+      "title_required": "The title is required.",
+      "content_required": "Write some content.",
+      "confirm_required": "Tick the box to confirm."
+    },
+    "messages": {
+      "draftSaved": "Saved to the draft.",
+      "draftDiscarded": "Draft discarded.",
+      "published": "Published. Visitors now see this version.",
+      "restored": "The earlier version is live again."
+    },
+    "restoredFrom": "Restored from #{n}"
   }
 }

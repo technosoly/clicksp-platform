@@ -7,7 +7,8 @@
  */
 export type SafeHref = { kind: "internal"; path: string } | { kind: "external"; url: string };
 
-const CONTROL = /[\u0000-\u001F\u007F\\]/;
+// Control and bidi-override characters, and backslashes.
+const CONTROL = /[\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069\\]/;
 export const HREF_MAX = 500;
 
 export function parseHref(input: string): SafeHref | null {
