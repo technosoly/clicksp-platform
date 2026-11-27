@@ -105,3 +105,13 @@ export async function publishedArticleBySlug(client: DbClient, locale: "fa" | "e
 export async function slugOwner(client: DbClient, locale: "fa" | "en", slug: string): Promise<string | null> {
   return (await client.articleTranslation.findUnique({ where: { locale_slug: { locale, slug } }, select: { articleId: true } }))?.articleId ?? null;
 }
+
+/** Addresses of published articles (sitemap, bounded). */
+export async function sitemapArticleRows(client: DbClient, now: Date, take: number) {
+  return client.article.findMany({
+    where: published(now),
+    orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+    take,
+    select: { updatedAt: true, translations: { select: { locale: true, slug: true } } },
+  });
+}

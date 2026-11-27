@@ -15,6 +15,7 @@ import {
   publishedArticleBySlug,
   publishedArticles,
   setArticleCoverRow,
+  sitemapArticleRows,
   slugOwner,
   softDeleteArticle,
   updateArticle,
@@ -301,4 +302,10 @@ export async function shopArticle(locale: "fa" | "en", slug: string, now = new D
     author: row.author.name,
     cover: row.coverMediaId ? await imageRenditions(row.coverMediaId) : [],
   };
+}
+
+/** Public addresses of published articles, per language that has its own address (sitemap). */
+export async function articleSitemap(limit: number, now = new Date()) {
+  const rows = await sitemapArticleRows(db(), now, limit);
+  return rows.flatMap((r) => r.translations.flatMap((t) => (t.locale === "fa" || t.locale === "en" ? [{ path: `/blog/${t.slug}`, locale: t.locale as "fa" | "en", updatedAt: r.updatedAt }] : [])));
 }

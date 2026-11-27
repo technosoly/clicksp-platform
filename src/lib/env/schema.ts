@@ -10,6 +10,11 @@ export const serverEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_ENV: z.enum(["development", "staging", "production"]).default("development"),
   APP_URL: z.url().default("http://localhost:3000"),
+  // Lets search engines list the store (robots.txt). Off until the owner opens the store.
+  SITE_INDEXING: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 
   DATABASE_URL: z
@@ -90,6 +95,9 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   }
   if (result.data.APP_ENV !== "development" && paymentAdapterKeys(result.data.PAYMENT_PROVIDERS).includes("fake")) {
     throw new Error("Invalid server environment: the fake payment gateway is only allowed in development");
+  }
+  if (result.data.SITE_INDEXING && result.data.APP_ENV !== "production") {
+    throw new Error("Invalid server environment: SITE_INDEXING=true is only allowed with APP_ENV=production");
   }
   if (result.data.APP_ENV === "production" && !result.data.AUTH_SECRET) {
     throw new Error("Invalid server environment: AUTH_SECRET is required in production");

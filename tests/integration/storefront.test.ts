@@ -17,6 +17,7 @@ import {
   updateModel,
 } from "@/modules/vehicles/service/motorcycles";
 import { shopMotorcycleBrands, shopMotorcycleModel } from "@/modules/vehicles/service/shop";
+import { sitemapUrls } from "@/modules/content/service/sitemap";
 import { actorFor, q, testNames } from "./admin-actors";
 import { uid } from "./helpers";
 
@@ -215,5 +216,31 @@ describe("storefront fitment", () => {
     // A switched-off model is gone from the shop.
     ok(await updateModel(ba, m.modelId, { ...m.modelInput, isActive: false }));
     expect(await shopMotorcycleModel("fa", m.slug)).toBeNull();
+  });
+});
+
+describe("sitemap", () => {
+  it("lists published products and shown categories only, and nothing behind a sign-in", async () => {
+    const ba = await actorFor("business_admin");
+    const parent = ok(await createCategory(ba, categoryInput()));
+    const child = ok(await createCategory(ba, categoryInput(parent.id)));
+    const shown = await product(ba, child.id, `TEST نقشه ${uid()}`);
+    const draft = await product(ba, child.id, `TEST پیش‌نویس ${uid()}`, false);
+    const slug = async (id: string) => (await q<{ slug: string }>("SELECT slug FROM category_translations WHERE category_id = $1 AND locale = 'fa'", [id]))[0]!.slug;
+    const loc = (path: string) => `https://example.ir/fa${encodeURI(path)}`;
+
+    let urls = (await sitemapUrls("https://example.ir/")).map((u) => u.url);
+    expect(urls).toContain("https://example.ir/fa");
+    expect(urls).toContain(loc(`/c/${await slug(child.id)}`));
+    expect(urls).toContain(loc(`/p/${shown.slugFa}`));
+    expect(urls).toContain(`https://example.ir/en/p/${shown.slugEn}`);
+    expect(urls).not.toContain(loc(`/p/${draft.slugFa}`));
+    expect(urls.some((u) => /\/(admin|account|cart|checkout|preview)(\/|$)/.test(u))).toBe(false);
+
+    // A parent switched off hides its active child too, as the shop does.
+    ok(await updateCategory(ba, parent.id, { ...categoryInput(), isActive: false }));
+    urls = (await sitemapUrls("https://example.ir")).map((u) => u.url);
+    expect(urls).not.toContain(loc(`/c/${await slug(child.id)}`));
+    expect(urls).not.toContain(loc(`/c/${await slug(parent.id)}`));
   });
 });

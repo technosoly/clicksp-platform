@@ -28,8 +28,7 @@ blob-report/
 
 # local docker volumes and backups
 .data/
-backups/*.dump
-backups/*.sql*
+backups/
 
 # claude local settings
 .claude/settings.local.json

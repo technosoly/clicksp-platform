@@ -17,6 +17,8 @@ import {
   purchasableVariants,
   searchWhere,
   servableRenditions,
+  sitemapCategories,
+  sitemapProducts,
   topCategories,
   type ProductCardRow,
 } from "../repo/storefront-repo";
@@ -288,4 +290,16 @@ export async function shopVariants(locale: ShopLocale, ids: readonly string[]): 
 export async function lockVariantPrices(tx: Parameters<typeof lockPurchasableVariants>[0], ids: readonly string[]) {
   const rows = await lockPurchasableVariants(tx, ids);
   return new Map(rows.map((r) => [r.id, { price: r.price, minQty: Math.max(1, r.min_order_qty), maxQty: r.max_order_qty }]));
+}
+
+// Sitemap ----------------------------------------------------------------------
+
+export type SitemapEntry = { path: string; locale: "fa" | "en"; updatedAt: Date | null };
+
+/** Public addresses of products and categories, per language that has its own address. */
+export async function catalogSitemap(limit: number): Promise<SitemapEntry[]> {
+  const [products, categories] = await Promise.all([sitemapProducts(db(), limit), sitemapCategories(db(), limit)]);
+  const entries = (prefix: string, rows: { updatedAt: Date; translations: { locale: string; slug: string }[] }[]) =>
+    rows.flatMap((r) => r.translations.flatMap((t) => (t.slug && (t.locale === "fa" || t.locale === "en") ? [{ path: `${prefix}/${t.slug}`, locale: t.locale as "fa" | "en", updatedAt: r.updatedAt }] : [])));
+  return [...entries("/c", categories), ...entries("/p", products)];
 }
