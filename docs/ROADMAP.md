@@ -14,7 +14,7 @@ Each phase ends with a report (what was implemented, files, tests run and result
 | 7 | Page builder: component registry, editor, preview, revisions, rollback (home page) | Done |
 | 8 | Skills and agents refresh to match the real implementation | Planned |
 | 9 | Quality and security: full test run, security review, DB integrity and currency audit | Planned |
-| 10 | Deployment preparation: staging/production docs, backup and restore drill, final audit | Planned |
+| 10 | Deployment preparation: staging/production docs, backup and restore drill, final audit | In progress: production steps, nginx, backup and restore scripts, robots and sitemap done; waiting for the owner's server, domain, gateway and SMS accounts |
 
 ## Open decisions (owner)
 

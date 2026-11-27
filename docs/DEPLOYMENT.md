@@ -1,6 +1,6 @@
 # Deployment
 
-Phase 2 covers local development and the container build. Staging and production procedures, TLS, backups and restore drills are written and tested in Phase 10.
+One Linux server runs everything with Docker Compose; nginx in front terminates HTTPS. The steps to put the store online are under [Going live](#going-live); what the owner must provide first is listed under [What the owner provides](#what-the-owner-provides).
 
 ## Containers
 
@@ -71,3 +71,32 @@ docker build \
 | Google Fonts, CDNs, foreign SaaS | not used | n/a | n/a |
 
 The running app has **no** runtime dependency on foreign services.
+
+## What the owner provides
+
+Nothing below is needed to build or run the store locally; all of it is needed to open it to customers.
+
+| Item | Why | Where it goes |
+|---|---|---|
+| A Linux VPS (Ubuntu 24.04 LTS, 4 GB RAM, 2 vCPU, 60 GB SSD is comfortable) at an Iranian provider | the store, its database and search | SSH access for whoever deploys |
+| A domain (`.ir` via IRNIC, or `.com`) with DNS `A` records for `@` and `www` pointing at the server | the address customers type | the domain's DNS panel |
+| A payment gateway merchant account (Zarinpal, Zibal, ...) with its **sandbox** credentials, then the live ones | online payment | server environment only (`<PREFIX>_*` variables), never in chat, email or Git; an adapter is written from the provider's official documentation and tested in its sandbox first |
+| An SMS provider account (Kavenegar, SMS.ir, ...) with an approved OTP template | customer sign-in by phone code | server environment only; an adapter is written from the provider's documentation |
+| Enamad (e-Namad) and, if wanted, the Samandehi badge | Iranian gateways require Enamad for a live merchant | added to the footer once issued |
+
+## Going live
+
+1. **Server**: install Docker Engine with the Compose plugin and nginx from the distribution's packages; open only SSH (from your own address) and the web ports: `ufw allow from <your-ip> to any port 22 proto tcp`, `ufw allow 80,443/tcp`, then `ufw enable` (add the SSH rule first, or you lock yourself out). Mirror the images listed under External network dependencies if Docker Hub is blocked.
+2. **Code and settings**: clone the repository (or copy a release) to `/opt/clicksp`, copy `.env.example` to `.env` (mode 600) and set at least:
+   - `APP_ENV=production`, `APP_URL=https://<domain>`, `MEILI_ENV=production`
+   - fresh random values (`openssl rand -base64 48`) for `AUTH_SECRET`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `MEILI_MASTER_KEY`
+   - `SITE_INDEXING=false` until the store is ready to be found
+   - `PAYMENT_PROVIDERS` and the gateway's variables once a real adapter exists (never `fake` in production; the app refuses it).
+3. **Start**: `docker compose --profile app up -d --build` (or pull images built in CI). The `migrate` service applies migrations and the system seed before the app starts. Check `curl -s http://127.0.0.1:3000/api/ready`.
+4. **HTTPS**: copy `deploy/nginx/clicksp.conf` to `/etc/nginx/sites-available/clicksp`, replace `example.ir`, enable it, and get a certificate with certbot (`certbot certonly --webroot -w /var/www/certbot -d <domain> -d www.<domain>`; on the first run, comment out the 443 server blocks until the certificate exists). `systemctl reload nginx`. Renewal runs from certbot's timer. If Let's Encrypt is unreachable from the server, use a certificate from the hosting provider. Behind a CDN that terminates TLS (for example ArvanCloud), nginx sees the CDN's address, so tell it which header carries the visitor's address and trust that header only from the CDN: `set_real_ip_from <each CDN range>;`, `real_ip_header <the CDN's client-IP header>;`, `real_ip_recursive on;` in the server block (keep `proxy_set_header X-Real-IP $remote_addr;`, which is then the visitor), and allow ports 80 and 443 only from the CDN's ranges in the firewall. Without this, every visitor shares one address and one sign-in rate limit.
+5. **First Super Admin**: `docker compose --profile app run --rm migrate pnpm admin:create-super`, sign in at `https://<domain>/fa/admin`, enrol two-factor, then invite the Business Admin and staff from the panel.
+6. **Search key**: create the scoped Meilisearch key (see Background jobs and search), set `MEILISEARCH_APP_KEY`, restart the app.
+7. **Backups**: `scripts/backup.sh /var/backups/clicksp` writes a database dump (custom format, includes the job queue) and an archive of uploaded files with checksums, keeping the newest 14 (`KEEP`). It refuses a folder inside the repository, writes into `<name>.partial` and renames it only when complete, and keeps only complete backups. Run it daily from root's crontab (`30 2 * * * cd /opt/clicksp && BACKUP_AGE_RECIPIENT=age1... scripts/backup.sh /var/backups/clicksp || <alert>`). The backups hold customer, order and account data: **only encrypted copies leave the server**. Install `age`, keep its private key offline (not on the server), set `BACKUP_AGE_RECIPIENT` to the public key, and copy only the `*.age` files and `SHA256SUMS` to storage at another provider each day. Keep `.env` (above all `AUTH_SECRET`) in a separate password manager or secret store, not with the backups: without it, two-factor enrolments can't be read.
+8. **Restore drill** (before opening, then every few months): on a spare server or a copy, decrypt the files if needed (`age -d -i <key> -o database.dump database.dump.age`, the same for `media.tar.gz`), then `docker compose --profile app stop app && scripts/restore.sh <backup-folder> --yes && docker compose --profile app up -d app` (the script refuses to run while the app is up, checks the checksums first and restores the database in one transaction), then sign in and open a product and an order. The database part was rehearsed on a development copy: a custom-format `pg_dump` restored with `pg_restore` into an empty database brought back every table, trigger and the job queue with the same row counts. The Docker parts of both scripts still need their first run on the real server.
+9. **Open the store**: replace the placeholder pictures and test data, add real products, check prices and stock, place one real order with the live gateway and refund it, then set `SITE_INDEXING=true` (accepted only with `APP_ENV=production`) and restart. `robots.txt` then allows the storefront (not admin, preview, account, cart, checkout, sign-in, search or the API) and names `/sitemap.xml`, which lists home, motorcycles, articles, information pages, categories (only those whose parents are shown too), products and motorcycle models in each language that has its own address; it is rebuilt at most once an hour, and is empty while indexing is off. Submit the sitemap in Google Search Console.
+10. **Monitoring**: watch `/api/ready` (database) and `/api/health` (`jobs` must be `running`) from an uptime checker, and the admin overview's waiting and failed background tasks.

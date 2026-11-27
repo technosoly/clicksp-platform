@@ -45,3 +45,11 @@ export async function shopMotorcycleModel(locale: Locale, slug: string) {
     })),
   };
 }
+
+/** Public addresses of motorcycle models, per language that has its own address (sitemap). */
+export async function motorcycleSitemap() {
+  const brands = await shopBrandsWithModels(db());
+  return brands.flatMap((b) =>
+    b.models.flatMap((m) => m.translations.flatMap((t) => (t.slug && (t.locale === "fa" || t.locale === "en") ? [{ path: `/motorcycles/${t.slug}`, locale: t.locale as "fa" | "en", updatedAt: null }] : []))),
+  );
+}

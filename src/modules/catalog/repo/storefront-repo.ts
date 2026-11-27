@@ -242,3 +242,32 @@ export async function productCardsByIdList(client: DbClient, ids: readonly strin
   const byId = new Map(rows.map((r) => [r.id, r]));
   return ids.flatMap((id) => byId.get(id) ?? []);
 }
+
+// Sitemap ------------------------------------------------------------------------
+
+/** Addresses of published products, newest change first (bounded). */
+export async function sitemapProducts(client: DbClient, take: number) {
+  return client.product.findMany({
+    where: PUBLISHED,
+    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+    take,
+    select: { updatedAt: true, translations: { select: { locale: true, slug: true } } },
+  });
+}
+
+/** Addresses of categories the shop shows: the category and every parent active and not deleted (bounded). */
+export async function sitemapCategories(client: DbClient, take: number) {
+  const visible = await client.$queryRaw<{ id: string }[]>`
+    WITH RECURSIVE shown AS (
+      SELECT id, 0 AS depth FROM categories WHERE parent_id IS NULL AND is_active AND deleted_at IS NULL
+      UNION ALL
+      SELECT c.id, shown.depth + 1 FROM categories c JOIN shown ON c.parent_id = shown.id
+       WHERE c.is_active AND c.deleted_at IS NULL AND shown.depth < 32
+    )
+    SELECT id FROM shown LIMIT ${take}`;
+  return client.category.findMany({
+    where: { id: { in: visible.map((v) => v.id) } },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { updatedAt: true, translations: { select: { locale: true, slug: true } } },
+  });
+}

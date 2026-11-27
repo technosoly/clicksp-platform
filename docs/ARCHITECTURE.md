@@ -66,7 +66,7 @@ Implemented so far:
 | A cart belongs to whoever holds it | Cart services take a `CartOwner` resolved on the server from the customer session cookie or the guest cart cookie (`sales/api/cart-owner.ts`), never from the request body, so no permission key applies. The guest cookie holds a random 256-bit token; the database stores only its SHA-256. A cart stores variant ids and quantities only; prices, order limits and stock are read at every view. |
 | Placing an order is one transaction | The customer's cart row is locked, compared with what was priced, the order and its line snapshots are inserted, stock is reserved from balance rows locked in a fixed order (the reservation trigger refuses more than is available), the cart is marked converted and an `order.placed` outbox event is written. The database checks the order's totals at commit. |
 | Storefront pages render per request | Prices, stock and publish status change from the admin at any time; pages are `force-dynamic` until cache revalidation on admin writes is added. |
-| `robots.txt` disallows everything | The store is not open; Phase 6b ships the real robots rules and sitemap. |
+| `robots.txt` closed until the owner opens the store | `SITE_INDEXING=true` (server variable, off by default) opens the storefront to search engines and names `/sitemap.xml` (`app/sitemap.ts`, built per request from what each module publishes); staging stays closed with the same build. |
 
 ## Page builder
 

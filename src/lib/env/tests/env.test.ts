@@ -10,6 +10,15 @@ describe("parseServerEnv", () => {
     expect(env.APP_ENV).toBe("development");
     expect(env.SMS_PROVIDER).toBe("none");
     expect(env.MEILISEARCH_HOST).toBeUndefined();
+    expect(env.SITE_INDEXING).toBe(false);
+  });
+
+  it("opens the store to search engines only when SITE_INDEXING is exactly true", () => {
+    const production = { ...base, APP_ENV: "production", AUTH_SECRET: SECRET };
+    expect(parseServerEnv({ ...production, SITE_INDEXING: "true" }).SITE_INDEXING).toBe(true);
+    expect(() => parseServerEnv({ ...base, APP_ENV: "staging", SITE_INDEXING: "true" })).toThrow(/SITE_INDEXING/);
+    expect(parseServerEnv({ ...base, SITE_INDEXING: "false" }).SITE_INDEXING).toBe(false);
+    expect(() => parseServerEnv({ ...base, SITE_INDEXING: "yes" })).toThrow(/SITE_INDEXING/);
   });
 
   it("treats empty values as unset (as in .env.example)", () => {

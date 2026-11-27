@@ -58,6 +58,14 @@ test.describe("platform endpoints", () => {
     expect(await res.json()).toEqual({ status: "ok", jobs: "running" });
   });
 
+  test("search engines stay out until the store opens", async ({ request }) => {
+    const robots = await (await request.get("/robots.txt")).text();
+    expect(robots).toMatch(/Disallow: \/\s*$/m);
+    const res = await request.get("/sitemap.xml");
+    expect(res.status()).toBe(200);
+    expect(await res.text()).not.toContain("<loc>");
+  });
+
   test("security headers are set", async ({ request }) => {
     const res = await request.get("/fa");
     const headers = res.headers();
