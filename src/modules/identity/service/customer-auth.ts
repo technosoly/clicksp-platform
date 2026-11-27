@@ -135,7 +135,7 @@ export async function requestPhoneOtp(
 }
 
 export type OtpVerifyResult =
-  | { status: "ok"; session: IssuedSession; userId: string; isNewCustomer: boolean }
+  | { status: "ok"; session: IssuedSession; isNewCustomer: boolean }
   | { status: "invalid_phone" }
   | { status: "invalid_code" }
   | { status: "expired" }
@@ -205,7 +205,7 @@ export async function verifyPhoneOtp(
     const session = await issueSession(tx, { userId, kind: "customer", mfaVerifiedAt: null, mfaPending: false, meta, policy, now });
     await recordLoginAttempt(tx, { identifier: phone, userId, success: true, failureReason: null, ipAddress: meta.ipAddress, userAgent: meta.userAgent });
     await setLastLogin(tx, userId, now);
-    return { status: "ok" as const, session, userId, isNewCustomer };
+    return { status: "ok" as const, session, isNewCustomer };
   });
 }
 

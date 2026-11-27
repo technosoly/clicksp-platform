@@ -25,23 +25,38 @@ export async function findCart(client: DbClient, key: CartKey, now: Date) {
   });
 }
 
-/** Whether any cart (also a merged, converted or expired one) already uses this guest token. */
-export async function guestHashTaken(client: DbClient, guestTokenHash: string): Promise<boolean> {
-  return (await client.cart.count({ where: { guestTokenHash } })) > 0;
-}
-
 export async function cartLineCount(client: DbClient, key: CartKey, now: Date): Promise<number> {
   const cart = await client.cart.findFirst({ where: keyWhere(key, now), select: { _count: { select: { items: true } } } });
   return cart?._count.items ?? 0;
 }
 
-/** Finds the active cart and locks it, or creates one; returns its id. */
+/** The cart stopped being active (merged or ordered) while a change to it waited. */
+export class CartRetiredError extends Error {
+  constructor() {
+    super("cart_retired");
+  }
+}
+
+/** Guest carts this long past their expiry are deleted (their cookie is long gone). */
+const PURGE_AFTER_DAYS = 30;
+
+/**
+ * Finds the active cart and locks it, or creates one; returns its id. The
+ * status is checked again under the lock, so a change never lands in a cart
+ * that was merged or ordered meanwhile.
+ */
 export async function lockOrCreateCart(tx: Tx, key: CartKey, now: Date, guestExpiresAt: Date): Promise<string> {
   const found = await tx.cart.findFirst({ where: keyWhere(key, now), select: { id: true } });
   if (found) {
-    await tx.$queryRaw`SELECT 1 FROM carts WHERE id = ${found.id}::uuid FOR UPDATE`;
+    const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM carts WHERE id = ${found.id}::uuid AND status = 'active' FOR UPDATE`;
+    if (locked.length === 0) throw new CartRetiredError();
     if ("guestTokenHash" in key) await tx.cart.update({ where: { id: found.id }, data: { expiresAt: guestExpiresAt } });
     return found.id;
+  }
+  if ("guestTokenHash" in key) {
+    // Bounded housekeeping: each new guest cart removes a few long-expired ones.
+    const cutoff = new Date(now.getTime() - PURGE_AFTER_DAYS * 86_400_000);
+    await tx.$executeRaw`DELETE FROM carts WHERE id IN (SELECT c.id FROM carts c WHERE c.user_id IS NULL AND c.expires_at < ${cutoff} AND NOT EXISTS (SELECT 1 FROM stock_reservations r WHERE r.cart_id = c.id) LIMIT 20)`;
   }
   const created = await tx.cart.create({
     data: "userId" in key ? { userId: key.userId } : { guestTokenHash: key.guestTokenHash, expiresAt: guestExpiresAt },
@@ -70,14 +85,18 @@ export async function setLine(tx: Tx, cartId: string, variantId: string, quantit
   });
 }
 
-/** Lines of the guest cart, which is then marked merged (it is never used again). */
-export async function takeGuestCart(tx: Tx, guestTokenHash: string, now: Date) {
-  const cart = await tx.cart.findFirst({ where: keyWhere({ guestTokenHash }, now), select: { id: true } });
-  if (!cart) return [];
-  await tx.$queryRaw`SELECT 1 FROM carts WHERE id = ${cart.id}::uuid FOR UPDATE`;
-  const items = await tx.cartItem.findMany({ where: { cartId: cart.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { variantId: true, quantity: true } });
-  await tx.cart.update({ where: { id: cart.id }, data: { status: "merged" } });
-  return items;
+/**
+ * Claims the guest cart for a merge: marks it merged in one conditional
+ * UPDATE (a second, concurrent merge finds nothing) and returns its lines.
+ */
+export async function claimGuestCart(tx: Tx, guestTokenHash: string, now: Date) {
+  const claimed = await tx.$queryRaw<{ id: string }[]>`
+    UPDATE carts SET status = 'merged', updated_at = now()
+     WHERE guest_token_hash = ${guestTokenHash} AND status = 'active' AND (expires_at IS NULL OR expires_at > ${now})
+    RETURNING id`;
+  const id = claimed[0]?.id;
+  if (!id) return [];
+  return tx.cartItem.findMany({ where: { cartId: id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { variantId: true, quantity: true } });
 }
 
 export async function removeLines(tx: Tx, cartId: string, variantIds: readonly string[]): Promise<void> {

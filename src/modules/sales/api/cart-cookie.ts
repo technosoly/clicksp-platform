@@ -1,6 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { secure } from "@/modules/identity/api/cookies";
+import { cookiesAreSecure as secure } from "@/lib/http/secure-cookies";
 import { GUEST_CART_DAYS } from "../domain/cart-rules";
 
 /**

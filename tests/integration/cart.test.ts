@@ -134,7 +134,8 @@ describe("cart", () => {
     const guest = ok(await addToCart(null, { variantId: a.variantId, quantity: "2" })).newGuestToken!;
     ok(await addToCart({ guestToken: guest }, { variantId: b.variantId, quantity: "1" }));
 
-    await mergeGuestCart(c.userId, guest);
+    // Two merges at once (two tabs, or sign-in and a cart action) move the lines once.
+    await Promise.all([mergeGuestCart(c.userId, guest), mergeGuestCart(c.userId, guest)]);
     await mergeGuestCart(c.userId, guest);
     const cart = await viewCart(c, "fa");
     expect(cart.lines.map((l) => [l.variantId, l.quantity])).toEqual([
@@ -147,6 +148,26 @@ describe("cart", () => {
     const again = ok(await addToCart({ guestToken: guest }, { variantId: b.variantId, quantity: "1" }));
     expect(again.newGuestToken).toBeDefined();
     expect(again.newGuestToken).not.toBe(guest);
+  });
+
+  it("never builds a cart on a guest token it didn't issue", async () => {
+    const p = await part(5);
+    const planted = "A".repeat(43);
+    const result = ok(await addToCart({ guestToken: planted }, { variantId: p.variantId, quantity: "1" }));
+    expect(result.newGuestToken).toBeDefined();
+    expect(result.newGuestToken).not.toBe(planted);
+    expect((await viewCart({ guestToken: planted }, "fa")).lines).toEqual([]);
+    expect((await viewCart({ guestToken: result.newGuestToken! }, "fa")).lines).toHaveLength(1);
+  });
+
+  it("clears out guest carts long past their expiry", async () => {
+    const p = await part(5);
+    const [old] = await q<{ id: string }>(
+      "INSERT INTO carts (guest_token_hash, expires_at) VALUES (encode(sha256(gen_random_uuid()::text::bytea), 'hex'), now() - interval '61 days') RETURNING id",
+    );
+    await q("INSERT INTO cart_items (cart_id, variant_id, quantity) VALUES ($1, $2, 1)", [old!.id, p.variantId]);
+    ok(await addToCart(null, { variantId: p.variantId, quantity: "1" }));
+    expect(await q("SELECT 1 FROM carts WHERE id = $1", [old!.id])).toEqual([]);
   });
 
   it("holds at most the line limit", async () => {

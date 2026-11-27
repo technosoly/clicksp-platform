@@ -5,7 +5,7 @@ import { randomToken, sha256Hex } from "@/lib/security/tokens";
 import { shopVariants, type ShopLocale, type ShopVariant } from "@/modules/catalog/service/storefront";
 import { sellableQuantities } from "@/modules/inventory/service/stock";
 import { cartLineInputSchema, clampQuantity, GUEST_CART_DAYS, lineProblem, MAX_CART_LINES, MAX_LINE_QUANTITY, type LineProblem } from "../domain/cart-rules";
-import { cartLineCount, countLines, findCart, guestHashTaken, isUniqueViolation, lineOf, lockOrCreateCart, setLine, takeGuestCart, type CartKey, type Tx } from "../repo/cart-repo";
+import { cartLineCount, countLines, claimGuestCart, findCart, isUniqueViolation, lineOf, lockOrCreateCart, setLine, type CartKey, type Tx } from "../repo/cart-repo";
 
 /**
  * The shopping cart. A cart is the visitor's own: its owner is resolved on
@@ -106,8 +106,10 @@ export async function addToCart(owner: CartOwner, input: { variantId: unknown; q
 
   let key = keyOf(owner);
   let newGuestToken: string | undefined;
-  // A guest token whose cart was merged, ordered or expired is retired: start a new one.
-  if (key && "guestTokenHash" in key && !(await findCart(db(), key, now)) && (await guestHashTaken(db(), key.guestTokenHash))) key = null;
+  // A guest cookie is used only for a cart this server started for it. A token
+  // with no active cart (never issued, or its cart was merged, ordered or
+  // expired) is replaced by a fresh one, so a planted cookie can't seed a cart.
+  if (key && "guestTokenHash" in key && !(await findCart(db(), key, now))) key = null;
   if (!key) {
     newGuestToken = randomToken(32);
     key = { guestTokenHash: sha256Hex(newGuestToken) };
@@ -147,19 +149,25 @@ export async function updateCartLine(owner: CartOwner, input: { variantId: unkno
 export async function mergeGuestCart(userId: string, guestToken: string, now = new Date()): Promise<void> {
   if (!GUEST_TOKEN.test(guestToken)) return;
   const guestHash = sha256Hex(guestToken);
-  const moved = await transaction((tx) => takeGuestCart(tx, guestHash, now));
-  if (moved.length === 0) return;
-  await withCart(
-    { userId },
-    async (tx, cartId) => {
-      let lines = await countLines(tx, cartId);
-      for (const item of moved) {
-        const existing = await lineOf(tx, cartId, item.variantId);
-        if (!existing && lines >= MAX_CART_LINES) continue;
-        if (!existing) lines += 1;
-        await setLine(tx, cartId, item.variantId, Math.min(MAX_LINE_QUANTITY, (existing?.quantity ?? 0) + item.quantity));
-      }
-    },
-    now,
-  );
+  // Claim and copy in one transaction: if the copy fails, the guest cart stays as it was.
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await transaction(async (tx) => {
+        const moved = await claimGuestCart(tx, guestHash, now);
+        if (moved.length === 0) return;
+        const cartId = await lockOrCreateCart(tx, { userId }, now, guestExpiry(now));
+        let lines = await countLines(tx, cartId);
+        for (const item of moved) {
+          const existing = await lineOf(tx, cartId, item.variantId);
+          if (!existing && lines >= MAX_CART_LINES) continue;
+          if (!existing) lines += 1;
+          await setLine(tx, cartId, item.variantId, Math.min(MAX_LINE_QUANTITY, (existing?.quantity ?? 0) + item.quantity));
+        }
+      });
+      return;
+    } catch (error) {
+      if (attempt === 0 && isUniqueViolation(error)) continue;
+      throw error;
+    }
+  }
 }
