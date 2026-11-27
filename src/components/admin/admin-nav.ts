@@ -48,7 +48,7 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
       item("/admin/accounting", "accounting", ["accounting.view"]),
       item("/admin/reports", "reports", ["report.sales", "report.financial"]),
       item("/admin/shipping", "shipping", ["shipping.configure"], true),
-      item("/admin/payments", "payments", ["payment_provider.view"]),
+      item("/admin/payments", "payments", ["payment_provider.view"], true),
     ],
   },
   {

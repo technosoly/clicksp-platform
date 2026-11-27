@@ -53,10 +53,19 @@ export const serverEnvSchema = z.object({
 
   // Pluggable providers, chosen later by the owner. "none" keeps them disabled.
   SMS_PROVIDER: z.enum(["none", "console"]).default("none"),
+  // Gateway adapters this server may use, comma separated ("fake" only outside production).
   PAYMENT_PROVIDERS: z.string().default(""),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
+
+/** PAYMENT_PROVIDERS: the gateway adapters this server may use, comma separated (e.g. "zarinpal"). */
+export function paymentAdapterKeys(value: string): string[] {
+  return value
+    .split(",")
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+}
 
 export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
   // An empty value (e.g. `S3_ENDPOINT=` copied from .env.example) means "not set".
@@ -69,6 +78,9 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   }
   if (result.data.APP_ENV === "production" && result.data.SMS_PROVIDER === "console") {
     throw new Error("Invalid server environment: SMS_PROVIDER=console is not allowed in production");
+  }
+  if (result.data.APP_ENV !== "development" && paymentAdapterKeys(result.data.PAYMENT_PROVIDERS).includes("fake")) {
+    throw new Error("Invalid server environment: the fake payment gateway is only allowed in development");
   }
   if (result.data.APP_ENV === "production" && !result.data.AUTH_SECRET) {
     throw new Error("Invalid server environment: AUTH_SECRET is required in production");

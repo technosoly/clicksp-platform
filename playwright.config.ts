@@ -26,7 +26,8 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: `PORT=${port} HOSTNAME=127.0.0.1 pnpm start`,
+        // APP_URL: gateway callbacks come back to this server; "fake" is the test-only gateway.
+        command: `PORT=${port} HOSTNAME=127.0.0.1 APP_URL=${baseURL} PAYMENT_PROVIDERS=fake pnpm start`,
         url: `${baseURL}/api/health`,
         reuseExistingServer: !process.env.CI,
         timeout: 60_000,

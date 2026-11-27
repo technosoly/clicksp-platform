@@ -34,6 +34,12 @@ describe("parseServerEnv", () => {
     }
   });
 
+  it("refuses the fake payment gateway outside development", () => {
+    expect(() => parseServerEnv({ ...base, APP_ENV: "production", AUTH_SECRET: SECRET, PAYMENT_PROVIDERS: "zarinpal, Fake" })).toThrow(/fake payment gateway/);
+    expect(() => parseServerEnv({ ...base, APP_ENV: "staging", PAYMENT_PROVIDERS: "fake" })).toThrow(/fake payment gateway/);
+    expect(parseServerEnv({ ...base, PAYMENT_PROVIDERS: "fake" }).PAYMENT_PROVIDERS).toBe("fake");
+  });
+
   it("refuses the console SMS provider in production", () => {
     expect(() =>
       parseServerEnv({ ...base, APP_ENV: "production", AUTH_SECRET: SECRET, SMS_PROVIDER: "console" }),

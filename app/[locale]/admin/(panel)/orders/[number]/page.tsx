@@ -7,6 +7,7 @@ import { formatCount } from "@/lib/i18n/numbers";
 import { Link } from "@/lib/i18n/navigation";
 import { formatMoney } from "@/lib/money";
 import { adminPage } from "@/modules/identity/api/admin-page";
+import { orderPaymentsForAdmin } from "@/modules/payments/service/payments-admin";
 import { cancelOrderAction } from "@/modules/sales/api/order-admin-actions";
 import { orderForAdmin } from "@/modules/sales/service/orders-admin";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
@@ -16,9 +17,17 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ loc
   const { locale: raw, number } = await params;
   setRequestLocale(raw);
   const locale = raw === "en" ? "en" : "fa";
-  const { data } = await adminPage(raw, (actor) => orderForAdmin(actor, number), `/admin/orders/${number}`);
+  const { data } = await adminPage(
+    raw,
+    async (actor) => {
+      const found = await orderForAdmin(actor, number);
+      return found ? { ...found, payments: await orderPaymentsForAdmin(actor, found.order.id) } : null;
+    },
+    `/admin/orders/${number}`,
+  );
   if (!data) notFound();
-  const { order, canCancel } = data;
+  const { order, canCancel, payments } = data;
+  const p = await getTranslations("AdminPayments");
   const [t, s, o, unit] = await Promise.all([getTranslations("AdminOrders"), getTranslations("Orders.status"), getTranslations("Orders"), getDisplayUnit()]);
   const money = (v: bigint) => formatMoney(v, { locale, unit });
   const date = new Intl.DateTimeFormat(locale === "fa" ? "fa-IR-u-ca-persian" : "en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tehran" });
@@ -73,6 +82,31 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ loc
           </p>
         </Card>
       ) : null}
+      {payments ? (
+        <Card title={p("orderPayments")} testId="admin-order-payments">
+          {payments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{p("noPayments")}</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {payments.map((pay) => (
+                <li key={pay.id} className="flex flex-wrap gap-x-3 gap-y-1 py-2" data-testid="admin-order-payment">
+                  <span className="font-semibold">{p(`status.${pay.status}`)}</span>
+                  <span>{p.has(`gateways.${pay.provider.code}`) ? p(`gateways.${pay.provider.code}`) : pay.provider.code}</span>
+                  <span>{money(pay.amount)}</span>
+                  <span>{date.format(pay.initiatedAt)}</span>
+                  {pay.providerReference ? (
+                    <span>
+                      {p("reference")} <span dir="ltr">{pay.providerReference}</span>
+                    </span>
+                  ) : null}
+                  {pay.maskedCard ? <span dir="ltr">{pay.maskedCard}</span> : null}
+                  {pay.failureCode ? <span className="text-muted-foreground" dir="ltr">{pay.failureCode}</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      ) : null}
       <Card title={t("stock")} description={t("stockHelp")}>
         <ul className="divide-y text-sm" data-testid="admin-order-holds">
           {order.reservations.map((r, n) => (
@@ -92,7 +126,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ loc
             <li key={n}>
               {date.format(h.createdAt)} · {s(h.toStatus)}
               {h.actor?.name ? ` · ${h.actor.name}` : ""}
-              {h.reason ? ` · ${h.reason === "payment_window_expired" ? t("expiredReason") : h.reason}` : ""}
+              {h.reason ? ` · ${h.reason === "payment_window_expired" ? t("expiredReason") : h.reason === "online_payment" ? t("onlinePaymentReason") : h.reason}` : ""}
             </li>
           ))}
         </ul>

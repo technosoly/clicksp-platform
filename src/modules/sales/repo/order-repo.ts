@@ -6,7 +6,7 @@
 import { Prisma, type OrderStatus } from "@/generated/prisma/client";
 import type { DbClient } from "@/lib/db";
 
-type Tx = Prisma.TransactionClient;
+export type Tx = Prisma.TransactionClient;
 
 /** Locks the customer's active cart for checkout and returns its lines. */
 export async function lockCustomerCart(tx: Tx, userId: string) {
@@ -133,7 +133,12 @@ export async function openOrderCount(tx: Tx, userId: string): Promise<number> {
 /** Unpaid orders whose stock hold has run out (oldest first, a few at a time). */
 export async function expiredUnpaidOrders(client: DbClient, now: Date, take: number): Promise<string[]> {
   const rows = await client.order.findMany({
-    where: { status: "pending_payment", reservations: { some: { status: "active", expiresAt: { lt: now } } } },
+    // A payment being checked with the bank keeps the order (for a while; reconciliation takes stuck ones).
+    where: {
+      status: "pending_payment",
+      reservations: { some: { status: "active", expiresAt: { lt: now } } },
+      paymentTransactions: { none: { kind: "payment", status: "verifying", updatedAt: { gt: new Date(now.getTime() - VERIFYING_HOLD_MS) } } },
+    },
     orderBy: { placedAt: "asc" },
     take,
     select: { id: true },
@@ -141,10 +146,33 @@ export async function expiredUnpaidOrders(client: DbClient, now: Date, take: num
   return rows.map((r) => r.id);
 }
 
+/** How long a payment being verified keeps its order from expiring or being cancelled. */
+export const VERIFYING_HOLD_MS = 30 * 60_000;
+
+/** An unpaid order whose payment is being checked with the bank right now. */
+export async function hasPaymentInProgress(tx: Tx, orderId: string, now = new Date()): Promise<boolean> {
+  return (await tx.paymentTransaction.count({ where: { orderId, kind: "payment", status: "verifying", updatedAt: { gt: new Date(now.getTime() - VERIFYING_HOLD_MS) } } })) > 0;
+}
+
 /** Locks an order that still awaits payment; false if it was paid or cancelled meanwhile. */
 export async function lockUnpaidOrder(tx: Tx, orderId: string): Promise<boolean> {
   const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM orders WHERE id = ${orderId}::uuid AND status = 'pending_payment' FOR UPDATE`;
   return rows.length > 0;
+}
+
+/** Amount, number, owner and language of an order locked by lockUnpaidOrder. */
+export async function payableOrder(tx: Tx, orderId: string) {
+  return tx.order.findUnique({ where: { id: orderId }, select: { id: true, orderNumber: true, grandTotal: true, userId: true, locale: true } });
+}
+
+export async function orderNumberAndLocale(client: DbClient, orderId: string) {
+  return client.order.findUnique({ where: { id: orderId }, select: { orderNumber: true, locale: true, userId: true } });
+}
+
+/** Marks an unpaid order paid; the database refuses unless a succeeded payment covers the total. */
+export async function markOrderPaid(tx: Tx, orderId: string, reason: string): Promise<void> {
+  await tx.$executeRaw`SELECT set_config('app.status_reason', ${reason}, true)`;
+  await tx.order.update({ where: { id: orderId }, data: { status: "paid" } });
 }
 
 /** Cancels an unpaid order; the reason lands in its status history. */
