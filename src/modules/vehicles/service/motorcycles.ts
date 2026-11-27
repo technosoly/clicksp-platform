@@ -30,6 +30,7 @@ import {
   insertMotorcycleVariant,
   isUniqueViolation,
   listManufacturersWithBrands,
+  lockAndCountVerifiedLinks,
   manufacturerExists,
   motorcyclePickerRows,
   updateGenerationRow,
@@ -37,6 +38,8 @@ import {
   updateModelRow,
   updateMotorcycleBrandRow,
   updateMotorcycleVariantRow,
+  vehicleSnapshot,
+  type VehicleLevel,
 } from "../repo/vehicles-repo";
 
 /**
@@ -65,6 +68,7 @@ function failure(error: unknown): VehicleResult {
   const message = databaseMessage(error);
   if (message.includes("slug_format")) return { status: "invalid", field: "invalid_slug" };
   if (message.includes("outside its generation")) return { status: "invalid", field: "variant_years_outside" };
+  if (message.includes("variant years would exclude")) return { status: "invalid", field: "variant_years_in_use" };
   if (message.includes("would exclude existing")) return { status: "invalid", field: "generation_years_in_use" };
   if (message.includes("_years") || message.includes("_displacement") || message.includes("_cylinders")) return { status: "invalid", field: "invalid_year_range" };
   throw error;
@@ -77,6 +81,44 @@ async function write(actor: Actor, userId: string, action: string, entityType: s
       await recordAudit(tx, actor.meta, { actorUserId: userId, action, entityType, entityId: id, after });
       return id;
     });
+    return { status: "ok", id };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+type Tx = Parameters<Parameters<typeof transaction>[0]>[0];
+
+class VerifiedFitmentLock extends Error {}
+
+/**
+ * Updates a record and audits before/after. Verified fitment links claim
+ * compatibility with this exact motorcycle, so when any depend on the record
+ * (or on anything below it) the edit also needs compatibility.verify across
+ * all categories: otherwise renaming or restructuring a motorcycle would
+ * change a verified claim without a verifier.
+ */
+async function update(actor: Actor, userId: string, level: VehicleLevel, id: string, action: string, fn: (tx: Tx) => Promise<void>, after: unknown): Promise<VehicleResult> {
+  const run = (mayChangeVerified: boolean) =>
+    transaction(async (tx) => {
+      if (!mayChangeVerified && (await lockAndCountVerifiedLinks(tx, level, id)) > 0) throw new VerifiedFitmentLock();
+      const before = await vehicleSnapshot(tx, level, id);
+      await fn(tx);
+      await recordAudit(tx, actor.meta, { actorUserId: userId, action, entityType: `motorcycle_${level}`, entityId: id, before, after });
+    });
+  try {
+    try {
+      await run(false);
+    } catch (error) {
+      if (!(error instanceof VerifiedFitmentLock)) throw error;
+      try {
+        await authorize(actor, "compatibility.verify", { type: "motorcycle", id });
+      } catch (denied) {
+        if (denied instanceof AuthzError) return { status: "invalid", field: "verified_fitment_locked" };
+        throw denied;
+      }
+      await run(true);
+    }
     return { status: "ok", id };
   } catch (error) {
     return failure(error);
@@ -139,10 +181,7 @@ export async function updateManufacturer(actor: Actor, id: string, input: Manufa
   if (!UUID.test(id) || !(await getManufacturer(db(), id))) return { status: "not_found" };
   const parsed = manufacturerInputSchema.safeParse(input);
   if (!parsed.success) return { status: "invalid", field: first(parsed.error.issues) };
-  return write(actor, userId, "motorcycle.manufacturer_updated", "motorcycle_manufacturer", async (tx) => {
-    await updateManufacturerRow(tx, id, parsed.data);
-    return id;
-  }, parsed.data);
+  return update(actor, userId, "manufacturer", id, "motorcycle.manufacturer_updated", (tx) => updateManufacturerRow(tx, id, parsed.data), parsed.data);
 }
 
 // Brands -----------------------------------------------------------------------
@@ -161,10 +200,7 @@ export async function updateMotorcycleBrand(actor: Actor, id: string, input: Mot
   const parsed = motorcycleBrandInputSchema.safeParse(input);
   if (!parsed.success) return { status: "invalid", field: first(parsed.error.issues) };
   if (!(await manufacturerExists(db(), parsed.data.manufacturerId))) return { status: "invalid", field: "invalid_manufacturer" };
-  return write(actor, userId, "motorcycle.brand_updated", "motorcycle_brand", async (tx) => {
-    await updateMotorcycleBrandRow(tx, id, parsed.data);
-    return id;
-  }, parsed.data);
+  return update(actor, userId, "brand", id, "motorcycle.brand_updated", (tx) => updateMotorcycleBrandRow(tx, id, parsed.data), parsed.data);
 }
 
 // Models -----------------------------------------------------------------------
@@ -183,10 +219,7 @@ export async function updateModel(actor: Actor, id: string, input: ModelInput): 
   const parsed = modelInputSchema.safeParse(input);
   if (!parsed.success) return { status: "invalid", field: first(parsed.error.issues) };
   if (!(await brandExists(db(), parsed.data.brandId))) return { status: "invalid", field: "invalid_brand" };
-  return write(actor, userId, "motorcycle.model_updated", "motorcycle_model", async (tx) => {
-    await updateModelRow(tx, id, parsed.data);
-    return id;
-  }, parsed.data);
+  return update(actor, userId, "model", id, "motorcycle.model_updated", (tx) => updateModelRow(tx, id, parsed.data), parsed.data);
 }
 
 // Generations and variants ----------------------------------------------------
@@ -204,10 +237,7 @@ export async function updateGeneration(actor: Actor, id: string, input: Generati
   if (!UUID.test(id) || !(await getGeneration(db(), id))) return { status: "not_found" };
   const parsed = generationInputSchema.safeParse(input);
   if (!parsed.success) return { status: "invalid", field: first(parsed.error.issues) };
-  return write(actor, userId, "motorcycle.generation_updated", "motorcycle_generation", async (tx) => {
-    await updateGenerationRow(tx, id, parsed.data);
-    return id;
-  }, parsed.data);
+  return update(actor, userId, "generation", id, "motorcycle.generation_updated", (tx) => updateGenerationRow(tx, id, parsed.data), parsed.data);
 }
 
 export async function createMotorcycleVariant(actor: Actor, input: VariantInput): Promise<VehicleResult> {
@@ -227,8 +257,5 @@ export async function updateMotorcycleVariant(actor: Actor, id: string, input: V
   // A variant may move only between generations of the same model.
   const target = await getGeneration(db(), parsed.data.generationId);
   if (!target || target.modelId !== current.generation.modelId) return { status: "invalid", field: "invalid_generation" };
-  return write(actor, userId, "motorcycle.variant_updated", "motorcycle_variant", async (tx) => {
-    await updateMotorcycleVariantRow(tx, id, parsed.data);
-    return id;
-  }, parsed.data);
+  return update(actor, userId, "variant", id, "motorcycle.variant_updated", (tx) => updateMotorcycleVariantRow(tx, id, parsed.data), parsed.data);
 }

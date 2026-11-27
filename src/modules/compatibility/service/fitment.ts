@@ -8,6 +8,7 @@ import { authorize, AuthzError } from "@/modules/rbac/service/authorize";
 import { DECISIONS, fitmentInputSchema, newSourceSchema, type FitmentInput, type VerificationStatusKey } from "../domain/fitment-input";
 import {
   deleteFitment,
+  lockFitmentStatus,
   generationExists,
   getFitment,
   insertFitment,
@@ -98,6 +99,7 @@ export async function addFitment(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes("Unique constraint") || message.includes("P2002")) return { status: "duplicate" };
+    if (message.includes("outside the motorcycle variant")) return { status: "invalid", field: "years_outside_variant" };
     if (message.includes("outside the motorcycle generation")) return { status: "invalid", field: "years_outside_generation" };
     throw error;
   }
@@ -132,17 +134,28 @@ export async function removeFitment(actor: Actor, productId: string, linkId: str
   if (!categoryIds) return { status: "not_found" };
   const link = UUID.test(linkId) ? await getFitment(db(), productId, linkId) : null;
   if (!link) return { status: "not_found" };
-  if (link.verificationStatus === "verified") await authorize(actor, "compatibility.verify", { type: "product", id: productId, categoryIds });
-  const removed = await transaction(async (tx) => {
-    if (!(await deleteFitment(tx, productId, linkId))) return false;
-    await recordAudit(tx, actor.meta, {
-      actorUserId: userId,
-      action: "fitment.removed",
-      entityType: "product_compatibility",
-      entityId: linkId,
-      before: { productId, status: link.verificationStatus, sourceId: link.sourceId },
+  // The status is re-read under a row lock: a link verified after the first
+  // read can still be removed only by a verifier.
+  const run = (mayRemoveVerified: boolean) =>
+    transaction(async (tx) => {
+      const status = await lockFitmentStatus(tx, productId, linkId);
+      if (status === null) return "gone" as const;
+      if (status === "verified" && !mayRemoveVerified) return "needs_verify" as const;
+      await deleteFitment(tx, productId, linkId);
+      await recordAudit(tx, actor.meta, {
+        actorUserId: userId,
+        action: "fitment.removed",
+        entityType: "product_compatibility",
+        entityId: linkId,
+        before: { productId, status, sourceId: link.sourceId },
+      });
+      return "removed" as const;
     });
-    return true;
-  });
+  let outcome = await run(false);
+  if (outcome === "needs_verify") {
+    await authorize(actor, "compatibility.verify", { type: "product", id: productId, categoryIds });
+    outcome = await run(true);
+  }
+  const removed = outcome === "removed";
   return removed ? { status: "ok", id: linkId } : { status: "not_found" };
 }

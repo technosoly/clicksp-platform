@@ -219,7 +219,7 @@ export async function updateModelRow(tx: Tx, id: string, data: ModelData): Promi
 }
 
 export async function getGeneration(client: DbClient, id: string) {
-  return client.motorcycleGeneration.findFirst({ where: { id }, select: { id: true, modelId: true, code: true, yearFrom: true, yearTo: true } });
+  return client.motorcycleGeneration.findFirst({ where: { id, model: { deletedAt: null } }, select: { id: true, modelId: true, code: true, yearFrom: true, yearTo: true } });
 }
 
 export async function insertGeneration(tx: Tx, modelId: string, data: GenerationData): Promise<string> {
@@ -311,4 +311,57 @@ export async function motorcyclePickerRows(client: DbClient) {
     brandNames: namesOf(m.brand.translations),
     generations: m.generations.map((g) => ({ ...g, variants: g.variants.map((v) => ({ ...v, names: namesOf(v.translations) })) })),
   }));
+}
+
+// Verified fitment that depends on a catalog record --------------------------
+
+export type VehicleLevel = "manufacturer" | "brand" | "model" | "generation" | "variant";
+
+/**
+ * Locks a catalog record (FOR UPDATE) and counts the verified fitment links
+ * that depend on it: links to the record itself or to anything below it.
+ * Renaming or restructuring such a record changes what those links claim.
+ */
+export async function lockAndCountVerifiedLinks(tx: Tx, level: VehicleLevel, id: string): Promise<number> {
+  const lock = {
+    manufacturer: Prisma.sql`SELECT 1 FROM motorcycle_manufacturers WHERE id = ${id}::uuid FOR UPDATE`,
+    brand: Prisma.sql`SELECT 1 FROM motorcycle_brands WHERE id = ${id}::uuid FOR UPDATE`,
+    model: Prisma.sql`SELECT 1 FROM motorcycle_models WHERE id = ${id}::uuid FOR UPDATE`,
+    generation: Prisma.sql`SELECT 1 FROM motorcycle_generations WHERE id = ${id}::uuid FOR UPDATE`,
+    variant: Prisma.sql`SELECT 1 FROM motorcycle_variants WHERE id = ${id}::uuid FOR UPDATE`,
+  }[level];
+  await tx.$queryRaw(lock);
+  const filter = {
+    manufacturer: Prisma.sql`b.manufacturer_id = ${id}::uuid`,
+    brand: Prisma.sql`b.id = ${id}::uuid`,
+    model: Prisma.sql`m.id = ${id}::uuid`,
+    generation: Prisma.sql`g.id = ${id}::uuid`,
+    variant: Prisma.sql`c.motorcycle_variant_id = ${id}::uuid`,
+  }[level];
+  const rows = await tx.$queryRaw<{ n: bigint }[]>`
+    SELECT count(*) AS n
+      FROM product_compatibilities c
+      LEFT JOIN motorcycle_variants v ON v.id = c.motorcycle_variant_id
+      JOIN motorcycle_generations g ON g.id = coalesce(c.motorcycle_generation_id, v.generation_id)
+      JOIN motorcycle_models m ON m.id = g.model_id
+      JOIN motorcycle_brands b ON b.id = m.brand_id
+     WHERE c.verification_status = 'verified' AND ${filter}`;
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** The stored row and its names, for the audit log's "before". */
+export async function vehicleSnapshot(client: DbClient, level: VehicleLevel, id: string): Promise<unknown> {
+  const names = { select: { locale: true, name: true } } as const;
+  switch (level) {
+    case "manufacturer":
+      return client.motorcycleManufacturer.findFirst({ where: { id }, select: { countryCode: true, isActive: true, sortOrder: true, translations: names } });
+    case "brand":
+      return client.motorcycleBrand.findFirst({ where: { id }, select: { manufacturerId: true, isActive: true, sortOrder: true, translations: names } });
+    case "model":
+      return client.motorcycleModel.findFirst({ where: { id }, select: { brandId: true, segment: true, isActive: true, sortOrder: true, translations: names } });
+    case "generation":
+      return client.motorcycleGeneration.findFirst({ where: { id }, select: { modelId: true, code: true, yearFrom: true, yearTo: true } });
+    case "variant":
+      return client.motorcycleVariant.findFirst({ where: { id }, select: { generationId: true, yearFrom: true, yearTo: true, engineDisplacementCc: true, marketCode: true, isActive: true, translations: { select: { locale: true, name: true } } } });
+  }
 }

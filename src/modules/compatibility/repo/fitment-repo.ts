@@ -121,6 +121,14 @@ export async function setFitmentStatus(tx: Tx, id: string, status: VerificationS
   });
 }
 
+/** Locks a link for a change and returns its current status. */
+export async function lockFitmentStatus(tx: Tx, productId: string, id: string): Promise<string | null> {
+  const rows = await tx.$queryRaw<{ status: string }[]>`
+    SELECT verification_status::text AS status FROM product_compatibilities
+     WHERE id = ${id}::uuid AND product_id = ${productId}::uuid FOR UPDATE`;
+  return rows[0]?.status ?? null;
+}
+
 export async function deleteFitment(tx: Tx, productId: string, id: string): Promise<boolean> {
   const { count } = await tx.productCompatibility.deleteMany({ where: { id, productId } });
   return count === 1;

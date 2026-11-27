@@ -897,7 +897,9 @@
       "invalid_market": "The market code is too long.",
       "variant_years_outside": "The years must lie within the generation's model years.",
       "generation_years_in_use": "Engine versions or part links use years outside this range. Change those first.",
-      "not_found": "Not found. It may have been removed."
+      "not_found": "Not found. It may have been removed.",
+      "variant_years_in_use": "Part links for this engine version use years outside the new range. Change those links first.",
+      "verified_fitment_locked": "Verified part links depend on this motorcycle. Only someone who can verify fitment can change it."
     },
     "brandDetails": "Brand details",
     "modelDetails": "Model details",
@@ -978,7 +980,8 @@
       "invalid_url": "Enter a full link starting with http:// or https://.",
       "duplicate": "This motorcycle is already linked (same position).",
       "invalid_status": "Unknown status.",
-      "not_found": "Not found. It may have been removed."
+      "not_found": "Not found. It may have been removed.",
+      "years_outside_variant": "The years must lie within this engine version's own years."
     }
   }
 }
