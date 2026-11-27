@@ -193,7 +193,7 @@ export async function variantsBySku(client: DbClient, skus: readonly string[]) {
   if (skus.length === 0) return [];
   return client.productVariant.findMany({
     where: { skuNormalized: { in: [...skus] }, deletedAt: null, product: { deletedAt: null } },
-    select: { id: true, skuNormalized: true, productId: true, isDefault: true },
+    select: { id: true, sku: true, skuNormalized: true, productId: true, isDefault: true },
   });
 }
 

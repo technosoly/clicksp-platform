@@ -29,11 +29,23 @@ export default async function AdminInventoryPage({ params, searchParams }: { par
         description={t("intro")}
         testId="admin-inventory-heading"
         actions={
-          actor.permissions.has("warehouse.manage") ? (
-            <Link href="/admin/warehouses" className="text-sm text-brand-orange-strong underline">
-              {t("manageWarehouses")}
-            </Link>
-          ) : null
+          <span className="flex flex-wrap gap-3 text-sm">
+            {actor.permissions.has("inventory.transfer") ? (
+              <Link href="/admin/inventory/transfers" className="text-brand-orange-strong underline" data-testid="admin-inventory-transfers">
+                {t("transfers.title")}
+              </Link>
+            ) : null}
+            {actor.permissions.has("inventory.count") ? (
+              <Link href="/admin/inventory/counts" className="text-brand-orange-strong underline" data-testid="admin-inventory-counts">
+                {t("counts.title")}
+              </Link>
+            ) : null}
+            {actor.permissions.has("warehouse.manage") ? (
+              <Link href="/admin/warehouses" className="text-brand-orange-strong underline">
+                {t("manageWarehouses")}
+              </Link>
+            ) : null}
+          </span>
         }
       />
       <Card>

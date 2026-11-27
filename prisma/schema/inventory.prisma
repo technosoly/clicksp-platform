@@ -291,6 +291,7 @@ model InventoryCount {
   completedBy User?                @relation("CountCompletedBy", fields: [completedById], references: [id], onDelete: Restrict)
   lines       InventoryCountLine[]
 
+  @@unique([warehouseId], map: "inventory_counts_one_open_per_warehouse", where: raw("status = 'open'"))
   @@index([warehouseId, startedAt(sort: Desc)])
   @@index([startedById])
   @@index([completedById])
