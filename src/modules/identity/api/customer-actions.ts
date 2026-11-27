@@ -6,6 +6,8 @@ import { currentRequestMeta } from "@/lib/http/server";
 import { isLocale } from "@/lib/i18n/config";
 import { redirect } from "@/lib/i18n/navigation";
 import { logger } from "@/lib/logger";
+import { clearCartToken, readCartToken } from "@/modules/sales/api/cart-cookie";
+import { mergeGuestCart } from "@/modules/sales/service/cart";
 import { requestPhoneOtp, verifyPhoneOtp } from "../service/customer-auth";
 import { endSession } from "../service/sessions";
 import { clearSessionCookie, readSessionToken, setSessionCookie } from "./cookies";
@@ -61,6 +63,7 @@ async function verifyOtp(prev: OtpFormState, form: FormData): Promise<OtpFormSta
     }
     await endSession(await readSessionToken("customer"), "customer");
     await setSessionCookie("customer", result.session);
+    await keepGuestCart(result.userId);
   } catch (error) {
     logger.error("OTP verification failed", { error: String(error) });
     return { ...prev, step: "code", phone: phone.data, error: "unexpected" };
@@ -74,4 +77,16 @@ export async function customerLogoutAction(form: FormData): Promise<void> {
   await endSession(await readSessionToken("customer"), "customer");
   await clearSessionCookie("customer");
   redirect({ href: "/", locale });
+}
+
+/** A cart filled before signing in moves into the customer's cart. Never blocks sign-in. */
+async function keepGuestCart(userId: string): Promise<void> {
+  const token = await readCartToken();
+  if (!token) return;
+  try {
+    await mergeGuestCart(userId, token);
+    await clearCartToken();
+  } catch (error) {
+    logger.error("Guest cart merge failed", { error: String(error) });
+  }
 }

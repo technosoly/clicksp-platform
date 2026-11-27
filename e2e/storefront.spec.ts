@@ -7,7 +7,7 @@ import pg from "pg";
  * Phase 6b part 1 end to end: a visitor finds a published part from the
  * header search, opens it (price, availability, verified fitment), and finds
  * it again from its motorcycle. A draft product never shows. All data is
- * synthetic (E2E ... / e2e-*), inserted directly.
+ * synthetic (E2E ... / e2e-*), inserted directly. Part 2: the cart.
  */
 
 async function sql<T extends pg.QueryResultRow>(text: string, params: unknown[] = []): Promise<T[]> {
@@ -92,4 +92,47 @@ test("a visitor searches, opens a part with its fitment, and finds it by motorcy
   // The Persian page of the same category uses its Persian name.
   await page.goto(`/fa/c/e2e-brakes-${id}`);
   await expect(page.getByTestId("category-heading")).toHaveText(`e2e ترمز ${id}`);
+});
+
+/** A published part with 5 in stock, in its own category. */
+async function stockedPart(id: string) {
+  const [category] = await sql<{ id: string }>("INSERT INTO categories DEFAULT VALUES RETURNING id");
+  await sql("INSERT INTO category_translations (category_id, locale, name, slug, search_name) VALUES ($1, 'en', $2::text, $3, lower($2::text))", [category!.id, `E2E Chains ${id}`, `e2e-chains-${id}`]);
+  const [p] = await sql<{ id: string }>("INSERT INTO products (primary_category_id, status, published_at) VALUES ($1, 'active', now()) RETURNING id", [category!.id]);
+  await sql("INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)", [p!.id, category!.id]);
+  await sql("INSERT INTO product_translations (product_id, locale, title, slug, search_title) VALUES ($1, 'en', $2::text, $3, lower($2::text))", [p!.id, `E2E Chain ${id}`, `e2e-chain-${id}`]);
+  const [v] = await sql<{ id: string }>("INSERT INTO product_variants (product_id, sku, sku_normalized, is_default, price) VALUES ($1, $2, $3, true, 300000) RETURNING id", [p!.id, `E2EC-${id}`, `E2EC${id.toUpperCase()}`]);
+  const [w] = await sql<{ id: string }>("INSERT INTO warehouses (code, name) VALUES ($1, 'E2E') RETURNING id", [`E2E-${id.toUpperCase()}`]);
+  const [l] = await sql<{ id: string }>("INSERT INTO warehouse_locations (warehouse_id, code, is_default) VALUES ($1, 'MAIN', true) RETURNING id", [w!.id]);
+  await sql("INSERT INTO inventory_movements (variant_id, location_id, warehouse_id, type, quantity, reference_type) VALUES ($1, $2, $3, 'receipt', 5, 'manual')", [v!.id, l!.id, w!.id]);
+  return `e2e-chain-${id}`;
+}
+
+test("a visitor adds a part to the cart, changes the quantity and removes it", async ({ page }) => {
+  const id = randomUUID().slice(0, 8);
+  const slug = await stockedPart(id);
+
+  await page.goto(`/en/p/${slug}`);
+  await expect(page.getByTestId("product-availability")).toHaveText("In stock");
+  await expect(page.getByTestId("header-cart-count")).toHaveCount(0);
+  await page.getByTestId("add-to-cart-quantity").fill("2");
+  await page.getByTestId("add-to-cart-submit").click();
+  await expect(page.getByTestId("add-to-cart-done")).toBeVisible();
+  await expect(page.getByTestId("header-cart-count")).toHaveText("1");
+
+  await page.getByRole("link", { name: "View cart" }).click();
+  await expect(page).toHaveURL(/\/en\/cart$/);
+  await expect(page.getByTestId("cart-line-title")).toHaveText(`E2E Chain ${id}`);
+  // 2 × 300,000 Rial = 60,000 Toman.
+  await expect(page.getByTestId("cart-subtotal")).toHaveText("60,000 Toman");
+
+  // More than in stock is flagged, not silently changed.
+  await page.getByTestId("cart-line-quantity").fill("9");
+  await page.getByTestId("cart-line-update").click();
+  await expect(page.getByTestId("cart-line-problem")).toHaveText("Not that many in stock. Lower the quantity.");
+  await expect(page.getByTestId("cart-not-ready")).toBeVisible();
+
+  await page.getByTestId("cart-line-remove").click();
+  await expect(page.getByTestId("cart-empty")).toBeVisible();
+  await expect(page.getByTestId("header-cart-count")).toHaveCount(0);
 });

@@ -165,3 +165,32 @@ export function searchWhere(text: string, identifier: string): Prisma.ProductWhe
   }
   return or.length ? { OR: or } : { id: { in: [] } };
 }
+
+// Cart ---------------------------------------------------------------------------
+
+/** Variants a visitor can buy now: active, priced, of a published product. */
+export async function purchasableVariants(client: DbClient, ids: readonly string[]) {
+  return client.productVariant.findMany({
+    where: { id: { in: [...ids] }, isActive: true, deletedAt: null, price: { gt: 0n }, product: PUBLISHED },
+    select: {
+      id: true,
+      sku: true,
+      price: true,
+      compareAtPrice: true,
+      minOrderQty: true,
+      maxOrderQty: true,
+      product: {
+        select: {
+          id: true,
+          translations: { select: { locale: true, title: true, slug: true } },
+          images: {
+            where: { media: publicImage.where, OR: [{ variantId: null }, { variant: { isActive: true, deletedAt: null } }] },
+            orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }],
+            take: 1,
+            select: { alt: true, media: mediaSelect },
+          },
+        },
+      },
+    },
+  });
+}

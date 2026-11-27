@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { CatalogImage, ImagePlaceholder } from "@/components/media/catalog-image";
+import { AddToCartForm } from "@/components/store/add-to-cart-form";
 import { Breadcrumbs } from "@/components/store/breadcrumbs";
 import { Price } from "@/components/store/price";
 import { alternatesFor } from "@/components/store/seo";
@@ -103,7 +104,7 @@ export default async function ProductPage({ params }: Props) {
             <p className={status === "out" ? "text-sm text-destructive" : status === "low" ? "text-sm text-brand-orange-strong" : "text-sm text-success"} data-testid="product-availability">
               {t(`availability.${status}`)}
             </p>
-            <p className="text-xs text-muted-foreground">{t("orderingSoon")}</p>
+            {status !== "out" ? <AddToCartForm variantId={main.id} minQty={main.minOrderQty} maxQty={main.maxOrderQty} /> : null}
           </div>
           {product.shortDescription ? <p className="leading-relaxed">{product.shortDescription}</p> : null}
           {product.variants.length > 1 ? (

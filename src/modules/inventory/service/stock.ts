@@ -203,3 +203,13 @@ export async function shopAvailability(variantIds: readonly string[]): Promise<M
     return [id, n <= 0 ? "out" : n <= LOW_STOCK ? "low" : "in_stock"] as const;
   }));
 }
+
+/**
+ * Sellable quantity per variant, for server-side cart and checkout checks
+ * only: never send these numbers to the browser (the shop shows
+ * in stock / low / out).
+ */
+export async function sellableQuantities(variantIds: readonly string[]): Promise<Map<string, number>> {
+  const ids = variantIds.filter((id) => UUID.test(id)).slice(0, 200);
+  return availableByVariant(db(), ids);
+}

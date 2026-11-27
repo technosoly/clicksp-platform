@@ -11,6 +11,7 @@ import {
   productCards,
   productForShop,
   productIdBySlug,
+  purchasableVariants,
   searchWhere,
   servableRenditions,
   topCategories,
@@ -187,4 +188,47 @@ export async function searchShop(locale: ShopLocale, query: string, page: number
   const identifier = normalizeIdentifier(raw);
   const { rows, total } = await productCards(db(), searchWhere(text, identifier.length >= 3 ? identifier : ""), (page - 1) * PAGE_SIZE, PAGE_SIZE);
   return { query: raw, products: cards(rows, locale), total, pages: Math.max(1, Math.ceil(total / PAGE_SIZE)) };
+}
+
+// Cart -------------------------------------------------------------------------
+
+export interface ShopVariant {
+  variantId: string;
+  productId: string;
+  sku: string;
+  title: string;
+  slug: string;
+  price: bigint;
+  compareAtPrice: bigint | null;
+  minQty: number;
+  maxQty: number | null;
+  image: { renditions: Rendition[]; alt: string };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The variants a visitor can buy now, with today's price; ids not in the map can't be bought. */
+export async function shopVariants(locale: ShopLocale, ids: readonly string[]): Promise<Map<string, ShopVariant>> {
+  const wanted = [...new Set(ids)].filter((id) => UUID.test(id)).slice(0, 200);
+  if (wanted.length === 0) return new Map();
+  const rows = await purchasableVariants(db(), wanted);
+  const out = new Map<string, ShopVariant>();
+  for (const row of rows) {
+    const text = pick(row.product.translations, locale);
+    if (!text) continue;
+    const image = row.product.images[0];
+    out.set(row.id, {
+      variantId: row.id,
+      productId: row.product.id,
+      sku: row.sku,
+      title: text.title,
+      slug: text.slug,
+      price: row.price,
+      compareAtPrice: row.compareAtPrice && row.compareAtPrice > row.price ? row.compareAtPrice : null,
+      minQty: Math.max(1, row.minOrderQty),
+      maxQty: row.maxOrderQty,
+      image: { renditions: image ? servableRenditions(image.media) : [], alt: image ? altText(image.alt, locale, text.title) : text.title },
+    });
+  }
+  return out;
 }

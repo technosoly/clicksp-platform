@@ -1,10 +1,14 @@
 import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 import { SearchForm } from "@/components/store/search-form";
+import { formatCount } from "@/lib/i18n/numbers";
 import { Link } from "@/lib/i18n/navigation";
+import { cartOwner } from "@/modules/sales/api/cart-owner";
+import { cartCount } from "@/modules/sales/service/cart";
 import { LanguageSwitcher } from "./language-switcher";
 
-export async function SiteHeader() {
+export async function SiteHeader({ locale }: { locale: "fa" | "en" }) {
+  const count = await cartCount(await cartOwner());
   const t = await getTranslations("Metadata");
   const nav = await getTranslations("Header");
   return (
@@ -22,6 +26,14 @@ export async function SiteHeader() {
           {/* Static link: the account page itself sends signed-out visitors to sign in. */}
           <Link href="/account" className="rounded-md px-3 py-2 text-sm hover:bg-accent" data-testid="header-account">
             {nav("account")}
+          </Link>
+          <Link href="/cart" className="rounded-md px-3 py-2 text-sm hover:bg-accent" data-testid="header-cart">
+            {nav("cart")}
+            {count > 0 ? (
+              <span className="ms-1 rounded-full bg-primary px-1.5 text-xs text-primary-foreground" data-testid="header-cart-count">
+                {formatCount(count, locale)}
+              </span>
+            ) : null}
           </Link>
           <LanguageSwitcher />
         </nav>

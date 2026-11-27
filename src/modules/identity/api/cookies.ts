@@ -16,7 +16,7 @@ const BASE_NAMES: Record<SessionKind, string> = {
 };
 
 /** Secure on HTTPS, and always in production (whatever APP_URL says). */
-function secure(): boolean {
+export function secure(): boolean {
   return env().APP_URL.startsWith("https://") || env().APP_ENV === "production" || process.env.NODE_ENV === "production";
 }
 

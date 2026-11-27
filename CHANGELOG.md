@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6b, part 2: cart)
+- **Add to cart** on the product page (quantity within the part's order limits; parts out of stock can't be added) and a **cart page** (`/cart`) to change quantities or remove parts, with the parts total. Prices, limits and stock are read fresh every time, so a price change or a part going out of stock shows at once and is marked on its line. The header shows how many parts are in the cart.
+- Guests get a cart too, tied to a random cookie (only its SHA-256 is stored, kept 30 days). Signing in with a mobile number moves the guest cart into the customer's own cart.
+- Limits: 30 different parts, 99 of each. Stock is not held for a cart; it will be reserved when an order is placed (next part).
+- The cart page gets the per-request nonce Content-Security-Policy.
+- Tests: unit (182 in total), integration on PostgreSQL (188 in total), E2E (54 in total, desktop and mobile).
+
 ### Added (Phase 6b, part 1: storefront browsing)
 - **Home** with search, motorcycle brands, top categories and the latest parts. **Category pages** (`/c/<slug>`) with sub-categories, breadcrumbs and every published part below them, 24 per page. **Product pages** (`/p/<slug>`) with photos, price (and the old price when discounted), stock as in stock / only a few left / out of stock, part numbers, warranty and the motorcycles the part is verified to fit. Ordering opens in the next part.
 - **Search** (`/search`) by title, SKU or part number, whatever the separators and whether digits are Persian or English. Search pages are not indexed.
