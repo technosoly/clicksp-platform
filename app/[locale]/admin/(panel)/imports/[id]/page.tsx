@@ -24,7 +24,7 @@ export default async function AdminImportJobPage({ params }: { params: Promise<{
   const locale = raw === "en" ? "en" : "fa";
   const { data } = await adminPage(raw, (actor) => getProductImport(actor, id), `/admin/imports/${id}`);
   if (!data) notFound();
-  const { job, problems, applied } = data;
+  const { job, canConfirm, problems, applied } = data;
   const t = await getTranslations("AdminImports");
   const report = (job.dryRunReport ?? {}) as Report;
   const n = (value: number | undefined) => formatCount(value ?? 0, locale);
@@ -76,9 +76,14 @@ export default async function AdminImportJobPage({ params }: { params: Promise<{
             ) : null}
           </dl>
         ) : null}
-        {job.status === "validated" ? (
+        {job.status === "validated" && job.validRows > 0 && !canConfirm ? (
+          <p className="mt-4 text-sm text-muted-foreground" data-testid="admin-import-uploader-only">
+            {t("uploaderConfirms")}
+          </p>
+        ) : null}
+        {job.status === "validated" || job.status === "applying" ? (
           <div className="mt-4 flex flex-wrap gap-3">
-            {job.validRows > 0 ? (
+            {job.status === "validated" && job.validRows > 0 && canConfirm ? (
               <ActionForm action={confirmImportAction} submitLabel={t("confirm", { rows: n(job.validRows) })} testId="admin-import-confirm" namespace="AdminImports">
                 <input type="hidden" name="id" value={job.id} />
               </ActionForm>
