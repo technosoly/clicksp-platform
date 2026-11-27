@@ -160,6 +160,18 @@ test("a Business Admin sets up delivery and a customer places an order", async (
   await expect(page).toHaveURL(new RegExp(`${orderUrl}$`));
   await expect(page.getByTestId("order-paid-reference")).toContainText("FAKE");
   await expect(page.getByTestId("order-pay")).toHaveCount(0);
+
+  // A Business Admin packs and ships it with the carrier's tracking code.
+  const orderNumber = orderUrl.split("/").pop()!;
+  await page.context().clearCookies();
+  await signInBusinessAdmin(page);
+  await page.goto(`/en/admin/orders/${orderNumber}`);
+  await page.getByTestId("admin-order-pack-submit").click();
+  await expect(page.getByTestId("admin-order-ship")).toBeVisible();
+  await page.getByLabel("Carrier's tracking code (optional)").fill("IR123456789");
+  await page.getByTestId("admin-order-ship-submit").click();
+  await expect(page.getByTestId("admin-order-shipments")).toContainText("IR123456789");
+  await expect(page.getByTestId("admin-order-deliver")).toBeVisible();
 });
 
 test("a guest is asked to sign in before checkout", async ({ page }) => {

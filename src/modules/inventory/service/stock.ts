@@ -9,6 +9,7 @@ import { authorize, authorizeAny, AuthzError } from "@/modules/rbac/service/auth
 import { MOVEMENT_KINDS, MOVEMENT_PERMISSION, movementInputSchema, type MovementInput, type MovementKind } from "../domain/inventory-input";
 import {
   closeOrderHolds,
+  consumeOrderHolds,
   reserveVariantForOrder,
   availableByVariant,
   balancesFor,
@@ -227,6 +228,11 @@ export async function reserveForOrder(tx: Parameters<typeof reserveVariantForOrd
     if (!(await reserveVariantForOrder(tx, { orderId, variantId: line.variantId, quantity: line.quantity, expiresAt }))) return false;
   }
   return true;
+}
+
+/** Takes an order's held stock off the shelf as sales when it ships (inside the caller's transaction). */
+export async function takeOrderStock(tx: Parameters<typeof consumeOrderHolds>[0], orderId: string, actorUserId: string, trackingCode: string | null) {
+  return consumeOrderHolds(tx, orderId, actorUserId, trackingCode);
 }
 
 /** Gives back the stock held for an order (inside the caller's transaction). */

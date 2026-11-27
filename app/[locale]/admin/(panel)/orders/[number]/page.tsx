@@ -8,7 +8,7 @@ import { Link } from "@/lib/i18n/navigation";
 import { formatMoney } from "@/lib/money";
 import { adminPage } from "@/modules/identity/api/admin-page";
 import { orderPaymentsForAdmin } from "@/modules/payments/service/payments-admin";
-import { cancelOrderAction } from "@/modules/sales/api/order-admin-actions";
+import { cancelOrderAction, fulfilOrderAction } from "@/modules/sales/api/order-admin-actions";
 import { orderForAdmin } from "@/modules/sales/service/orders-admin";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
 import { provinceName } from "@/modules/shipping/service/provinces";
@@ -26,7 +26,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ loc
     `/admin/orders/${number}`,
   );
   if (!data) notFound();
-  const { order, canCancel, payments } = data;
+  const { order, canCancel, payments, fulfilStep, shipments } = data;
   const p = await getTranslations("AdminPayments");
   const [t, s, o, unit] = await Promise.all([getTranslations("AdminOrders"), getTranslations("Orders.status"), getTranslations("Orders"), getDisplayUnit()]);
   const money = (v: bigint) => formatMoney(v, { locale, unit });
@@ -105,6 +105,33 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ loc
               ))}
             </ul>
           )}
+        </Card>
+      ) : null}
+      {fulfilStep ? (
+        <Card title={t(`fulfil.${fulfilStep}.title`)} description={t(`fulfil.${fulfilStep}.help`)} testId="admin-order-fulfil">
+          <ActionForm action={fulfilOrderAction} submitLabel={t(`fulfil.${fulfilStep}.submit`)} testId={`admin-order-${fulfilStep}`} namespace="AdminOrders">
+            <input type="hidden" name="orderNumber" value={order.orderNumber.toString()} />
+            <input type="hidden" name="step" value={fulfilStep} />
+            {fulfilStep === "ship" ? (
+              <Field label={t("fulfil.trackingCode")} htmlFor="tracking-code" hint={t("fulfil.trackingHint")}>
+                <Input id="tracking-code" name="trackingCode" dir="ltr" maxLength={60} />
+              </Field>
+            ) : null}
+          </ActionForm>
+        </Card>
+      ) : null}
+      {shipments.length > 0 ? (
+        <Card title={t("shipments")}>
+          <ul className="divide-y text-sm" data-testid="admin-order-shipments">
+            {shipments.map((sh) => (
+              <li key={sh.id} className="flex flex-wrap gap-x-3 gap-y-1 py-1.5">
+                <span dir="ltr">{sh.warehouse.code}</span>
+                <span>{t(`shipmentStatus.${sh.status}`)}</span>
+                {sh.trackingCode ? <span dir="ltr">{sh.trackingCode}</span> : null}
+                {sh.shippedAt ? <span>{date.format(sh.shippedAt)}</span> : null}
+              </li>
+            ))}
+          </ul>
         </Card>
       ) : null}
       <Card title={t("stock")} description={t("stockHelp")}>

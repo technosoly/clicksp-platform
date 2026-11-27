@@ -332,3 +332,28 @@ export async function closeOrderHolds(tx: Tx, orderId: string, status: "released
        FOR UPDATE OF b`;
   await tx.stockReservation.updateMany({ where: { orderId, status: "active" }, data: { status } });
 }
+
+/**
+ * Turns an order's held stock into sales: each active hold is consumed and a
+ * 'sale' movement takes the units off the shelf (consume first, then the
+ * movement, as the reservation trigger expects). Balances are locked in the
+ * same order as checkout. Returns what left each warehouse.
+ */
+export async function consumeOrderHolds(tx: Tx, orderId: string, actorUserId: string, referenceCode: string | null) {
+  await tx.$queryRaw`
+    SELECT 1 FROM inventory_balances b
+      JOIN stock_reservations r ON r.variant_id = b.variant_id AND r.location_id = b.location_id
+     WHERE r.order_id = ${orderId}::uuid AND r.status = 'active'
+     ORDER BY b.variant_id, b.location_id
+       FOR UPDATE OF b`;
+  const holds = await tx.stockReservation.findMany({
+    where: { orderId, status: "active" },
+    orderBy: [{ variantId: "asc" }, { locationId: "asc" }],
+    select: { id: true, variantId: true, locationId: true, quantity: true, balance: { select: { warehouseId: true } } },
+  });
+  for (const hold of holds) {
+    await tx.stockReservation.update({ where: { id: hold.id }, data: { status: "consumed" } });
+    await insertMovement(tx, { variantId: hold.variantId, locationId: hold.locationId, warehouseId: hold.balance.warehouseId, type: "sale", quantity: hold.quantity, referenceType: "order", referenceId: orderId, referenceCode, reason: null, actorUserId });
+  }
+  return holds.map((h) => ({ variantId: h.variantId, warehouseId: h.balance.warehouseId, quantity: h.quantity }));
+}

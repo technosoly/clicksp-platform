@@ -5,6 +5,8 @@ import { recordAudit } from "@/modules/audit/service/audit";
 import { releaseOrderHolds } from "@/modules/inventory/service/stock";
 import type { Actor } from "@/modules/rbac/domain/actor";
 import { authorize, authorizeAny, AuthzError } from "@/modules/rbac/service/authorize";
+import { shipmentsOfOrder } from "@/modules/shipping/service/shipments";
+import { canFulfil, FULFIL_STEPS, type FulfilStep } from "./fulfilment";
 import { adminOrder, adminOrderList, cancelUnpaidOrder, hasPaymentInProgress, insertOutboxEvent, lockUnpaidOrder, setActingUser } from "../repo/order-repo";
 
 /**
@@ -55,7 +57,14 @@ export async function orderForAdmin(actor: Actor, orderNumber: string) {
     if (error instanceof AuthzError && actor.permissions.has("order.view")) return null;
     throw error;
   }
-  return { order, canCancel: actor.permissions.has("order.cancel") && order.status === "pending_payment" };
+  const step = (Object.keys(FULFIL_STEPS) as FulfilStep[]).find((k) => FULFIL_STEPS[k] === order.status) ?? null;
+  return {
+    order,
+    canCancel: actor.permissions.has("order.cancel") && order.status === "pending_payment",
+    // The next packing or shipping step, when this admin may take it.
+    fulfilStep: step && canFulfil(actor, warehouseIds) ? step : null,
+    shipments: await shipmentsOfOrder(order.id),
+  };
 }
 
 export type AdminOrderResult = { status: "ok" } | { status: "not_found" } | { status: "invalid"; field: string } | { status: "not_cancellable" } | { status: "payment_in_progress" };

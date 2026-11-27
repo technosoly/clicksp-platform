@@ -263,3 +263,21 @@ export async function makeDefaultAddress(tx: Tx, userId: string, id: string): Pr
   await tx.deliveryAddress.update({ where: { id }, data: { isDefault: true } });
   return true;
 }
+
+// Fulfilment ------------------------------------------------------------------------
+
+/** Locks an order for a fulfilment step and returns what the step needs. */
+export async function lockOrderForFulfilment(tx: Tx, orderId: string) {
+  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM orders WHERE id = ${orderId}::uuid FOR UPDATE`;
+  if (rows.length === 0) return null;
+  return tx.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, orderNumber: true, status: true, shippingMethodId: true, items: { select: { id: true, variantId: true, quantity: true } } },
+  });
+}
+
+/** Moves an order along its state machine (the database refuses a step that isn't allowed). */
+export async function setOrderStatus(tx: Tx, orderId: string, status: OrderStatus, reason: string | null): Promise<void> {
+  await tx.$executeRaw`SELECT set_config('app.status_reason', ${reason ?? ""}, true)`;
+  await tx.order.update({ where: { id: orderId }, data: { status } });
+}
