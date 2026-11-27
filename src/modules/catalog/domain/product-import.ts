@@ -7,10 +7,11 @@
  * header row naming the columns below in any order. Unknown columns are an
  * error, so a typo never silently drops data. One row is one product with
  * its main variant; a SKU already in the catalog updates that product, and
- * an empty cell then keeps the current value.
+ * an empty cell then keeps the current value (except compare_at_price,
+ * which goes with the price: a new price without one removes the old one).
  */
 import { MoneyError, parseMoneyInput, type DisplayUnit } from "@/lib/money";
-import { normalizeForStorage, normalizeIdentifier, toEnDigits } from "@/lib/persian-text";
+import { normalizeForStorage, toEnDigits } from "@/lib/persian-text";
 import { identifierInputSchema, skuSchema } from "./catalog-input";
 
 export const IMPORT_COLUMNS = [
@@ -217,7 +218,8 @@ export function checkRow(cells: ImportCells, lookups: ImportLookups, skusInFile:
   let compareAtPrice: bigint | null = null;
   if (cells.compare_at_price !== "") {
     const value = money(cells.compare_at_price, lookups.unit);
-    if (value === "invalid" || (price !== null && value <= price)) errors.push("invalid_compare_at");
+    if (cells.price === "") errors.push("price_required");
+    else if (value === "invalid" || (price !== null && value <= price)) errors.push("invalid_compare_at");
     else compareAtPrice = value;
   }
 
@@ -267,5 +269,3 @@ export function checkRow(cells: ImportCells, lookups: ImportLookups, skusInFile:
 
 /** The lookup form of a category or brand slug typed in the file. */
 export { slugKey as importSlugKey };
-/** Normalized part number, for matching against ones the product already has. */
-export const partNumberKey = (value: string) => normalizeIdentifier(toEnDigits(value));

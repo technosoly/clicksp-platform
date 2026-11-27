@@ -122,7 +122,7 @@ Scopes (which categories or warehouses a Store Staff member covers) are stored p
 | payment_provider.configure | ✓ | – | – | 1 | ✓ |
 | shipping.configure | ✓ | ✓ | – | 3 | |
 | article.manage | ✓ | ✓ | S | 3 | |
-| content.manage | ✓ | ✓ | ✓ | 3 | |
+| content.manage | ✓ | ✓ | – | 2 | |
 | menu.manage, banner.manage | ✓ | ✓ | – | 3 | |
 | pagebuilder.edit, pagebuilder.publish, theme.manage | ✓ | – | – | 1 | |
 | user.manage_staff | ✓ | ✓ | – | 2 | ✓ |

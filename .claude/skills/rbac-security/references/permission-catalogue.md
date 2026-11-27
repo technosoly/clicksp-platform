@@ -43,7 +43,7 @@ Super Admin can change bundles; escalation guards still apply.
 | payment_provider.configure | ✓ (MFA) | – | – |
 | shipping.configure | ✓ | ✓ | – |
 | article.manage | ✓ | ✓ | S |
-| content.manage | ✓ | ✓ | S |
+| content.manage | ✓ | ✓ | – |
 | menu.manage | ✓ | ✓ | – |
 | banner.manage | ✓ | ✓ | – |
 | pagebuilder.edit | ✓ | – | – |

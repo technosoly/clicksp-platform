@@ -2,6 +2,7 @@ import "server-only";
 import { PgBoss } from "pg-boss";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { processProductImports } from "@/modules/catalog/service/product-import";
 import { expireUnpaidOrders } from "@/modules/sales/service/checkout";
 import { productIndexMissing, rebuildProductIndex } from "@/modules/search/service/product-search";
 import { OUTBOX_HANDLERS } from "./handlers";
@@ -29,6 +30,8 @@ export const JOBS: readonly JobSpec[] = [
   { name: "orders-expire", cron: "*/5 * * * *", expireInSeconds: 300, run: () => expireUnpaidOrders(new Date(), 200) },
   // Rebuilds the search index from the database every night, when a search engine is set up.
   { name: "search-rebuild", cron: "30 3 * * *", expireInSeconds: 3600, run: () => rebuildProductIndex() },
+  // Checks uploaded product files and applies confirmed ones, about 50 seconds per run.
+  { name: "imports-process", cron: "* * * * *", expireInSeconds: 600, run: () => processProductImports() },
 ];
 
 type RunnerState = "off" | "starting" | "running" | "retrying";
@@ -89,6 +92,15 @@ export async function startJobRunner(attempt = 0): Promise<void> {
   void productIndexMissing()
     .then((missing) => (missing ? boss.send("search-rebuild", null) : null))
     .catch((error) => logger.warn("could not check the search index", { error: String(error) }));
+}
+
+/**
+ * Asks for a job to run now instead of at its next scheduled time (after an
+ * upload, say). Does nothing when the runner is off: the schedule picks the
+ * work up then.
+ */
+export async function runJobSoon(name: (typeof JOBS)[number]["name"]): Promise<void> {
+  await runner.boss?.send(name, null).catch((error) => logger.warn("could not queue job", { job: name, error: String(error) }));
 }
 
 /** Stops taking new jobs and lets running ones finish (up to 8 seconds). */

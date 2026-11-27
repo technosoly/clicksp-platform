@@ -100,7 +100,8 @@ export function adminActor(ctx: AdminContext, meta: RequestMeta): Actor {
  * The actor for work an admin started that finishes in the background (an
  * import they confirmed): their permissions as they are now, so a role
  * removed or an account disabled meanwhile stops the work. Null when they
- * are no longer an active admin. No session, so no step-up MFA.
+ * are no longer an active admin (disabled, locked, no admin role). No
+ * session, so no step-up MFA.
  */
 export async function backgroundAdminActor(userId: string, requestId: string, now = new Date()): Promise<Actor | null> {
   if (!(await isActiveUser(db(), userId))) return null;

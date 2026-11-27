@@ -31,9 +31,9 @@ describe("information pages", () => {
   });
 
   it("shows the Persian text on the English site when there is no English version, and drops the old English title", async () => {
-    const staff = await actorFor("store_staff");
-    await saveInfoPage(staff, "privacy", { faTitle: "حریم خصوصی", faBody: "متن", enTitle: "Privacy", enBody: "Text" });
-    await saveInfoPage(staff, "privacy", { faTitle: "حریم خصوصی", faBody: "متن", enTitle: "", enBody: "" });
+    const admin = await actorFor("business_admin");
+    await saveInfoPage(admin, "privacy", { faTitle: "حریم خصوصی", faBody: "متن", enTitle: "Privacy", enBody: "Text" });
+    await saveInfoPage(admin, "privacy", { faTitle: "حریم خصوصی", faBody: "متن", enTitle: "", enBody: "" });
     expect(await shopInfoPage("en", "privacy")).toMatchObject({ title: "حریم خصوصی", lang: "fa", isFallback: true, hasEnglish: false });
     expect((await shopInfoPageLinks("en")).find((l) => l.key === "privacy")).toEqual({ key: "privacy", title: "حریم خصوصی", lang: "fa" });
   });
@@ -58,7 +58,10 @@ describe("information pages", () => {
     expect((await infoPagesForAdmin(admin)).map((p) => p.key)).toEqual(["about", "contact", "shipping", "returns", "terms", "privacy"]);
   });
 
-  it("denies admins without content.manage", async () => {
+  it("denies Store Staff and admins without content.manage", async () => {
+    const staff = await actorFor("store_staff");
+    await expect(infoPagesForAdmin(staff)).rejects.toBeInstanceOf(AuthzError);
+    await expect(saveInfoPage(staff, "terms", { faTitle: "x", faBody: "x", enTitle: "", enBody: "" })).rejects.toBeInstanceOf(AuthzError);
     const admin = await actorFor("business_admin");
     const without = { ...admin, permissions: new Map() };
     await expect(infoPagesForAdmin(without)).rejects.toBeInstanceOf(AuthzError);
