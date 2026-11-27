@@ -81,7 +81,8 @@ export async function deleteBannerRow(tx: Tx, id: string): Promise<string[] | nu
 export async function liveBanners(client: DbClient, placement: string, now: Date, take: number) {
   return client.banner.findMany({
     where: { placement, isActive: true, AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: now } }] }, { OR: [{ endsAt: null }, { endsAt: { gt: now } }] }] },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    // Lower order numbers first; among equals, the newest banner first.
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
     take,
     select: bannerSelect,
   });
