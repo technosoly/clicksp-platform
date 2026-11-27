@@ -1,4 +1,5 @@
 import "server-only";
+import { existingWarehouses } from "@/modules/inventory/service/stock";
 import { db, transaction } from "@/lib/db";
 import { randomToken, sha256Hex } from "@/lib/security/tokens";
 import { recordAudit, recordSecurityEvent } from "@/modules/audit/service/audit";
@@ -29,7 +30,9 @@ import {
   existingCategoryIds,
   listCategoryScopedAssignments,
   listRoleGrants,
-  replaceCategoryScopes,
+  replaceScopes,
+  listScopedAssignments,
+  type ScopeKind,
   listUserAdminGrants,
   replaceAdminRole,
   retirePasswordLinks,
@@ -389,21 +392,39 @@ export async function getCategoryScopes(actor: Actor, userId: string) {
  * don't have. An empty list means the scoped permissions allow nothing.
  */
 export async function setCategoryScopes(actor: Actor, userId: string, categoryIdsInput: readonly string[]): Promise<{ status: "ok" } | ManageError> {
+  return setScopes(actor, userId, "category", categoryIdsInput);
+}
+
+/** The account's warehouse-scoped role assignments and their current warehouses. */
+export async function getWarehouseScopes(actor: Actor, userId: string) {
+  const target = await loadTarget(actor, userId, false);
+  if ("status" in target) return null;
+  return listScopedAssignments(db(), userId, "warehouse");
+}
+
+/** Sets which warehouses an account's warehouse-scoped permissions cover (same rules as categories). */
+export async function setWarehouseScopes(actor: Actor, userId: string, warehouseIdsInput: readonly string[]): Promise<{ status: "ok" } | ManageError> {
+  return setScopes(actor, userId, "warehouse", warehouseIdsInput);
+}
+
+async function setScopes(actor: Actor, userId: string, kind: ScopeKind, idsInput: readonly string[]): Promise<{ status: "ok" } | ManageError> {
+  const invalid = kind === "category" ? "invalid_category" : "invalid_warehouse";
   const target = await loadTarget(actor, userId, true);
   if ("status" in target) return target;
   if (userId === actor.userId) return { status: "self" };
-  const requested = [...new Set(categoryIdsInput.filter((id) => IS_UUID.test(id)))];
-  if (requested.length !== categoryIdsInput.length || requested.length > 200) return { status: "invalid", field: "invalid_category" };
-  const categoryIds = await existingCategoryIds(db(), requested);
-  if (categoryIds.length !== requested.length) return { status: "invalid", field: "invalid_category" };
-  const assignments = await listCategoryScopedAssignments(db(), userId);
+  const requested = [...new Set(idsInput.filter((id) => IS_UUID.test(id)))];
+  if (requested.length !== idsInput.length || requested.length > 200) return { status: "invalid", field: invalid };
+  const ids = kind === "category" ? await existingCategoryIds(db(), requested) : await existingWarehouses(requested);
+  if (ids.length !== requested.length) return { status: "invalid", field: invalid };
+  const assignments = await listScopedAssignments(db(), userId, kind);
   if (assignments.length === 0) return { status: "invalid", field: "no_scoped_role" };
+  const resource = kind === "category" ? { categoryIds: ids } : { warehouseIds: ids };
   for (const assignment of assignments) {
     for (const key of assignment.scopedKeys) {
       // A .propose permission is covered by the permission it proposes (price.update covers price.update.propose).
-      const covered = (k: string) => decide(actor.permissions, k, { categoryIds }).allowed;
+      const covered = (k: string) => decide(actor.permissions, k, resource).allowed;
       const allowed = covered(key) || (key.endsWith(".propose") && covered(key.slice(0, -".propose".length)));
-      if (categoryIds.length > 0 && !allowed) {
+      if (ids.length > 0 && !allowed) {
         await recordSecurityEvent(actor.meta, {
           type: "authz.denied",
           severity: "warning",
@@ -414,15 +435,16 @@ export async function setCategoryScopes(actor: Actor, userId: string, categoryId
       }
     }
   }
+  const field = kind === "category" ? "categoryIds" : "warehouseIds";
   await transaction(async (tx) => {
-    for (const assignment of assignments) await replaceCategoryScopes(tx, assignment.userRoleId, categoryIds);
+    for (const assignment of assignments) await replaceScopes(tx, assignment.userRoleId, kind, ids);
     await recordAudit(tx, actor.meta, {
       actorUserId: actor.userId,
-      action: accountAuditAction(target.level, "scopes_changed"),
+      action: accountAuditAction(target.level, kind === "category" ? "scopes_changed" : "warehouse_scopes_changed"),
       entityType: "user",
       entityId: userId,
-      before: { categoryIds: [...new Set(assignments.flatMap((a) => a.categoryIds))] },
-      after: { categoryIds },
+      before: { [field]: [...new Set(assignments.flatMap((a) => a.ids))] },
+      after: { [field]: ids },
     });
   });
   return { status: "ok" };

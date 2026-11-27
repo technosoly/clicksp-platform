@@ -55,7 +55,8 @@
       "audit": "Audit log",
       "settings": "Settings",
       "technical": "Technical",
-      "account": "My account"
+      "account": "My account",
+      "warehouses": "Warehouses"
     },
     "welcome": "Welcome, {name}",
     "yourRole": "Your role",
@@ -284,8 +285,9 @@
       "invalid_role": "Choose a role.",
       "username_taken": "That username is already used.",
       "email_taken": "That email is already used by another account.",
-      "no_scoped_role": "This person's role has no category-limited permissions.",
-      "invalid_category": "Choose categories from the list."
+      "no_scoped_role": "This person's role has no area-limited permissions.",
+      "invalid_category": "Choose categories from the list.",
+      "invalid_warehouse": "Choose warehouses from the list."
     },
     "messages": {
       "created": "Account created. Give the person this link to set their password:",
@@ -303,7 +305,10 @@
     "scopeHelp": "Their product and category permissions cover only the ticked categories and everything below them. Nothing ticked = no access.",
     "scopeNoCategories": "No categories yet. Create categories first.",
     "saveScope": "Save categories",
-    "scopeKeys": "Applies to: {keys}"
+    "scopeKeys": "Applies to: {keys}",
+    "warehouseScopeTitle": "Warehouses this person works in",
+    "warehouseScopeHelp": "Their stock and order permissions cover only the ticked warehouses. Nothing ticked = no access.",
+    "warehouseScopeNone": "No warehouses you can give yet. Create warehouses first."
   },
   "AdminRoles": {
     "title": "Roles and permissions",
@@ -982,6 +987,121 @@
       "invalid_status": "Unknown status.",
       "not_found": "Not found. It may have been removed.",
       "years_outside_variant": "The years must lie within this engine version's own years."
+    }
+  },
+  "AdminInventory": {
+    "title": "Inventory",
+    "intro": "Stock on hand in the warehouses you work in. Record receipts, issues and adjustments on each product's screen.",
+    "manageWarehouses": "Manage warehouses",
+    "searchSku": "Search by SKU",
+    "search": "Search",
+    "overviewEmpty": "No stock recorded yet. Receive goods on a product's screen.",
+    "overviewLimited": "Showing the 200 most recently changed rows. Search by SKU to narrow the list.",
+    "warehousesTitle": "Warehouses",
+    "warehousesIntro": "Your warehouses and their storage locations (shelves, bins). Store Staff are given warehouses on their account screen.",
+    "warehousesEmpty": "No warehouses yet. Add your first one below.",
+    "locationCount": "{count} locations",
+    "inactive": "Switched off",
+    "newWarehouse": "New warehouse",
+    "newWarehouseHelp": "It starts with one storage location called MAIN; you can add shelves or bins later.",
+    "create": "Create",
+    "save": "Save",
+    "warehouseEditIntro": "Warehouse details and storage locations.",
+    "locationsTitle": "Storage locations",
+    "locationsHelp": "Shelves, bins or rooms in this warehouse. One location is the default.",
+    "defaultLocation": "Default",
+    "addLocation": "Add location",
+    "backToWarehouses": "Back to warehouses",
+    "stockTitle": "Stock",
+    "stockHelp": "What is in each warehouse you can see. Available = on hand minus what open orders hold.",
+    "stockEmpty": "No stock recorded for this product yet.",
+    "record": "Record",
+    "historyTitle": "Recent movements",
+    "onHandAfter": "{count} on hand after",
+    "fields": {
+      "code": "Code",
+      "codeHint": "English capital letters, digits, - or _ (e.g. TEHRAN-1).",
+      "locationCodeHint": "English capital letters, digits, ., - or _ (e.g. A-01.3).",
+      "name": "Name",
+      "city": "City",
+      "phone": "Phone",
+      "address": "Address",
+      "priority": "Priority",
+      "priorityHint": "Lower numbers are preferred when choosing where to send an order from.",
+      "isActive": "Active",
+      "isDefault": "Default location",
+      "description": "Description",
+      "kind": "Movement",
+      "variant": "SKU",
+      "location": "Warehouse / location",
+      "quantity": "Quantity",
+      "reference": "Document number",
+      "referenceHint": "Optional: supplier invoice or waybill number.",
+      "reason": "Note",
+      "reasonHint": "Required when issuing goods.",
+      "adjustmentReason": "Adjustment reason",
+      "adjustmentReasonHint": "Required for adjustments."
+    },
+    "columns": {
+      "product": "Product",
+      "sku": "SKU",
+      "warehouse": "Warehouse",
+      "location": "Location",
+      "onHand": "On hand",
+      "reserved": "Reserved",
+      "available": "Available",
+      "updated": "Changed"
+    },
+    "kinds": {
+      "receive": "Receive goods",
+      "issue": "Issue goods",
+      "adjust_plus": "Adjust up",
+      "adjust_minus": "Adjust down"
+    },
+    "types": {
+      "receipt": "Received",
+      "issue": "Issued",
+      "sale": "Sold",
+      "return": "Returned",
+      "transfer_out": "Sent",
+      "transfer_in": "Arrived",
+      "adjustment_plus": "Adjusted up",
+      "adjustment_minus": "Adjusted down",
+      "count_gain": "Count gain",
+      "count_loss": "Count loss"
+    },
+    "adjustmentReasons": {
+      "damage": "Damaged",
+      "loss": "Lost",
+      "found": "Found",
+      "correction": "Correction",
+      "expiry": "Expired",
+      "other": "Other"
+    },
+    "messages": {
+      "created": "Created.",
+      "saved": "Saved.",
+      "movementRecorded": "Recorded. Stock is updated."
+    },
+    "errors": {
+      "invalid_code": "Use English capital letters, digits and - or _ (up to 32).",
+      "code_taken": "That code is already used.",
+      "name_required": "Enter a name.",
+      "invalid_text": "That text is too long.",
+      "invalid_phone": "Enter a phone number with digits only.",
+      "invalid_priority": "Priority is a whole number from 0 to 1000.",
+      "default_location_required": "A warehouse needs a default location. Make another location the default instead.",
+      "invalid_kind": "Choose a movement.",
+      "invalid_variant": "Choose a SKU.",
+      "invalid_location": "Choose an active location of an active warehouse.",
+      "invalid_quantity": "Quantity is a whole number from 1 to 1,000,000.",
+      "invalid_reference": "The document number is too long.",
+      "reason_required": "Write why the goods are being issued.",
+      "adjustment_reason_required": "Choose a reason for the adjustment.",
+      "invalid_adjustment_reason": "Choose a reason from the list.",
+      "insufficient_stock": "Not enough stock there. Stock can't go below zero or below what open orders hold.",
+      "not_found": "Not found.",
+      "holds_stock": "It still holds stock or reservations. Move or issue the stock first."
     }
   }
 }

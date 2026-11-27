@@ -10,6 +10,7 @@ import {
   revokeAdminSessions,
   setAdminStatus,
   setCategoryScopes,
+  setWarehouseScopes,
   updateAdminUser,
   type ManageError,
 } from "../service/admin-users";
@@ -100,6 +101,15 @@ export async function setCategoryScopesAction(_prev: ActionState, form: FormData
   return runAdminAction(form, async (actor) => {
     const ids = form.getAll("category").filter((v): v is string => typeof v === "string");
     const result = await setCategoryScopes(actor, text(form, "userId"), ids);
+    return result.status === "ok" ? { ok: true, message: "scopesSaved" } : failure(result);
+  });
+}
+
+/** Checkbox name: warehouse (one per chosen warehouse). */
+export async function setWarehouseScopesAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return runAdminAction(form, async (actor) => {
+    const ids = form.getAll("warehouse").filter((v): v is string => typeof v === "string");
+    const result = await setWarehouseScopes(actor, text(form, "userId"), ids);
     return result.status === "ok" ? { ok: true, message: "scopesSaved" } : failure(result);
   });
 }

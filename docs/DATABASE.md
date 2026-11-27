@@ -81,7 +81,8 @@ How this supports the storefront structure Sogand chose (shop by motorcycle make
 - CHECKs: `on_hand >= 0`, `reserved >= 0`, `reserved <= on_hand`. `available = on_hand - reserved` is computed, never stored.
 - Inserting a movement (quantity `> 0`, direction from its type: receipt, issue, sale, return, transfer in/out, adjustment plus/minus, count gain/loss) creates the balance row if needed, updates it under the row lock and stores `on_hand_after`. A movement that would make stock negative fails and nothing is written. Movements are append-only; transfer movements must reference their transfer.
 - Reservations are created `active` (`reserved += qty`, fails when not enough is available) and can move once to `consumed`, `released` or `expired` (`reserved -= qty`); closed reservations are immutable. For a sale: consume the reservation, then insert the `sale` movement.
-- Concurrency: 12 parallel checkouts for 5 units in stock produce exactly 5 reservations (tested).
+- Concurrency: 12 parallel checkouts for 5 units in stock produce exactly 5 reservations (tested); 10 parallel manual issues of 1 unit from 5 in stock produce exactly 5 movements (tested).
+- Admin screens (Phase 6, part 2c): a new warehouse gets a default `MAIN` location; one location per warehouse is the default (partial unique index), and changing the default locks the warehouse row. Manual adjustments write a `stock_adjustments` document with status `applied`, one `stock_adjustment_lines` row and the `adjustment_plus/minus` movement, in one transaction.
 
 ### Sales
 - An order moves from `pending_payment` to `paid` only when a `succeeded` payment of exactly its `grand_total` and currency exists.
