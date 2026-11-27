@@ -15,6 +15,8 @@ export async function PictureCard({
   hidden,
   canEdit,
   testId,
+  extra = [],
+  allowRemove = true,
 }: {
   title: string;
   help: string;
@@ -24,6 +26,10 @@ export async function PictureCard({
   hidden: { name: string; value: string };
   canEdit: boolean;
   testId: string;
+  /** More hidden fields the action needs. */
+  extra?: { name: string; value: string }[];
+  /** Whether the picture may be removed (some are required). */
+  allowRemove?: boolean;
 }) {
   const t = await getTranslations("AdminCatalog");
   return (
@@ -36,13 +42,19 @@ export async function PictureCard({
           <div className="space-y-3">
             <ActionForm action={action} submitLabel={renditions.length ? t("replaceImage") : t("addImage")} submitVariant="secondary" namespace="AdminCatalog" testId={`${testId}-upload`}>
               <input type="hidden" name={hidden.name} value={hidden.value} />
+              {extra.map((e) => (
+                <input key={e.name} type="hidden" name={e.name} value={e.value} />
+              ))}
               <Field label={t("fields.image")} htmlFor={`${testId}-file`} hint={t("fields.imageHint")}>
                 <input id={`${testId}-file`} name="image" type="file" accept="image/jpeg,image/png,image/webp,image/avif" required className="block w-full text-sm" />
               </Field>
             </ActionForm>
-            {renditions.length ? (
+            {renditions.length && allowRemove ? (
               <ActionForm action={action} submitLabel={t("removeImage")} submitVariant="ghost" namespace="AdminCatalog" testId={`${testId}-remove`}>
                 <input type="hidden" name={hidden.name} value={hidden.value} />
+                {extra.map((e) => (
+                  <input key={e.name} type="hidden" name={e.name} value={e.value} />
+                ))}
                 <input type="hidden" name="command" value="remove" />
               </ActionForm>
             ) : null}

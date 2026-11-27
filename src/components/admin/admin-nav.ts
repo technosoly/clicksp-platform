@@ -57,6 +57,9 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
     labelKey: "website",
     items: [
       item("/admin/content", "content", ["content.manage"], true),
+      item("/admin/articles", "articles", ["article.manage"], true),
+      item("/admin/banners", "banners", ["banner.manage"], true),
+      item("/admin/menus", "menus", ["menu.manage"], true),
       item("/admin/page-builder", "pageBuilder", ["pagebuilder.edit"]),
     ],
   },

@@ -135,4 +135,6 @@ Scopes (which categories or warehouses a Store Staff member covers) are stored p
 | backup.run, deployment.request | ✓ | – | – | 1 | ✓ |
 | audit.view_business | ✓ | ✓ | – | 2 | |
 
+Articles have no product category, so `article.manage` works in two tiers: an unscoped grant (Super and Business Admins) writes, publishes, hides and deletes articles and sets covers; a per-category grant (Store Staff) that names at least one category writes and edits **drafts** only and can't change an article once it has left draft. A staff grant naming no category is refused.
+
 Staff financial access (accounting, reports, costs, payment data) is off by default but can be granted explicitly by a Super Admin, as the brief allows ("without explicit authorization"). Staff can never receive permissions with `max ≤ 2`.

@@ -20,7 +20,7 @@ export const isInfoPageKey = (key: string): key is InfoPageKey => (INFO_PAGE_KEY
 
 export const LIMITS = { title: 200, body: 20_000, heading: 200, paragraph: 5_000, item: 500, items: 50, blocks: 200 } as const;
 
-const Block = z.discriminatedUnion("type", [
+export const Block = z.discriminatedUnion("type", [
   z.object({ type: z.literal("heading"), text: z.string().min(1).max(LIMITS.heading) }),
   z.object({ type: z.literal("paragraph"), text: z.string().min(1).max(LIMITS.paragraph) }),
   z.object({ type: z.literal("list"), items: z.array(z.string().min(1).max(LIMITS.item)).min(1).max(LIMITS.items) }),
