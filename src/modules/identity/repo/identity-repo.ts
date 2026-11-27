@@ -351,3 +351,7 @@ export async function countVerificationTokens(
     },
   });
 }
+
+export async function isActiveUser(client: DbClient, userId: string): Promise<boolean> {
+  return (await client.user.count({ where: { id: userId, status: "active" } })) === 1;
+}

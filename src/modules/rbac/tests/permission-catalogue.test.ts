@@ -36,13 +36,13 @@ describe("permission catalogue", () => {
     const staff = keysOf("store_staff");
     for (const allowed of [
       "product.create", "product.update", "media.upload", "category.manage", "inventory.receive",
-      "inventory.issue", "inventory.count", "order.view", "article.manage", "content.manage",
+      "inventory.issue", "inventory.count", "order.view", "article.manage",
     ]) {
       expect(staff).toContain(allowed);
     }
     for (const denied of [
       "accounting.view", "report.financial", "payment_provider.configure", "settings.system", "role.manage",
-      "product.delete_permanent", "price.update", "inventory.view_cost", "order.view_payment",
+      "product.delete_permanent", "price.update", "inventory.view_cost", "order.view_payment", "content.manage",
     ]) {
       expect(staff).not.toContain(denied);
     }

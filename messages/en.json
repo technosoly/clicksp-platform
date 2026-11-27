@@ -58,7 +58,8 @@
       "settings": "Settings",
       "technical": "Technical",
       "account": "My account",
-      "warehouses": "Warehouses"
+      "warehouses": "Warehouses",
+      "imports": "Product import"
     },
     "welcome": "Welcome, {name}",
     "yourRole": "Your role",
@@ -1557,6 +1558,124 @@
     },
     "messages": {
       "published": "Published."
+    }
+  },
+  "AdminImports": {
+    "title": "Product import",
+    "intro": "Load or update many products at once from a spreadsheet saved as CSV.",
+    "uploadTitle": "Upload a file",
+    "uploadHelp": "Save your sheet as “CSV UTF-8” (Excel: File › Save as). Up to {rows} rows and 2 MB. The first row names the columns. A SKU already in the catalog updates that product; a new SKU creates a draft product. Nothing changes until you confirm the check report.",
+    "upload": "Upload and check",
+    "file": "CSV file",
+    "fileHint": "Only .csv files saved as UTF-8.",
+    "template": "Download the empty template (column names only)",
+    "columns": {
+      "sku": "required; the product's stock code",
+      "title_fa": "required; Persian name",
+      "title_en": "English name (optional)",
+      "short_fa": "short Persian description",
+      "short_en": "short English description (needs an English name)",
+      "category": "required; the category's address (slug) in Persian or English, as shown on its page",
+      "brand": "the brand's address (slug), optional",
+      "price": "required for new products; in the store's display unit (Toman or Rial, as set in the store settings)",
+      "compare_at_price": "the old price shown crossed out; must be above the price, and goes with it",
+      "warranty_months": "0 to 240",
+      "part_numbers": "OEM part numbers separated by |",
+      "status": "draft or active (empty: new products stay draft, existing ones keep their status)"
+    },
+    "jobsTitle": "Recent imports",
+    "noJobs": "No imports yet.",
+    "jobIntro": "The check report for this file. The catalog changes only after you confirm.",
+    "back": "All imports",
+    "status": {
+      "uploaded": "Waiting",
+      "validating": "Checking",
+      "validated": "Checked",
+      "applying": "Importing",
+      "completed": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "statusHelp": {
+      "uploaded": "The file is waiting to be checked; this page updates by itself.",
+      "validating": "Checking every row against the catalog…",
+      "validated": "Look at the report, then confirm to import the valid rows, or cancel.",
+      "applying": "Importing the rows in order; this page updates by itself.",
+      "completed": "The import has finished.",
+      "failed": "The file could not be used.",
+      "cancelled": "This import was cancelled; nothing was changed."
+    },
+    "fileErrors": {
+      "not_utf8": "The file is not UTF-8 text. In Excel choose File › Save as › “CSV UTF-8 (comma delimited)”.",
+      "empty": "The file has no product rows.",
+      "malformed": "The file is not valid CSV (a quote is left open).",
+      "too_many_rows": "The file has too many rows. Split it into files of at most 5,000 rows.",
+      "unknown_column": "Unknown column “{detail}”. Use the column names of the template.",
+      "missing_column": "The required column “{detail}” is missing.",
+      "duplicate_column": "The column “{detail}” appears twice.",
+      "file_missing": "The uploaded file could not be found.",
+      "confirmer_not_allowed": "The admin who confirmed this import can no longer run imports, so it was stopped.",
+      "unexpected": "Something went wrong while reading the file."
+    },
+    "report": {
+      "create": "New products",
+      "update": "Products to update",
+      "invalid": "Rows with problems",
+      "applied": "Imported"
+    },
+    "confirm": "Import {rows} rows",
+    "cancel": "Cancel this import",
+    "problemsTitle": "Rows with problems",
+    "problemsHelp": "These rows are skipped. Fix them in your sheet and upload it again: rows already imported are simply updated.",
+    "appliedTitle": "Imported rows",
+    "row": "Row {number}",
+    "separator": ", ",
+    "rowStatus": {
+      "created": "Created",
+      "updated": "Updated"
+    },
+    "rowErrors": {
+      "sku_required": "SKU is empty",
+      "invalid_sku": "SKU is not valid",
+      "duplicate_sku": "the same SKU is on an earlier row",
+      "sku_is_variant": "this SKU belongs to a product option, not a main product",
+      "title_fa_required": "Persian name is empty",
+      "title_too_long": "name is longer than 250 characters",
+      "short_too_long": "description is longer than 1,000 characters",
+      "title_en_required": "English description needs an English name",
+      "en_title_required": "English description needs an English name",
+      "category_required": "category is empty",
+      "unknown_category": "no category has this address",
+      "unknown_brand": "no brand has this address",
+      "price_required": "price is empty",
+      "invalid_price": "price is not a valid amount",
+      "invalid_compare_at": "old price must be above the price",
+      "invalid_warranty": "warranty must be 0 to 240 months",
+      "too_many_part_numbers": "more than 20 part numbers",
+      "invalid_part_number": "a part number is not valid",
+      "invalid_status": "status must be draft or active",
+      "price_proposed": "price sent for approval",
+      "price_pending": "price not changed: a price request is waiting for approval",
+      "part_number_not_added": "a part number could not be added",
+      "not_publishable": "left as draft: it needs a price and an active main option",
+      "forbidden": "not allowed for the admin who confirmed",
+      "sku": "this SKU is already used",
+      "slug": "the product address is already used",
+      "invalid_slug": "the name gives no usable address",
+      "not_found": "the product was not found",
+      "other": "could not be imported"
+    },
+    "errors": {
+      "file_missing": "Choose a CSV file.",
+      "file_too_large": "The file is larger than 2 MB. Split it into smaller files.",
+      "not_csv": "Only .csv files can be imported.",
+      "not_found": "This import was not found.",
+      "not_allowed": "This import can't be changed any more."
+    },
+    "messages": {
+      "uploaded": "Uploaded. The check starts in a moment; open the import below to see the report.",
+      "confirmed": "Confirmed. The rows are being imported.",
+      "cancelled": "The import was cancelled."
     }
   }
 }

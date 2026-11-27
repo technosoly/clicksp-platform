@@ -22,6 +22,7 @@ import {
   findCredentialByIdentifier,
   getMfa,
   getUserSummary,
+  isActiveUser,
   recordLoginAttempt,
   lockMfa,
   reserveMfaAttempt,
@@ -92,6 +93,28 @@ export function adminActor(ctx: AdminContext, meta: RequestMeta): Actor {
     permissions: ctx.permissions,
     mfaVerifiedAt: ctx.session.mfaVerifiedAt,
     meta,
+  };
+}
+
+/**
+ * The actor for work an admin started that finishes in the background (an
+ * import they confirmed): their permissions as they are now, so a role
+ * removed or an account disabled meanwhile stops the work. Null when they
+ * are no longer an active admin (disabled, locked, no admin role). No
+ * session, so no step-up MFA.
+ */
+export async function backgroundAdminActor(userId: string, requestId: string, now = new Date()): Promise<Actor | null> {
+  if (!(await isActiveUser(db(), userId))) return null;
+  const level = await adminLevel(db(), userId, now);
+  if (level === null) return null;
+  return {
+    kind: "admin",
+    userId,
+    sessionId: null,
+    level,
+    permissions: await loadEffectivePermissions(userId, now),
+    mfaVerifiedAt: null,
+    meta: { ipAddress: null, userAgent: "background job", requestId },
   };
 }
 

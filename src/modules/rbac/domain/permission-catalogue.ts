@@ -116,7 +116,7 @@ export const PERMISSIONS: readonly PermissionDefinition[] = [
 
   // Content
   p("article.manage", ALL, { scope: "category" }),
-  p("content.manage", ALL),
+  p("content.manage", SA_BA, { maxLevel: 2 }),
   p("menu.manage", SA_BA),
   p("banner.manage", SA_BA),
   p("pagebuilder.edit", SA, { maxLevel: 1 }),
