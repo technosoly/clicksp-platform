@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6, content part 1: information pages)
+- **Content** (`/admin/content`, `content.manage`): the store's six information pages (about us, contact us, shipping and delivery, returns, terms, privacy). An admin writes each in Persian and optionally English, in plain text where `## ` starts a heading, `- ` a list item and a blank line a paragraph. The server turns the text into structured blocks (never HTML) and validates them; each save publishes a new revision of the page and keeps the older ones; every save is audited.
+- The storefront shows a written page at `/pages/<page>` and links the written pages in the footer. An English visitor of a page written only in Persian sees the Persian text with a note, and that URL is not indexed. Pages that haven't been written return 404. Nothing is seeded: the pages exist once the owner writes them.
+- Page documents use the page builder's v1 shape (one `richText` section), so Phase 7 can open them without a migration.
+- Tests: unit (197 in total; parsing, limits, control and bidi characters, markup kept as text), integration (a new information pages suite: revisions, fallback, unknown pages, admins without `content.manage` and customers refused), E2E (an admin writes a page in both languages and a visitor reads it from the footer; typed markup is shown as text).
+
 ### Added (Phase 6b, part 7: packing and shipping)
 - On the admin order screen, admins with `order.fulfil` take a paid order through its steps: **start packing** (paid → processing), **mark shipped** with the carrier's optional tracking code (processing → shipped) and **mark delivered**. Store Staff can do this only for orders whose stock is all in their warehouses.
 - Shipping takes the held stock off the shelves as `sale` movements (each hold is consumed, then the movement is written, with balances locked in checkout's order) and records one shipment per warehouse, with its lines and a tracking event. Every step is audited; shipping and delivery go to the outbox (`order.shipped`, `order.delivered`) for customer messages.
