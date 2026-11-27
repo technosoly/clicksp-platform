@@ -31,12 +31,14 @@ export const JOBS: readonly JobSpec[] = [
   { name: "search-rebuild", cron: "30 3 * * *", expireInSeconds: 3600, run: () => rebuildProductIndex() },
 ];
 
-let running: PgBoss | null = null;
-let state: "off" | "starting" | "running" | "retrying" = "off";
-let retryTimer: ReturnType<typeof setTimeout> | null = null;
+type RunnerState = "off" | "starting" | "running" | "retrying";
+// Kept on globalThis: Next.js loads instrumentation.ts and the route handlers
+// as separate bundles, each with its own copy of this module.
+const shared = globalThis as typeof globalThis & { __clickspJobs?: { boss: PgBoss | null; state: RunnerState; retryTimer: ReturnType<typeof setTimeout> | null } };
+const runner = (shared.__clickspJobs ??= { boss: null, state: "off", retryTimer: null });
 
 /** For the health endpoint: whether background jobs are running in this process. */
-export const jobRunnerState = () => state;
+export const jobRunnerState = (): RunnerState => runner.state;
 
 async function startOnce(): Promise<PgBoss> {
   const boss = new PgBoss({ connectionString: env().DATABASE_URL, schema: "pgboss", application_name: "clicksp-jobs", max: 4 });
@@ -66,23 +68,24 @@ async function startOnce(): Promise<PgBoss> {
  * until the next restart; the site serves meanwhile.
  */
 export async function startJobRunner(attempt = 0): Promise<void> {
-  if (running || !env().JOBS_ENABLED) return;
-  state = attempt === 0 ? "starting" : "retrying";
+  if (runner.boss || !env().JOBS_ENABLED) return;
+  runner.state = attempt === 0 ? "starting" : "retrying";
+  let boss: PgBoss;
   try {
-    running = await startOnce();
+    boss = await startOnce();
   } catch (error) {
     const delay = Math.min(60_000 * 2 ** attempt, 10 * 60_000);
-    state = "retrying";
+    runner.state = "retrying";
     logger.error("job runner did not start; retrying", { error: String(error), retryInSeconds: delay / 1000 });
-    retryTimer = setTimeout(() => void startJobRunner(attempt + 1), delay);
-    retryTimer.unref();
+    runner.retryTimer = setTimeout(() => void startJobRunner(attempt + 1), delay);
+    runner.retryTimer.unref();
     return;
   }
-  state = "running";
+  runner.boss = boss;
+  runner.state = "running";
   logger.info("job runner started", { jobs: JOBS.map((j) => j.name) });
   // First start with a search engine: build the index now instead of waiting
   // for the night. Not awaited, so a slow search engine never delays start-up.
-  const boss = running;
   void productIndexMissing()
     .then((missing) => (missing ? boss.send("search-rebuild", null) : null))
     .catch((error) => logger.warn("could not check the search index", { error: String(error) }));
@@ -90,9 +93,9 @@ export async function startJobRunner(attempt = 0): Promise<void> {
 
 /** Stops taking new jobs and lets running ones finish (up to 8 seconds). */
 export async function stopJobRunner(): Promise<void> {
-  if (retryTimer) clearTimeout(retryTimer);
-  const boss = running;
-  running = null;
-  state = "off";
+  if (runner.retryTimer) clearTimeout(runner.retryTimer);
+  const boss = runner.boss;
+  runner.boss = null;
+  runner.state = "off";
   await boss?.stop({ graceful: true, timeout: 8_000 });
 }

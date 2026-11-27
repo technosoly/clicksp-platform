@@ -55,7 +55,7 @@ test.describe("platform endpoints", () => {
   test("health endpoint responds", async ({ request }) => {
     const res = await request.get("/api/health");
     expect(res.status()).toBe(200);
-    expect(await res.json()).toEqual({ status: "ok" });
+    expect(await res.json()).toEqual({ status: "ok", jobs: "running" });
   });
 
   test("security headers are set", async ({ request }) => {
