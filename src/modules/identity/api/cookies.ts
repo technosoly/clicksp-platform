@@ -1,6 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { env } from "@/lib/env";
+import { cookiesAreSecure } from "@/lib/http/secure-cookies";
 import type { SessionKind } from "../domain/policy";
 import type { IssuedSession } from "../service/sessions";
 
@@ -15,10 +15,7 @@ const BASE_NAMES: Record<SessionKind, string> = {
   customer: "clicksp_session",
 };
 
-/** Secure on HTTPS, and always in production (whatever APP_URL says). */
-function secure(): boolean {
-  return env().APP_URL.startsWith("https://") || env().APP_ENV === "production" || process.env.NODE_ENV === "production";
-}
+const secure = cookiesAreSecure;
 
 /**
  * With Secure the `__Host-` prefix is used: the browser then only accepts the

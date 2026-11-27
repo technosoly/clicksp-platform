@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { PhoneLoginForm } from "@/components/auth/phone-login-form";
 import { redirect } from "@/lib/i18n/navigation";
 import { readSessionToken } from "@/modules/identity/api/cookies";
+import { afterSignIn } from "@/modules/identity/api/after-sign-in";
 import { getCustomer, isPhoneLoginAvailable } from "@/modules/identity/service/customer-auth";
 
 export const dynamic = "force-dynamic";
@@ -13,10 +14,11 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   return { title: t("title"), robots: { index: false } };
 }
 
-export default async function CustomerLoginPage({ params }: { params: Promise<{ locale: string }> }) {
+export default async function CustomerLoginPage({ params, searchParams }: { params: Promise<{ locale: string }>; searchParams: Promise<{ next?: string | string[] }> }) {
   const { locale } = await params;
+  const next = afterSignIn((await searchParams).next);
   setRequestLocale(locale);
-  if (await getCustomer(await readSessionToken("customer"))) redirect({ href: "/account", locale });
+  if (await getCustomer(await readSessionToken("customer"))) redirect({ href: next, locale });
   const t = await getTranslations("CustomerAuth");
   const available = isPhoneLoginAvailable();
   return (
@@ -29,7 +31,7 @@ export default async function CustomerLoginPage({ params }: { params: Promise<{ 
           <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
         {available ? (
-          <PhoneLoginForm />
+          <PhoneLoginForm next={next} />
         ) : (
           <p role="status" data-testid="phone-login-unavailable" className="rounded-md bg-muted px-3 py-2 text-sm">
             {t("unavailable")}

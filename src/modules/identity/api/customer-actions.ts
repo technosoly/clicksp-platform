@@ -1,13 +1,16 @@
 "use server";
 
+import { refresh } from "next/cache";
 import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 import { currentRequestMeta } from "@/lib/http/server";
 import { isLocale } from "@/lib/i18n/config";
 import { redirect } from "@/lib/i18n/navigation";
 import { logger } from "@/lib/logger";
+import { currentCustomer, setMyName } from "../service/current-customer";
 import { requestPhoneOtp, verifyPhoneOtp } from "../service/customer-auth";
 import { endSession } from "../service/sessions";
+import { afterSignIn } from "./after-sign-in";
 import { clearSessionCookie, readSessionToken, setSessionCookie } from "./cookies";
 
 export type OtpFormState =
@@ -65,7 +68,7 @@ async function verifyOtp(prev: OtpFormState, form: FormData): Promise<OtpFormSta
     logger.error("OTP verification failed", { error: String(error) });
     return { ...prev, step: "code", phone: phone.data, error: "unexpected" };
   }
-  redirect({ href: "/account", locale });
+  redirect({ href: afterSignIn(form.get("next")), locale });
   return prev;
 }
 
@@ -74,4 +77,12 @@ export async function customerLogoutAction(form: FormData): Promise<void> {
   await endSession(await readSessionToken("customer"), "customer");
   await clearSessionCookie("customer");
   redirect({ href: "/", locale });
+}
+
+/** The signed-in customer changes their own name. */
+export async function customerNameAction(form: FormData): Promise<void> {
+  const customer = await currentCustomer();
+  const name = form.get("name");
+  if (customer && typeof name === "string") await setMyName(customer, name);
+  refresh();
 }

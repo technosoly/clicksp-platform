@@ -60,6 +60,10 @@ export async function setLastLogin(client: DbClient, userId: string, at: Date): 
   await client.user.update({ where: { id: userId }, data: { lastLoginAt: at } });
 }
 
+export async function setUserName(client: DbClient, userId: string, name: string): Promise<void> {
+  await client.user.update({ where: { id: userId }, data: { name } });
+}
+
 export async function findUserIdByPhone(client: DbClient, phone: string): Promise<{ id: string; status: string } | null> {
   return client.user.findUnique({ where: { phoneNumber: phone }, select: { id: true, status: true } });
 }

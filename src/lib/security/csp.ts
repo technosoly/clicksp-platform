@@ -17,9 +17,9 @@
 
 export type CspKind = "strict" | "static";
 
-/** Admin, customer sign-in and account pages: rendered per request, nonce policy. */
+/** Admin, customer sign-in, account, cart and checkout pages: rendered per request, nonce policy. */
 export function needsStrictCsp(pathname: string): boolean {
-  return /^\/(?:fa|en)\/(?:admin|account|login)(?:\/|$)/.test(pathname);
+  return /^\/(?:fa|en)\/(?:admin|account|login|cart|checkout)(?:\/|$)/.test(pathname);
 }
 
 /** A fresh 128-bit nonce, base64. */

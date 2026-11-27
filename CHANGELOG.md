@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6b, part 5: customer account)
+- The account page (`/account`) lets a signed-in customer set their name (used to fill in the recipient at checkout) and manage the delivery addresses saved at checkout: make one the default or remove it. Every change is limited to the customer's own rows; another customer's address id has no effect.
+- Tests: integration (204 in total), the checkout E2E now also saves a name and removes the saved address.
+
+### Added (Phase 6b, part 4: orders in the admin)
+- **Orders** (`/admin/orders`): every order, newest first, filtered by status; Store Staff see only orders with stock held or taken in their warehouses. The order screen shows the customer and their mobile number, the parts, delivery and total, the address, where the stock is held, and the history (who did what and why).
+- Super and Business Admins can **cancel** an order that awaits payment, with a reason: its stock is released, the change is audited and kept in the order's history.
+- Security review fixes: Store Staff see an order only when all of its stock is in their warehouses (list and screen agree), and other order numbers look like they don't exist; expiring unpaid orders can never block a checkout and is written to the outbox; releasing stock locks rows in the same order as checkout. What staff see of a customer is documented in docs/RBAC.md.
+- Tests: unit (186 in total), integration on PostgreSQL (202 in total), E2E (58 in total, desktop and mobile).
+
+### Added (Phase 6b, part 3: checkout)
+- **Shipping** in the admin (`/admin/shipping`, Super and Business Admin): your own delivery methods (post, courier, freight or pickup, with names in both languages and delivery days), zones made of provinces, and each method's price per zone: a base price plus an amount per started kilogram, optionally free above an order amount, optionally for a weight band. Nothing is pre-filled. Every change is audited.
+- **Checkout** (`/checkout`) for signed-in customers (a guest is sent to sign in and comes back): delivery address with all 31 provinces, delivery options priced for the province and the parcel's weight, a note, and "remember this address". Placing the order prices everything again on the server, holds the stock for 24 hours (from the highest-priority warehouses first), empties the cart and records the order as awaiting payment. Two customers can never be sold the same last unit, and a double click places one order.
+- **Order page** (`/account/orders/<number>`) with the parts, delivery, total and address, and **your orders** on the account page. Customers see only their own orders.
+- Payment is not connected yet: the order page says the store will be in touch about paying. An unpaid order is cancelled and its stock given back when its 24-hour hold runs out (checked on every checkout until background jobs arrive), and a customer can have at most two unpaid orders at once.
+- Security review fixes: prices, order limits and the delivery price are checked again inside the order's transaction with the parts locked, so a price change at the same moment can't slip through; a remembered address is saved once, at most 10 per customer.
+- After signing in, a customer returns to the cart or checkout they came from (only these pages are allowed as return addresses).
+- The checkout page gets the per-request nonce Content-Security-Policy.
+- Tests: unit (186 in total), integration on PostgreSQL (200 in total), E2E (58 in total, desktop and mobile).
+
+### Added (Phase 6b, part 2: cart)
+- **Add to cart** on the product page (quantity within the part's order limits; parts out of stock can't be added) and a **cart page** (`/cart`) to change quantities or remove parts, with the parts total. Prices, limits and stock are read fresh every time, so a price change or a part going out of stock shows at once and is marked on its line. The header shows how many parts are in the cart.
+- Guests get a cart too, tied to a random cookie (only its SHA-256 is stored, kept 30 days). Signing in with a mobile number moves the guest cart into the customer's own cart.
+- Limits: 30 different parts, 99 of each. Stock is not held for a cart; it will be reserved when an order is placed (next part).
+- The cart page gets the per-request nonce Content-Security-Policy.
+- Security review fixes: a guest cart is merged exactly once even when two requests race, and nothing is lost if a merge fails; a cart cookie the server didn't issue is replaced; long-expired guest carts are cleaned up as new ones start.
+- Tests: unit (182 in total), integration on PostgreSQL (190 in total), E2E (54 in total, desktop and mobile).
+
+### Added (Phase 6b, part 1: storefront browsing)
+- **Home** with search, motorcycle brands, top categories and the latest parts. **Category pages** (`/c/<slug>`) with sub-categories, breadcrumbs and every published part below them, 24 per page. **Product pages** (`/p/<slug>`) with photos, price (and the old price when discounted), stock as in stock / only a few left / out of stock, part numbers, warranty and the motorcycles the part is verified to fit. Ordering opens in the next part.
+- **Search** (`/search`) by title, SKU or part number, whatever the separators and whether digits are Persian or English. Search pages are not indexed.
+- **Motorcycles** (`/motorcycles`): brands and models; a model page lists its years and engine versions and the parts verified to fit, narrowed by year (solar or Gregorian), generation or engine version.
+- Only published products (active, with a priced default variant), active categories, brands and motorcycles, public photos and verified fitment are ever shown; costs, notes and stock quantities are never sent to the shop. A Persian address opened under `/en` still finds the page; each page links its other-language address (canonical and hreflang).
+- Security review fixes: a category under a switched-off parent is hidden with it; deleted categories and brands, switched-off motorcycle brands and makers, and switched-off variants (their SKUs, part numbers and photos) never show; a badly encoded address is a 404, not an error.
+- Tests: unit (180 in total), integration on PostgreSQL (182 in total), E2E (52 in total, desktop and mobile).
+
 ### Added (Phase 6, part 2c: inventory)
 - **Warehouses** (`/admin/warehouses`, Super and Business Admin): code, name, city, address, phone and priority; each starts with a default storage location `MAIN`, and more locations (shelves, bins) can be added, one of them the default.
 - **Warehouses a Store Staff member works in**, ticked on their account screen. Staff see and move stock only there.

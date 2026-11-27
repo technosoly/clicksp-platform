@@ -8,6 +8,9 @@ import { decide } from "@/modules/rbac/domain/authorize";
 import { authorize, authorizeAny, AuthzError } from "@/modules/rbac/service/authorize";
 import { MOVEMENT_KINDS, MOVEMENT_PERMISSION, movementInputSchema, type MovementInput, type MovementKind } from "../domain/inventory-input";
 import {
+  closeOrderHolds,
+  reserveVariantForOrder,
+  availableByVariant,
   balancesFor,
   listWarehouses,
   databaseMessage,
@@ -40,6 +43,8 @@ export type MovementResult = { status: "ok"; id: string; onHandAfter: number } |
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HISTORY = 30;
 const OVERVIEW = 200;
+/** At or below this many sellable units the shop says "only a few left". */
+const LOW_STOCK = 3;
 
 function adminId(actor: Actor, key: string): string {
   if (actor.kind !== "admin" || !actor.userId) throw new AuthzError(key, "not_admin");
@@ -187,3 +192,44 @@ export async function existingWarehouses(ids: readonly string[]): Promise<string
 }
 
 export type { MovementKind };
+
+/**
+ * Whether each variant can be bought now, for the storefront. Public: it
+ * says only in stock / low / out, never how many or where.
+ */
+export async function shopAvailability(variantIds: readonly string[]): Promise<Map<string, "in_stock" | "low" | "out">> {
+  const ids = variantIds.filter((id) => UUID.test(id)).slice(0, 200);
+  const available = await availableByVariant(db(), ids);
+  return new Map(ids.map((id) => {
+    const n = available.get(id) ?? 0;
+    return [id, n <= 0 ? "out" : n <= LOW_STOCK ? "low" : "in_stock"] as const;
+  }));
+}
+
+/**
+ * Sellable quantity per variant, for server-side cart and checkout checks
+ * only: never send these numbers to the browser (the shop shows
+ * in stock / low / out).
+ */
+export async function sellableQuantities(variantIds: readonly string[]): Promise<Map<string, number>> {
+  const ids = variantIds.filter((id) => UUID.test(id)).slice(0, 200);
+  return availableByVariant(db(), ids);
+}
+
+/**
+ * Holds stock for a new order, inside the order's transaction (called by the
+ * sales checkout, which owns the customer's authorization). False when any
+ * unit can't be held; the caller then rolls the whole order back.
+ */
+export async function reserveForOrder(tx: Parameters<typeof reserveVariantForOrder>[0], orderId: string, lines: readonly { variantId: string; quantity: number }[], expiresAt: Date): Promise<boolean> {
+  // A fixed lock order (by variant id) so two checkouts can't deadlock.
+  for (const line of [...lines].sort((x, y) => (x.variantId < y.variantId ? -1 : 1))) {
+    if (!(await reserveVariantForOrder(tx, { orderId, variantId: line.variantId, quantity: line.quantity, expiresAt }))) return false;
+  }
+  return true;
+}
+
+/** Gives back the stock held for an order (inside the caller's transaction). */
+export async function releaseOrderHolds(tx: Parameters<typeof closeOrderHolds>[0], orderId: string, reason: "released" | "expired"): Promise<void> {
+  await closeOrderHolds(tx, orderId, reason);
+}

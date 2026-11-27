@@ -3,8 +3,8 @@ import { buildCsp, createNonce, needsStrictCsp } from "../csp";
 
 describe("Content-Security-Policy", () => {
   it("uses the nonce policy on admin, account and customer sign-in pages only", () => {
-    for (const path of ["/fa/admin", "/en/admin/login", "/fa/admin/people/users", "/fa/account", "/en/login"]) expect(needsStrictCsp(path)).toBe(true);
-    for (const path of ["/fa", "/en/products/x", "/fa/administrator", "/fa/loginx", "/admin"]) expect(needsStrictCsp(path)).toBe(false);
+    for (const path of ["/fa/admin", "/en/admin/login", "/fa/admin/people/users", "/fa/account", "/en/login", "/fa/cart", "/en/checkout"]) expect(needsStrictCsp(path)).toBe(true);
+    for (const path of ["/fa", "/en/products/x", "/fa/administrator", "/fa/loginx", "/admin", "/fa/cartx"]) expect(needsStrictCsp(path)).toBe(false);
   });
 
   it("strict: nonce + strict-dynamic, no unsafe-inline scripts, no eval in production", () => {

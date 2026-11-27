@@ -78,6 +78,13 @@ Scopes (which categories or warehouses a Store Staff member covers) are stored p
 
 **Fitment (Phase 6, part 2b):** reading a product's links needs `product.view`; adding a link or removing an unverified one needs `compatibility.manage` on all the product's categories; verifying, disputing, rejecting (or resetting to unverified) needs `compatibility.verify` (Super and Business Admin), and so does removing a verified link. New links always start unverified and must cite a source. The motorcycle catalog itself needs `vehicle.manage` (all levels); changing a maker, brand, model, model years or engine version that a **verified** link depends on (directly or below it) also needs `compatibility.verify` across all categories, so Store Staff can't change what a verified link means. A link's status is re-read under a row lock when it is removed, so a link verified meanwhile still needs a verifier.
 
+## Orders and customer data (Phase 6b)
+
+- `order.view` shows the order list and order screen. Super and Business Admins see every order. Store Staff hold it for their warehouses only: they see an order when all of its held or taken stock is in their warehouses, and any other order number answers "not found".
+- The order screen shows the customer's name, mobile number, delivery address and note, because staff need them to pack and send the order. It shows nothing else about the customer. The customer list and customer accounts (`customer.view`, `customer.manage`) remain Super and Business Admin only.
+- `order.cancel` (Super and Business Admin) cancels an order that awaits payment, with a reason. The stock is released, and the change is audited and written to the outbox. Unpaid orders whose 24-hour hold ran out are cancelled by the system (`order.expired` outbox event, no acting user).
+- Customers have no permission keys. Their cart, checkout and orders are found from their own session only.
+
 ## Default bundles
 
 `SA` Super Admin, `BA` Business Admin, `ST` Store Staff. `S` = granted scoped (category or warehouse). `max` = level ceiling (1 = Super Admin only, can never be given to BA or Staff). `MFA` = step-up MFA required.

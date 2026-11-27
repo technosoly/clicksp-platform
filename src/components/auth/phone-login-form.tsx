@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { phoneLoginAction, type OtpFormState } from "@/modules/identity/api/customer-actions";
 
 /** Two steps: mobile number, then the SMS code. */
-export function PhoneLoginForm() {
+/** `next`: where to go after signing in (checked against an allow-list on the server). */
+export function PhoneLoginForm({ next }: { next?: string }) {
   const t = useTranslations("CustomerAuth");
   const locale = useLocale();
   const [state, action] = useActionState<OtpFormState, FormData>(phoneLoginAction, { step: "phone" });
@@ -44,6 +45,7 @@ export function PhoneLoginForm() {
     <form action={action} className="space-y-4" noValidate>
       <input type="hidden" name="locale" value={locale} />
       <input type="hidden" name="intent" value="verify" />
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <input type="hidden" name="phone" value={state.phone} />
       <p className="text-sm text-muted-foreground">
         {t("codeSent")}{" "}

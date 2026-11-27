@@ -276,3 +276,59 @@ export async function stockOverview(
     },
   });
 }
+
+/** Sellable stock per variant: on hand minus reserved, in active locations of active warehouses. */
+export async function availableByVariant(client: DbClient, variantIds: readonly string[]): Promise<Map<string, number>> {
+  if (variantIds.length === 0) return new Map();
+  const rows = await client.inventoryBalance.groupBy({
+    by: ["variantId"],
+    where: { variantId: { in: [...variantIds] }, location: { isActive: true }, warehouse: { isActive: true } },
+    _sum: { onHand: true, reserved: true },
+  });
+  return new Map(rows.map((r) => [r.variantId, Math.max(0, (r._sum.onHand ?? 0) - (r._sum.reserved ?? 0))]));
+}
+
+// Reservations -----------------------------------------------------------------
+
+/**
+ * Reserves `quantity` of a variant for an order, taking stock from active
+ * locations of active warehouses in priority order (default location first).
+ * The balance rows are locked, and the reservation trigger refuses more than
+ * is available, so two checkouts can never hold the same unit. Returns false
+ * (and reserves nothing more) when there isn't enough.
+ */
+export async function reserveVariantForOrder(tx: Tx, input: { orderId: string; variantId: string; quantity: number; expiresAt: Date }): Promise<boolean> {
+  const balances = await tx.$queryRaw<{ location_id: string; available: number }[]>`
+    SELECT b.location_id, (b.on_hand - b.reserved)::int AS available
+      FROM inventory_balances b
+      JOIN warehouse_locations l ON l.id = b.location_id
+      JOIN warehouses w ON w.id = b.warehouse_id
+     WHERE b.variant_id = ${input.variantId}::uuid AND l.is_active AND w.is_active AND b.on_hand > b.reserved
+     ORDER BY w.priority, w.code, l.is_default DESC, l.code
+       FOR UPDATE OF b`;
+  let left = input.quantity;
+  const takes: { locationId: string; quantity: number }[] = [];
+  for (const b of balances) {
+    if (left <= 0) break;
+    const take = Math.min(left, b.available);
+    if (take > 0) takes.push({ locationId: b.location_id, quantity: take });
+    left -= take;
+  }
+  if (left > 0) return false;
+  await tx.stockReservation.createMany({
+    data: takes.map((t) => ({ variantId: input.variantId, locationId: t.locationId, orderId: input.orderId, quantity: t.quantity, expiresAt: input.expiresAt })),
+  });
+  return true;
+}
+
+/** Ends an order's active stock holds (released or expired); the trigger gives the stock back. */
+export async function closeOrderHolds(tx: Tx, orderId: string, status: "released" | "expired"): Promise<void> {
+  // Lock the balances in the same order checkout does (variant, then location) so they can't deadlock.
+  await tx.$queryRaw`
+    SELECT 1 FROM inventory_balances b
+      JOIN stock_reservations r ON r.variant_id = b.variant_id AND r.location_id = b.location_id
+     WHERE r.order_id = ${orderId}::uuid AND r.status = 'active'
+     ORDER BY b.variant_id, b.location_id
+       FOR UPDATE OF b`;
+  await tx.stockReservation.updateMany({ where: { orderId, status: "active" }, data: { status } });
+}
