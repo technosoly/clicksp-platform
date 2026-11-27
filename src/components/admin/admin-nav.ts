@@ -29,7 +29,7 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
       item("/admin/products", "products", ["product.view"], true),
       item("/admin/categories", "categories", ["category.manage"], true),
       item("/admin/brands", "brands", ["brand.manage"], true),
-      item("/admin/motorcycles", "motorcycles", ["vehicle.manage", "compatibility.manage"]),
+      item("/admin/motorcycles", "motorcycles", ["vehicle.manage"], true),
     ],
   },
   {

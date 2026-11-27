@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6, part 2b: motorcycles and fitment)
+- **Motorcycles** (`/admin/motorcycles`): makers, brands, models (with type), model years (generations) and engine versions (cc, engine, cooling, fuel system, market). Model years can be typed as solar years (1398) or Gregorian (2019); they are stored Gregorian.
+- **Fits these motorcycles** on the product screen: link a part to a whole generation (optionally some years) or to one engine version, with position, quantity, notes and a required source (an existing one or a new one: OEM catalogue, manufacturer document, supplier sheet, physical test, customer report). New links are unverified; Super and Business Admins verify, dispute or reject them. Store Staff link only parts in their categories and can't remove verified links.
+- Tests: unit (177 in total), integration on PostgreSQL (163 in total), E2E (48 in total, desktop and mobile).
+
 ### Added (Phase 6, part 2a: images)
 - **Product photos** on the product screen: upload (JPEG, PNG, WebP or AVIF up to 10 MB), descriptions in Persian and English (the product name by default), order, main photo, remove. **Brand logos** and **category pictures** on their screens. Until a picture is added, a neutral placeholder is shown.
 - Uploads are checked by their bytes, fully decoded with a pixel limit and re-encoded to WebP in four sizes; location data and anything else hidden in a file is dropped. Files are kept in `MEDIA_STORAGE_DIR` (a Docker volume) and served at `/media/...` only while the image is in use.

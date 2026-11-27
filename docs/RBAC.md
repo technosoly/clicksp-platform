@@ -54,7 +54,9 @@ Service rules on top (Phase 5, `src/modules/rbac/domain/escalation.ts`, used by 
 | People › Roles and permissions (`/admin/people/roles`) | ✓ (edits levels 2-3) | 403 | 403 |
 | Audit log (`/admin/audit`) | everything + security events | business and staff actions only (`staff.*`, catalog, inventory, sales, finance, content) | 403 |
 | Products, categories (`/admin/products`, `/admin/categories`) | ✓ | ✓ | only inside their categories; prices by request |
-| Brands (`/admin/brands`) | ✓ | ✓ | ✓ |
+| Brands (`/admin/brands`) | ✓ | ✓ | ✓ (logos: SA/BA) |
+| Motorcycles (`/admin/motorcycles`: makers, brands, models, model years, engine versions) | ✓ | ✓ | ✓ |
+| Fitment on the product screen ("Fits these motorcycles") | add, remove, verify | add, remove, verify | add and remove unverified links, only inside their categories |
 | Approvals (`/admin/approvals`) | review price requests | review price requests | their own requests |
 | Inventory, orders, content areas (coming in later parts of Phase 6) | ✓ | ✓ | ✓ (scoped) |
 | Customers, accounting, reports, shipping, payment gateways, settings | ✓ | ✓ | 403 |
@@ -69,6 +71,8 @@ Scopes (which categories or warehouses a Store Staff member covers) are stored p
 **Price approvals (Phase 6):** Store Staff with `price.update.propose` file a request (`admin_approvals`, action `price.update`, one open request per variant, expiring after `security.approval_ttl_hours`). Admins holding `price.update` for the product's categories approve or reject it at `/admin/approvals`; the requester can never decide their own request (service check and database CHECK). An approved change is applied in the same transaction with the approver as `product_prices.changed_by` and the request in `approval_id`; the write itself checks that the price is still the one the requester saw (a conditional UPDATE), and if it changed the request is marked failed instead of overwriting it. Requesters see their own requests only for products they can still view. New variants start switched off and can't be switched on before they have a price.
 
 **Pictures (Phase 6, part 2a):** adding a product photo needs `product.update` and `media.upload` on all the product's categories; changing its description, order or main photo, or removing it, needs `product.update`. A category picture needs `category.manage` and `media.upload` on that category. A brand logo needs `brand.manage` and an **unscoped** `media.upload` (a brand has no category, so scoped Store Staff can't set logos). Removing a logo or a category picture needs the same permissions as setting it.
+
+**Fitment (Phase 6, part 2b):** reading a product's links needs `product.view`; adding a link or removing an unverified one needs `compatibility.manage` on all the product's categories; verifying, disputing, rejecting (or resetting to unverified) needs `compatibility.verify` (Super and Business Admin), and so does removing a verified link. New links always start unverified and must cite a source. The motorcycle catalog itself needs `vehicle.manage` (all levels).
 
 ## Default bundles
 

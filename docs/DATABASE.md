@@ -72,6 +72,7 @@ Each rule below has an integration test in `tests/integration/`.
 - `verification_status` starts `unverified`; `verified` requires `verified_by` and `verified_at`. Changing what a verified row claims (product, motorcycle, years, position, source) drops it back to `unverified`.
 - Lookups by motorcycle use the `(motorcycle_variant_id, verification_status)` and `(motorcycle_generation_id, verification_status)` indexes (asserted with `EXPLAIN` in tests).
 - `customer_vehicles` is "my garage" (one primary bike per customer).
+- Admin screens (Phase 6, part 2b): `src/modules/vehicles` (catalog) and `src/modules/compatibility` (links). Admins type model years as solar (1300–1499, stored +621) or Gregorian years; storage is always Gregorian.
 
 How this supports the storefront structure Sogand chose (shop by motorcycle make → model → year → variant with parts grouped by system, shop by category, part-number search): top-level part categories flagged `is_vehicle_system` are the "systems" (engine, brakes, electrical, ...); a bike's parts are the verified fitment rows joined to the product's categories.
 
