@@ -82,6 +82,7 @@ Scopes (which categories or warehouses a Store Staff member covers) are stored p
 
 - `order.view` shows the order list and order screen. Super and Business Admins see every order. Store Staff hold it for their warehouses only: they see an order when all of its held or taken stock is in their warehouses, and any other order number answers "not found".
 - The order screen shows the customer's name, mobile number, delivery address and note, because staff need them to pack and send the order. It shows nothing else about the customer. The customer list and customer accounts (`customer.view`, `customer.manage`) remain Super and Business Admin only.
+- `order.fulfil` packs, ships and marks delivered a paid order. Store Staff hold it for their warehouses only: they can fulfil an order only when all of its stock is in their warehouses, and other orders look like they don't exist. Every step is audited.
 - `order.cancel` (Super and Business Admin) cancels an order that awaits payment, with a reason. The stock is released, and the change is audited and written to the outbox. Unpaid orders whose 24-hour hold ran out are cancelled by the system (`order.expired` outbox event, no acting user).
 - Customers have no permission keys. Their cart, checkout and orders are found from their own session only.
 

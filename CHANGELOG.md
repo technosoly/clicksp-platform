@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6b, part 7: packing and shipping)
+- On the admin order screen, admins with `order.fulfil` take a paid order through its steps: **start packing** (paid → processing), **mark shipped** with the carrier's optional tracking code (processing → shipped) and **mark delivered**. Store Staff can do this only for orders whose stock is all in their warehouses.
+- Shipping takes the held stock off the shelves as `sale` movements (each hold is consumed, then the movement is written, with balances locked in checkout's order) and records one shipment per warehouse, with its lines and a tracking event. Every step is audited; shipping and delivery go to the outbox (`order.shipped`, `order.delivered`) for customer messages.
+- The customer's order page shows the delivery status and tracking code.
+- Security review fixes: shipping refuses (and changes nothing) when the held stock doesn't match the order lines exactly; checkout, release and shipping now lock stock balances in one order (variant, then location), so they can't deadlock; sale movements carry the order number; shipments are read only through authorized order reads.
+- Tests: integration (217 in total; a new fulfilment suite: the whole path with stock checked at every step, repeated and concurrent steps refused, stock mismatch refused, Store Staff outside the warehouses refused, unpaid orders refused), the checkout E2E now packs and ships the paid order.
+
 ### Added (Phase 6b, part 6: online payment, gateway-ready)
 - **Gateway contract** (`src/modules/payments/domain/gateway.ts`, from the iranian-ecommerce skill): initiate, parse callback, verify. Amounts are integer Rial; an adapter converts if its provider counts in Toman. No real provider is connected yet: Zarinpal or Zibal is added from the official docs once the store's merchant and sandbox credentials are supplied (`PAYMENT_PROVIDERS` lists the adapters a server may use; credentials go in `<PREFIX>_*` server variables, never in the database).
 - A **test-only gateway** (`fake`) for development and tests "pays" instantly. The environment check refuses it in production.

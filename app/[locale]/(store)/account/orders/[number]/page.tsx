@@ -8,7 +8,7 @@ import { Link, redirect } from "@/lib/i18n/navigation";
 import { formatMoney, subtract } from "@/lib/money";
 import { currentCustomer } from "@/modules/identity/service/current-customer";
 import { myOrderPayments } from "@/modules/payments/service/gateway";
-import { myOrder } from "@/modules/sales/service/checkout";
+import { myOrder, myOrderShipments } from "@/modules/sales/service/checkout";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
 import { provinceName } from "@/modules/shipping/service/provinces";
 
@@ -31,7 +31,7 @@ export default async function OrderPage({ params }: Props) {
   if (!customer) redirect({ href: "/login", locale });
   const order = await myOrder(customer!, number);
   if (!order) notFound();
-  const [t, unit, payment] = await Promise.all([getTranslations("Orders"), getDisplayUnit(), myOrderPayments(customer!, number)]);
+  const [t, unit, payment, shipments] = await Promise.all([getTranslations("Orders"), getDisplayUnit(), myOrderPayments(customer!, number), myOrderShipments(customer!, number)]);
   const lastPayment = payment?.payments.at(-1);
   const money = (v: bigint) => formatMoney(v, { locale, unit });
   const address = order.addresses[0];
@@ -72,6 +72,25 @@ export default async function OrderPage({ params }: Props) {
           {t("pay.paidReference")}{" "}
           <span dir="ltr">{payment.payments.find((p) => p.status === "succeeded")!.reference}</span>
         </p>
+      ) : null}
+      {shipments.length > 0 ? (
+        <section className="space-y-1 rounded-lg border p-4 text-sm" data-testid="order-shipments">
+          <h2 className="font-semibold">{t("delivery.title")}</h2>
+          {shipments.map((sh) => (
+            <p key={sh.id}>
+              {t(`delivery.status.${sh.status}`)}
+              {sh.trackingCode ? (
+                <>
+                  {" · "}
+                  {t("delivery.tracking")}{" "}
+                  <span dir="ltr" data-testid="order-tracking-code">
+                    {sh.trackingCode}
+                  </span>
+                </>
+              ) : null}
+            </p>
+          ))}
+        </section>
       ) : null}
       <ul className="divide-y rounded-lg border" data-testid="order-items">
         {order.items.map((i) => (

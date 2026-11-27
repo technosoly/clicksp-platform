@@ -1386,6 +1386,21 @@
         "unexpected": "Something went wrong. Please try again.",
         "payment_in_progress": "Your last payment is still being confirmed by the bank. Refresh in a minute."
       }
+    },
+    "delivery": {
+      "title": "Delivery",
+      "tracking": "Tracking code:",
+      "status": {
+        "pending": "Being prepared",
+        "label_created": "Label created",
+        "picked_up": "Handed to the carrier",
+        "in_transit": "On the way",
+        "out_for_delivery": "Out for delivery",
+        "delivered": "Delivered",
+        "failed": "Delivery failed",
+        "returned": "Returned",
+        "cancelled": "Cancelled"
+      }
     }
   },
   "AdminOrders": {
@@ -1417,12 +1432,49 @@
       "reason_required": "Write a reason (3 to 500 characters).",
       "not_cancellable": "This order can no longer be cancelled here.",
       "not_found": "Order not found.",
-      "payment_in_progress": "The bank is confirming a payment for this order right now. Try again in a few minutes."
+      "payment_in_progress": "The bank is confirming a payment for this order right now. Try again in a few minutes.",
+      "wrong_status": "The order moved on meanwhile. Refresh the page.",
+      "invalid_tracking": "Use 4 to 40 letters and digits for the tracking code.",
+      "stock_mismatch": "The stock held for this order doesn't match its lines, so nothing was shipped. Check the stock card, or contact the developer."
     },
     "messages": {
-      "cancelled": "Order cancelled; stock released."
+      "cancelled": "Order cancelled; stock released.",
+      "pack": "Marked as being packed.",
+      "ship": "Marked shipped; stock updated.",
+      "deliver": "Marked delivered."
     },
-    "onlinePaymentReason": "paid online"
+    "onlinePaymentReason": "paid online",
+    "shipments": "Shipments",
+    "shipmentStatus": {
+      "pending": "Being prepared",
+      "label_created": "Label created",
+      "picked_up": "Handed to the carrier",
+      "in_transit": "On the way",
+      "out_for_delivery": "Out for delivery",
+      "delivered": "Delivered",
+      "failed": "Delivery failed",
+      "returned": "Returned",
+      "cancelled": "Cancelled"
+    },
+    "fulfil": {
+      "pack": {
+        "title": "Pack the order",
+        "help": "Paid: collect the parts from the shelves shown below. Marking it as being packed tells everyone it's in hand.",
+        "submit": "Start packing"
+      },
+      "ship": {
+        "title": "Ship the order",
+        "help": "When the parcel leaves, the parts come off the stock and the customer can see the tracking code.",
+        "submit": "Mark shipped"
+      },
+      "deliver": {
+        "title": "Delivered?",
+        "help": "Mark the order delivered once the customer has received it.",
+        "submit": "Mark delivered"
+      },
+      "trackingCode": "Carrier's tracking code (optional)",
+      "trackingHint": "Letters and digits, as printed on the waybill."
+    }
   },
   "AdminPayments": {
     "title": "Payments",
