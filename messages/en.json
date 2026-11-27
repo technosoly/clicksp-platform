@@ -18,7 +18,8 @@
     "subheading": "Motorcycle spare parts and accessories, searchable by motorcycle model and part number."
   },
   "Footer": {
-    "rights": "All rights reserved, {name}."
+    "rights": "All rights reserved, {name}.",
+    "pagesLabel": "Store information"
   },
   "NotFound": {
     "title": "Page not found",
@@ -1180,7 +1181,8 @@
     "apply": "Show",
     "verifiedPartsCount": "{count} verified parts",
     "motorcyclePartsEmpty": "No verified parts for this choice yet. Ask us, we may still have the part.",
-    "yearPlaceholder": "2019"
+    "yearPlaceholder": "2019",
+    "persianOnly": "This page hasn't been written in English yet, so it is shown in Persian."
   },
   "Cart": {
     "title": "Your cart",
@@ -1512,6 +1514,49 @@
     },
     "errors": {
       "not_found": "This gateway is not set up on this server."
+    }
+  },
+  "AdminContent": {
+    "title": "Content",
+    "intro": "The store's information pages. Once written, each page is linked at the bottom of every page of the site.",
+    "pagesTitle": "Information pages",
+    "pagesHelp": "A page that hasn't been written yet isn't shown on the site.",
+    "keys": {
+      "about": "About us",
+      "contact": "Contact us",
+      "shipping": "Shipping and delivery",
+      "returns": "Returns",
+      "terms": "Terms and conditions",
+      "privacy": "Privacy"
+    },
+    "publishedAt": "Published {time}",
+    "noEnglish": "No English version",
+    "notWritten": "Not written",
+    "notWrittenIntro": "This page hasn't been written yet.",
+    "revision": "Version {number}. Each save publishes a new version and earlier versions are kept.",
+    "formatHelp": "Write plain text. A line starting with \"## \" is a heading, a line starting with \"- \" is a list item, and a blank line separates paragraphs.",
+    "view": "View on the site",
+    "back": "Back to content",
+    "publish": "Save and publish",
+    "fields": {
+      "faTitle": "Persian title",
+      "faBody": "Persian text",
+      "enTitle": "English title",
+      "enBody": "English text",
+      "enHint": "Optional. When empty, the English site shows the Persian text."
+    },
+    "errors": {
+      "title_required": "Enter the Persian title.",
+      "title_too_long": "Titles are at most 200 characters.",
+      "body_required": "Enter the Persian text.",
+      "body_too_long": "The text is at most 20,000 characters.",
+      "body_too_many_blocks": "The text has more than 200 paragraphs and lists.",
+      "body_block_too_long": "A paragraph, heading or list item is too long (paragraphs 5,000, headings 200 and list items 500 characters; at most 50 items per list).",
+      "english_incomplete": "For the English version, write both the title and the text, or leave both empty.",
+      "not_found": "Not found."
+    },
+    "messages": {
+      "published": "Published."
     }
   }
 }
