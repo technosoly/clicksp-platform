@@ -114,7 +114,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ loc
             <input type="hidden" name="step" value={fulfilStep} />
             {fulfilStep === "ship" ? (
               <Field label={t("fulfil.trackingCode")} htmlFor="tracking-code" hint={t("fulfil.trackingHint")}>
-                <Input id="tracking-code" name="trackingCode" dir="ltr" maxLength={60} />
+                <Input id="tracking-code" name="trackingCode" dir="ltr" maxLength={40} />
               </Field>
             ) : null}
           </ActionForm>

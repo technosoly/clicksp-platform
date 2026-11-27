@@ -24,7 +24,9 @@ export const FULFIL_STEPS = { pack: "paid", ship: "processing", deliver: "shippe
 export type FulfilStep = keyof typeof FULFIL_STEPS;
 const NEXT = { pack: "processing", ship: "shipped", deliver: "delivered" } as const;
 
-export type FulfilResult = { status: "ok" } | { status: "not_found" } | { status: "wrong_status" } | { status: "invalid"; field: string };
+export type FulfilResult = { status: "ok" } | { status: "not_found" } | { status: "wrong_status" } | { status: "stock_mismatch" } | { status: "invalid"; field: string };
+
+export const isFulfilStep = (step: string): step is FulfilStep => Object.hasOwn(FULFIL_STEPS, step);
 
 function adminId(actor: Actor): string {
   if (actor.kind !== "admin" || !actor.userId) throw new AuthzError("order.fulfil", "not_admin");
@@ -47,7 +49,7 @@ export function canFulfil(actor: Actor, warehouseIds: readonly string[]): boolea
 
 export async function fulfilOrder(actor: Actor, orderNumber: string, step: FulfilStep, input: { trackingCode?: string } = {}): Promise<FulfilResult> {
   const userId = adminId(actor);
-  if (!(step in FULFIL_STEPS)) return { status: "invalid", field: "step" };
+  if (!isFulfilStep(step)) return { status: "invalid", field: "step" };
   if (!/^\d{1,18}$/.test(orderNumber)) return { status: "not_found" };
   const order = await adminOrder(db(), BigInt(orderNumber));
   const warehouseIds = order ? [...new Set(order.reservations.map((r) => r.balance.warehouseId))] : [];
@@ -62,18 +64,20 @@ export async function fulfilOrder(actor: Actor, orderNumber: string, step: Fulfi
   const code = step === "ship" ? trackingCode(input.trackingCode ?? "") : null;
   if (code === "invalid") return { status: "invalid", field: "invalid_tracking" };
 
+  class StockMismatch extends Error {}
   const done = await transaction(async (tx) => {
     const locked = await lockOrderForFulfilment(tx, order.id);
     if (!locked || locked.status !== FULFIL_STEPS[step]) return false;
     await setActingUser(tx, userId);
     const at = new Date();
     if (step === "ship") {
-      const taken = await takeOrderStock(tx, order.id, userId, code);
+      const taken = await takeOrderStock(tx, order.id, userId, locked.orderNumber.toString(), locked.items);
+      // Rolls the whole step back: nothing ships when the held stock doesn't match the lines.
+      if (!taken) throw new StockMismatch();
       const itemOf = new Map(locked.items.map((i) => [i.variantId, i.id]));
       const byWarehouse = new Map<string, { orderItemId: string; quantity: number }[]>();
       for (const t of taken) {
-        const orderItemId = itemOf.get(t.variantId);
-        if (!orderItemId) continue;
+        const orderItemId = itemOf.get(t.variantId)!;
         const list = byWarehouse.get(t.warehouseId) ?? [];
         const same = list.find((l) => l.orderItemId === orderItemId);
         if (same) same.quantity += t.quantity;
@@ -102,6 +106,10 @@ export async function fulfilOrder(actor: Actor, orderNumber: string, step: Fulfi
       });
     }
     return true;
+  }).catch((error: unknown) => {
+    if (error instanceof StockMismatch) return "stock_mismatch" as const;
+    throw error;
   });
+  if (done === "stock_mismatch") return { status: "stock_mismatch" };
   return done ? { status: "ok" } : { status: "wrong_status" };
 }

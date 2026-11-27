@@ -74,6 +74,29 @@ describe("packing and shipping paid orders", () => {
     expect((await q<{ action: string }>("SELECT action FROM audit_logs WHERE entity_id = $1 ORDER BY id", [order.id])).map((r) => r.action)).toEqual(["order.processing", "order.shipped", "order.delivered"]);
   });
 
+  it("ships an order once when two people press ship at the same time", async () => {
+    const { number, order, variantId, locationId } = await paidOrder(2);
+    const ba = await actorFor("business_admin");
+    ok(await fulfilOrder(ba, number, "pack"));
+    const results = await Promise.all([fulfilOrder(ba, number, "ship"), fulfilOrder(await actorFor("super_admin"), number, "ship")]);
+    expect(results.map((r) => r.status).sort()).toEqual(["ok", "wrong_status"]);
+    expect(await balance(variantId, locationId)).toEqual({ on_hand: 3, reserved: 0 });
+    expect(await shipmentsOfOrder(order.id)).toHaveLength(1);
+    expect(await q("SELECT reference_code FROM inventory_movements WHERE reference_id = $1", [order.id])).toEqual([{ reference_code: number }]);
+  });
+
+  it("refuses to ship when the held stock doesn't match the order, and changes nothing", async () => {
+    const { number, order, variantId, locationId } = await paidOrder(2);
+    const ba = await actorFor("business_admin");
+    ok(await fulfilOrder(ba, number, "pack"));
+    // Bad data: the hold went away (as a manual fix or a future bug might do).
+    await q("UPDATE stock_reservations SET status = 'released' WHERE order_id = $1", [order.id]);
+    expect(await fulfilOrder(ba, number, "ship")).toEqual({ status: "stock_mismatch" });
+    expect(await balance(variantId, locationId)).toEqual({ on_hand: 5, reserved: 0 });
+    expect(await shipmentsOfOrder(order.id)).toEqual([]);
+    expect(await q("SELECT status FROM orders WHERE id = $1", [order.id])).toEqual([{ status: "processing" }]);
+  });
+
   it("refuses Store Staff outside the order's warehouses and orders that aren't paid", async () => {
     const { number, warehouseId } = await paidOrder(1);
     const other = await actorFor("store_staff", [], [(await q<{ id: string }>("INSERT INTO warehouses (code, name) VALUES ($1, 'TEST') RETURNING id", [`F-${Date.now()}`]))[0]!.id]);

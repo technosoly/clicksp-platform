@@ -25,7 +25,10 @@ export async function markShipmentsDelivered(tx: Tx, orderId: string, at: Date):
   await deliverShipments(tx, orderId, at);
 }
 
-/** An order's shipments, for screens that already authorized reading the order. */
+/**
+ * An order's shipments. No actor here: only the sales module calls it, after
+ * authorizing the order (orderForAdmin, or the customer's own order).
+ */
 export async function shipmentsOfOrder(orderId: string) {
   return orderShipments(db(), orderId);
 }

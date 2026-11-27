@@ -1434,7 +1434,8 @@
       "not_found": "Order not found.",
       "payment_in_progress": "The bank is confirming a payment for this order right now. Try again in a few minutes.",
       "wrong_status": "The order moved on meanwhile. Refresh the page.",
-      "invalid_tracking": "Use 4 to 40 letters and digits for the tracking code."
+      "invalid_tracking": "Use 4 to 40 letters and digits for the tracking code.",
+      "stock_mismatch": "The stock held for this order doesn't match its lines, so nothing was shipped. Check the stock card, or contact the developer."
     },
     "messages": {
       "cancelled": "Order cancelled; stock released.",

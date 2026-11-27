@@ -8,8 +8,7 @@ import { Link, redirect } from "@/lib/i18n/navigation";
 import { formatMoney, subtract } from "@/lib/money";
 import { currentCustomer } from "@/modules/identity/service/current-customer";
 import { myOrderPayments } from "@/modules/payments/service/gateway";
-import { myOrder } from "@/modules/sales/service/checkout";
-import { shipmentsOfOrder } from "@/modules/shipping/service/shipments";
+import { myOrder, myOrderShipments } from "@/modules/sales/service/checkout";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
 import { provinceName } from "@/modules/shipping/service/provinces";
 
@@ -32,8 +31,7 @@ export default async function OrderPage({ params }: Props) {
   if (!customer) redirect({ href: "/login", locale });
   const order = await myOrder(customer!, number);
   if (!order) notFound();
-  // The order is the customer's own (myOrder checked), so its shipments are too.
-  const [t, unit, payment, shipments] = await Promise.all([getTranslations("Orders"), getDisplayUnit(), myOrderPayments(customer!, number), shipmentsOfOrder(order.id)]);
+  const [t, unit, payment, shipments] = await Promise.all([getTranslations("Orders"), getDisplayUnit(), myOrderPayments(customer!, number), myOrderShipments(customer!, number)]);
   const lastPayment = payment?.payments.at(-1);
   const money = (v: bigint) => formatMoney(v, { locale, unit });
   const address = order.addresses[0];

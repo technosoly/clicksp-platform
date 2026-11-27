@@ -231,8 +231,9 @@ export async function reserveForOrder(tx: Parameters<typeof reserveVariantForOrd
 }
 
 /** Takes an order's held stock off the shelf as sales when it ships (inside the caller's transaction). */
-export async function takeOrderStock(tx: Parameters<typeof consumeOrderHolds>[0], orderId: string, actorUserId: string, trackingCode: string | null) {
-  return consumeOrderHolds(tx, orderId, actorUserId, trackingCode);
+/** Null (nothing taken) when the order's holds don't match its lines exactly. */
+export async function takeOrderStock(tx: Parameters<typeof consumeOrderHolds>[0], orderId: string, actorUserId: string, orderNumber: string, lines: readonly { variantId: string; quantity: number }[]) {
+  return consumeOrderHolds(tx, orderId, actorUserId, orderNumber, lines);
 }
 
 /** Gives back the stock held for an order (inside the caller's transaction). */

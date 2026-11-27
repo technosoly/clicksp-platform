@@ -298,14 +298,16 @@ export async function availableByVariant(client: DbClient, variantIds: readonly 
  * (and reserves nothing more) when there isn't enough.
  */
 export async function reserveVariantForOrder(tx: Tx, input: { orderId: string; variantId: string; quantity: number; expiresAt: Date }): Promise<boolean> {
+  // One lock order for balances everywhere (variant, then location), so checkout,
+  // release and shipping can never deadlock; the warehouse priority only picks.
+  await tx.$queryRaw`SELECT 1 FROM inventory_balances WHERE variant_id = ${input.variantId}::uuid ORDER BY location_id FOR UPDATE`;
   const balances = await tx.$queryRaw<{ location_id: string; available: number }[]>`
     SELECT b.location_id, (b.on_hand - b.reserved)::int AS available
       FROM inventory_balances b
       JOIN warehouse_locations l ON l.id = b.location_id
       JOIN warehouses w ON w.id = b.warehouse_id
      WHERE b.variant_id = ${input.variantId}::uuid AND l.is_active AND w.is_active AND b.on_hand > b.reserved
-     ORDER BY w.priority, w.code, l.is_default DESC, l.code
-       FOR UPDATE OF b`;
+     ORDER BY w.priority, w.code, l.is_default DESC, l.code`;
   let left = input.quantity;
   const takes: { locationId: string; quantity: number }[] = [];
   for (const b of balances) {
@@ -339,7 +341,7 @@ export async function closeOrderHolds(tx: Tx, orderId: string, status: "released
  * movement, as the reservation trigger expects). Balances are locked in the
  * same order as checkout. Returns what left each warehouse.
  */
-export async function consumeOrderHolds(tx: Tx, orderId: string, actorUserId: string, referenceCode: string | null) {
+export async function consumeOrderHolds(tx: Tx, orderId: string, actorUserId: string, referenceCode: string, expected: readonly { variantId: string; quantity: number }[]) {
   await tx.$queryRaw`
     SELECT 1 FROM inventory_balances b
       JOIN stock_reservations r ON r.variant_id = b.variant_id AND r.location_id = b.location_id
@@ -351,6 +353,12 @@ export async function consumeOrderHolds(tx: Tx, orderId: string, actorUserId: st
     orderBy: [{ variantId: "asc" }, { locationId: "asc" }],
     select: { id: true, variantId: true, locationId: true, quantity: true, balance: { select: { warehouseId: true } } },
   });
+  // The holds must cover the order lines exactly, or stock would drift: refuse instead.
+  const held = new Map<string, number>();
+  for (const h of holds) held.set(h.variantId, (held.get(h.variantId) ?? 0) + h.quantity);
+  const wanted = new Map<string, number>();
+  for (const e of expected) wanted.set(e.variantId, (wanted.get(e.variantId) ?? 0) + e.quantity);
+  if (held.size !== wanted.size || [...wanted].some(([v, q]) => held.get(v) !== q)) return null;
   for (const hold of holds) {
     await tx.stockReservation.update({ where: { id: hold.id }, data: { status: "consumed" } });
     await insertMovement(tx, { variantId: hold.variantId, locationId: hold.locationId, warehouseId: hold.balance.warehouseId, type: "sale", quantity: hold.quantity, referenceType: "order", referenceId: orderId, referenceCode, reason: null, actorUserId });

@@ -6,6 +6,7 @@ import { lockVariantPrices, type ShopLocale } from "@/modules/catalog/service/st
 import type { CurrentCustomer } from "@/modules/identity/service/current-customer";
 import { releaseOrderHolds, reserveForOrder } from "@/modules/inventory/service/stock";
 import { provinceName } from "@/modules/shipping/service/provinces";
+import { shipmentsOfOrder } from "@/modules/shipping/service/shipments";
 import { shippingQuoteFor, shippingQuotes, type ShippingQuote } from "@/modules/shipping/service/shipping-quote";
 import { checkoutInputSchema, MAX_OPEN_ORDERS, PAYMENT_WINDOW_HOURS, type CheckoutInput } from "../domain/checkout-input";
 import { computeOrderTotals } from "../domain/totals";
@@ -208,6 +209,12 @@ export async function myOrders(customer: CurrentCustomer) {
 export async function myOrder(customer: CurrentCustomer, orderNumber: string) {
   if (!/^\d{1,18}$/.test(orderNumber)) return null;
   return customerOrder(db(), customer.userId, BigInt(orderNumber));
+}
+
+/** The shipments of one of the customer's own orders (none for anyone else's). */
+export async function myOrderShipments(customer: CurrentCustomer, orderNumber: string) {
+  const order = await myOrder(customer, orderNumber);
+  return order ? shipmentsOfOrder(order.id) : [];
 }
 
 /** Unit price × quantity, for display of a line (integer Rial). */
