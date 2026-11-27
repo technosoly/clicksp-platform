@@ -102,3 +102,17 @@ export async function imageUseCount(client: DbClient, mediaId: string): Promise<
   }
   return total;
 }
+
+/** A private file (an import upload): never served by the public media route. */
+export async function insertPrivateFileRow(
+  client: DbClient,
+  row: { id: string; storageKey: string; bucket: string; originalFilename: string; mimeType: string; sizeBytes: number; sha256: string; uploadedById: string },
+): Promise<void> {
+  await client.mediaAsset.create({
+    data: { ...row, kind: "document", visibility: "private", status: "ready", sizeBytes: BigInt(row.sizeBytes) },
+  });
+}
+
+export async function getPrivateFileRow(client: DbClient, id: string) {
+  return client.mediaAsset.findFirst({ where: { id, kind: "document", visibility: "private", deletedAt: null }, select: { storageKey: true, sizeBytes: true } });
+}
