@@ -15,11 +15,20 @@
   },
   "Home": {
     "heading": "Clicksp Spare Parts",
-    "subheading": "Motorcycle spare parts and accessories, searchable by motorcycle model and part number."
+    "subheading": "Motorcycle spare parts and accessories, searchable by motorcycle model and part number.",
+    "slider": {
+      "label": "Featured",
+      "position": "Slide {n} of {total}",
+      "previous": "Previous slide",
+      "next": "Next slide",
+      "goTo": "Go to slide {n}"
+    }
   },
   "Footer": {
     "rights": "All rights reserved, {name}.",
-    "pagesLabel": "Store information"
+    "pagesLabel": "Store information",
+    "blog": "Articles",
+    "moreLabel": "More links"
   },
   "NotFound": {
     "title": "Page not found",
@@ -30,7 +39,8 @@
     "account": "My account",
     "motorcycles": "Motorcycles",
     "menu": "Main menu",
-    "cart": "Cart"
+    "cart": "Cart",
+    "more": "Store links"
   },
   "Admin": {
     "title": "Clicksp admin",
@@ -60,7 +70,10 @@
       "account": "My account",
       "warehouses": "Warehouses",
       "imports": "Product import",
-      "returns": "Returns"
+      "returns": "Returns",
+      "articles": "Articles",
+      "banners": "Banners",
+      "menus": "Menus"
     },
     "welcome": "Welcome, {name}",
     "yourRole": "Your role",
@@ -2187,5 +2200,159 @@
       "expense_recorded": "The expense is recorded and posted.",
       "income_recorded": "The income is recorded and posted."
     }
+  },
+  "AdminWebsite": {
+    "articles": {
+      "title": "Articles",
+      "intro": "Articles and guides on the store's blog.",
+      "new": "New article",
+      "empty": "No articles yet.",
+      "deleted": "The article was deleted.",
+      "updated": "Changed {date} · {name}",
+      "previous": "Previous",
+      "next": "Next",
+      "back": "Back to articles",
+      "view": "View on the site",
+      "create": "Create",
+      "save": "Save",
+      "createdNotice": "The article was created.",
+      "formatHelp": "Text format: a blank line starts a new paragraph, \"## \" starts a heading and \"- \" starts a list item. No HTML.",
+      "persian": "Persian",
+      "english": "English (optional)",
+      "englishHint": "Leave empty if the article is only in Persian; English visitors then see the Persian text.",
+      "draftOnly": "You can save drafts; an admin reviews and publishes them.",
+      "lockedForStaff": "This article has been published. Only an admin can change it now.",
+      "cover": "Cover picture",
+      "coverHelp": "Shown on the blog list and at the top of the article (wide, 16:9 works best).",
+      "deleteTitle": "Delete article",
+      "deleteHelp": "Removes the article from the site and this list. This can't be undone.",
+      "deleteConfirm": "Yes, delete this article",
+      "delete": "Delete",
+      "status": {
+        "draft": "Draft",
+        "published": "Published",
+        "archived": "Hidden"
+      },
+      "fields": {
+        "status": "Status",
+        "title": "Title",
+        "slug": "Address (slug)",
+        "slugHint": "Leave empty to make it from the title.",
+        "excerpt": "Summary",
+        "body": "Text",
+        "bodyHint": "Blank line = new paragraph, ## = heading, - = list item."
+      }
+    },
+    "menus": {
+      "title": "Menus",
+      "intro": "Your own links in the site header and footer.",
+      "save": "Save menu",
+      "faLabel": "Persian label",
+      "enLabel": "English label (optional)",
+      "link": "Link",
+      "rowFa": "Link {n} Persian label",
+      "rowEn": "Link {n} English label",
+      "rowLink": "Link {n} address",
+      "linkHelp": "A store address starting with / (for example /c/brakes or /pages/about), or a full https:// address (opens in a new tab). Leave a row empty to skip it.",
+      "keys": {
+        "header": "Header menu",
+        "footer": "Footer menu"
+      },
+      "help": {
+        "header": "Up to 6 links shown next to \"Motorcycles\" in the header.",
+        "footer": "Up to 12 links shown in the footer."
+      }
+    },
+    "banners": {
+      "title": "Banners",
+      "intro": "The slides at the top of the home page.",
+      "empty": "No banners yet.",
+      "deleted": "The banner was deleted.",
+      "live": "Showing",
+      "scheduled": "Scheduled",
+      "off": "Off",
+      "order": "Order {n}",
+      "new": "New banner",
+      "newHelp": "A wide picture (about 3:1, at least 1600 pixels wide) and a title. You can add a phone picture after creating it.",
+      "create": "Create",
+      "save": "Save",
+      "back": "Back to banners",
+      "editIntro": "Text, link and dates of this banner.",
+      "createdNotice": "The banner was created.",
+      "persian": "Persian",
+      "english": "English (optional)",
+      "englishHint": "Leave empty to show the Persian text to English visitors.",
+      "desktopTitle": "Wide-screen picture",
+      "desktopHelp": "About 3:1, at least 1600 pixels wide.",
+      "mobileTitle": "Phone picture (optional)",
+      "mobileHelp": "About 4:3. Without it, phones show the wide picture.",
+      "deleteTitle": "Delete banner",
+      "deleteHelp": "Removes the banner and its pictures. This can't be undone.",
+      "deleteConfirm": "Yes, delete this banner",
+      "delete": "Delete",
+      "fields": {
+        "title": "Title",
+        "subtitle": "Subtitle",
+        "cta": "Button label",
+        "ctaHint": "Optional; needs a link.",
+        "alt": "Picture description",
+        "altHint": "For screen readers; the title is used if empty.",
+        "href": "Link",
+        "hrefHint": "A store address starting with /, or a full https:// address.",
+        "sortOrder": "Order",
+        "startsOn": "First day",
+        "endsOn": "Last day",
+        "datesHint": "Optional (Tehran time).",
+        "isActive": "Show this banner",
+        "desktopImage": "Wide-screen picture",
+        "desktopImageHint": "JPEG, PNG, WebP or AVIF, up to 10 MB."
+      }
+    },
+    "errors": {
+      "fa_title_required": "Enter the Persian title.",
+      "en_title_required": "Enter the English title.",
+      "title_too_long": "The title is too long.",
+      "fa_slug_invalid": "The Persian address can use only letters, digits and dashes.",
+      "en_slug_invalid": "The English address can use only letters, digits and dashes.",
+      "fa_slug_taken": "Another article already uses this Persian address.",
+      "en_slug_taken": "Another article already uses this English address.",
+      "slug_taken": "Another article already uses this address.",
+      "excerpt_too_long": "The summary is too long.",
+      "fa_body_required": "Write the Persian text.",
+      "en_body_required": "Write the English text.",
+      "body_too_long": "The text is too long.",
+      "body_too_many_blocks": "The text has too many parts.",
+      "body_block_too_long": "A paragraph, heading or list item is too long.",
+      "english_incomplete": "For English, fill in both the title and the text, or leave all English fields empty.",
+      "invalid_status": "Choose a valid status.",
+      "not_draft": "This article was published meanwhile, so only an admin can change it now.",
+      "menu_label_required": "Each link needs a Persian label.",
+      "menu_label_too_long": "A label is too long.",
+      "invalid_link": "A link must be a store address starting with / (for example /c/brakes) or a full https:// address.",
+      "text_too_long": "One of the texts is too long.",
+      "cta_needs_link": "A button label needs a link.",
+      "invalid_order": "The order must be a whole number from 0 to 999.",
+      "invalid_date": "Enter a valid date.",
+      "end_before_start": "The last day must be on or after the first day.",
+      "image_missing": "Choose a picture file.",
+      "image_too_large": "The picture is larger than 10 MB.",
+      "image_type": "That file isn't a picture we can use (JPEG, PNG, WebP or AVIF).",
+      "image_too_small": "The picture is too small (at least 200 pixels on each side).",
+      "invalid": "The form is not valid. Reload the page and try again.",
+      "not_found": "Not found."
+    },
+    "messages": {
+      "created": "Created.",
+      "saved": "Saved.",
+      "deleted": "Deleted.",
+      "imageAdded": "The picture was saved.",
+      "imageRemoved": "The picture was removed."
+    }
+  },
+  "Blog": {
+    "title": "Articles",
+    "intro": "Guides and news about motorcycle parts and care.",
+    "empty": "No articles yet.",
+    "persianOnly": "This article is available in Persian only."
   }
 }

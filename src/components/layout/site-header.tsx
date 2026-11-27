@@ -4,11 +4,13 @@ import { SearchForm } from "@/components/store/search-form";
 import { formatCount } from "@/lib/i18n/numbers";
 import { Link } from "@/lib/i18n/navigation";
 import { cartOwner } from "@/modules/sales/api/cart-owner";
+import { shopMenu } from "@/modules/content/service/menus";
 import { cartCount } from "@/modules/sales/service/cart";
 import { LanguageSwitcher } from "./language-switcher";
+import { MenuLink } from "./menu-link";
 
 export async function SiteHeader({ locale }: { locale: "fa" | "en" }) {
-  const count = await cartCount(await cartOwner());
+  const [count, links] = await Promise.all([cartOwner().then(cartCount), shopMenu("header", locale)]);
   const t = await getTranslations("Metadata");
   const nav = await getTranslations("Header");
   return (
@@ -38,6 +40,18 @@ export async function SiteHeader({ locale }: { locale: "fa" | "en" }) {
           <LanguageSwitcher />
         </nav>
       </div>
+      {links.length > 0 ? (
+        <nav className="border-t" aria-label={nav("more")}>
+          {/* Scrolls sideways on phones instead of widening the page. */}
+          <ul className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2 py-1 [scrollbar-width:none]">
+            {links.map((l, i) => (
+              <li key={i} className="shrink-0">
+                <MenuLink link={l} className="inline-flex min-h-10 items-center rounded-md px-3 text-sm hover:bg-accent" testId="header-menu-link" />
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ) : null}
     </header>
   );
 }

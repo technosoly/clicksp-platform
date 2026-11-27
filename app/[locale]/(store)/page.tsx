@@ -1,11 +1,14 @@
 import Image from "next/image";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { HeroSlider, type HeroSlide } from "@/components/store/hero-slider";
 import { ProductGrid } from "@/components/store/product-grid";
 import { SearchForm } from "@/components/store/search-form";
 import { shopLocale } from "@/components/store/shop-locale";
 import { CategoryTile } from "@/components/store/tile";
 import { Link } from "@/lib/i18n/navigation";
 import { shopHome } from "@/modules/catalog/service/storefront";
+import { shopBanners } from "@/modules/content/service/banners";
+import { mediaUrl, pickRendition, srcSet } from "@/modules/media/domain/image-rules";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
 import { shopMotorcycleBrands } from "@/modules/vehicles/service/shop";
 
@@ -16,11 +19,17 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   const { locale: raw } = await params;
   setRequestLocale(raw);
   const locale = shopLocale(raw);
-  const [t, home, brands, unit] = await Promise.all([getTranslations("Home"), shopHome(locale), shopMotorcycleBrands(locale), getDisplayUnit()]);
+  const [t, home, brands, unit, banners] = await Promise.all([getTranslations("Home"), shopHome(locale), shopMotorcycleBrands(locale), getDisplayUnit(), shopBanners(locale)]);
   const ts = await getTranslations("Shop");
+  const slides: HeroSlide[] = banners.flatMap((b) => {
+    const main = pickRendition(b.desktop, 1280);
+    if (!main) return [];
+    return [{ ...b, desktop: { src: mediaUrl(main.key), srcSet: srcSet(b.desktop), width: main.width, height: main.height }, mobile: b.mobile.length ? { srcSet: srcSet(b.mobile) } : null }];
+  });
 
   return (
     <>
+      <HeroSlider slides={slides} />
       <section className="bg-brand-charcoal text-brand-cream">
         <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-4 py-10 text-center sm:py-14 md:flex-row md:text-start">
           <Image src="/brand/logo-badge.webp" alt="" width={176} height={176} priority className="size-28 shrink-0 sm:size-44" />

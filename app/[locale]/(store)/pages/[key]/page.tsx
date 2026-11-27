@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { shopLocale } from "@/components/store/shop-locale";
-import type { Block } from "@/modules/content/domain/info-page";
+import { RichBlocks } from "@/components/store/rich-blocks";
 import { shopInfoPage } from "@/modules/content/service/info-pages";
 
 export const dynamic = "force-dynamic";
@@ -23,27 +23,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-/** Blocks are plain text rendered as elements: nothing in a page can run or inject markup. */
-function Blocks({ blocks }: { blocks: readonly Block[] }) {
-  return blocks.map((b, i) =>
-    b.type === "heading" ? (
-      <h2 key={i} className="pt-2 text-lg font-bold">
-        {b.text}
-      </h2>
-    ) : b.type === "paragraph" ? (
-      <p key={i} className="whitespace-pre-line">
-        {b.text}
-      </p>
-    ) : (
-      <ul key={i} className="list-disc space-y-1 ps-6">
-        {b.items.map((item, j) => (
-          <li key={j}>{item}</li>
-        ))}
-      </ul>
-    ),
-  );
-}
-
 export default async function InfoPage({ params }: Props) {
   const { locale: raw, key } = await params;
   setRequestLocale(raw);
@@ -61,7 +40,7 @@ export default async function InfoPage({ params }: Props) {
         <h1 className="text-2xl font-bold" data-testid="info-page-title">
           {page.title}
         </h1>
-        <Blocks blocks={page.blocks} />
+        <RichBlocks blocks={page.blocks} />
       </div>
     </article>
   );
