@@ -279,6 +279,8 @@ model PageRevision {
   document      Json
   status        RevisionStatus @default(draft)
   note          String?        @db.VarChar(500)
+  /// The revision number this one was restored from (rollback), if any.
+  restoredFrom  Int?           @map("restored_from")
   createdById   String         @map("created_by") @db.Uuid
   publishedById String?        @map("published_by") @db.Uuid
   publishedAt   DateTime?      @map("published_at") @db.Timestamptz(6)
@@ -290,6 +292,7 @@ model PageRevision {
   publishedBy   User? @relation("PageRevisionPublishedBy", fields: [publishedById], references: [id], onDelete: Restrict)
 
   @@unique([pageId, revisionNo])
+  @@unique([pageId], map: "page_revisions_one_published", where: raw("status = 'published'"))
   @@index([createdById])
   @@index([publishedById])
   @@map("page_revisions")

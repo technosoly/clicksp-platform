@@ -85,8 +85,14 @@ export function pageNumber(input: string | string[] | undefined): number {
 
 // Home -------------------------------------------------------------------------
 
-export async function shopHome(locale: ShopLocale) {
-  const [categories, latest] = await Promise.all([topCategories(db()), productCards(db(), {}, 0, 8)]);
+/** Top categories and the newest products for the home page; a limit of 0 skips that query. */
+export async function shopHome(locale: ShopLocale, limits: { categories: number; latest: number } = { categories: 24, latest: 8 }) {
+  const categoryTake = Math.min(Math.max(0, Math.trunc(limits.categories)), 48);
+  const latestTake = Math.min(Math.max(0, Math.trunc(limits.latest)), 48);
+  const [categories, latest] = await Promise.all([
+    categoryTake ? topCategories(db(), categoryTake) : [],
+    latestTake ? productCards(db(), {}, 0, latestTake) : { rows: [] },
+  ]);
   return {
     categories: categories.map((c) => {
       const text = pick(c.translations, locale);

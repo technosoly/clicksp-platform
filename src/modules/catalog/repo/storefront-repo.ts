@@ -49,10 +49,11 @@ export type ProductCardRow = Prisma.ProductGetPayload<{ select: typeof productCa
 
 // Categories ---------------------------------------------------------------------
 
-export async function topCategories(client: DbClient) {
+export async function topCategories(client: DbClient, take?: number) {
   return client.category.findMany({
     where: { parentId: null, isActive: true, deletedAt: null },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    take,
     select: { id: true, isVehicleSystem: true, translations: nameSelect, image: mediaSelect },
   });
 }

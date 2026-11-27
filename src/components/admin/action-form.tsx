@@ -1,8 +1,7 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { useActionState, useState, type ReactNode } from "react";
-import { useFormStatus } from "react-dom";
+import { startTransition, useActionState, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { Link, usePathname } from "@/lib/i18n/navigation";
 import { cn } from "@/lib/utils/cn";
@@ -10,8 +9,7 @@ import type { ActionState } from "@/modules/identity/api/admin-action";
 
 type Action = (state: ActionState, form: FormData) => Promise<ActionState>;
 
-function Submit({ label, variant, testId }: { label: string; variant?: ButtonProps["variant"]; testId?: string }) {
-  const { pending } = useFormStatus();
+function Submit({ label, variant, testId, pending }: { label: string; variant?: ButtonProps["variant"]; testId?: string; pending: boolean }) {
   const t = useTranslations("AdminForms");
   return (
     <Button type="submit" variant={variant} disabled={pending} aria-disabled={pending} data-testid={testId}>
@@ -124,7 +122,13 @@ export function ActionForm({
   hideAfterLink?: boolean;
 }) {
   const locale = useLocale();
-  const [state, formAction] = useActionState<ActionState, FormData>(action, {});
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(action, {});
+  const ref = useRef<HTMLFormElement>(null);
+  // Submitted through onSubmit so a refused form keeps what was typed; after a
+  // success the fields are reset to the freshly saved values.
+  useEffect(() => {
+    if (state.ok) ref.current?.reset();
+  }, [state]);
   if (hideAfterLink && state.link) {
     return (
       <div className="space-y-3">
@@ -134,13 +138,25 @@ export function ActionForm({
     );
   }
   return (
-    <form action={formAction} className={cn("space-y-3", className)} noValidate data-testid={testId}>
+    <form
+      ref={ref}
+      action={formAction}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (pending) return;
+        const data = new FormData(event.currentTarget);
+        startTransition(() => formAction(data));
+      }}
+      className={cn("space-y-3", className)}
+      noValidate
+      data-testid={testId}
+    >
       <input type="hidden" name="locale" value={locale} />
       {children}
       <ActionFeedback state={state} namespace={namespace} />
       {state.link ? <OneTimeLink link={state.link} expiresAt={state.expiresAt} /> : null}
       <div>
-        <Submit label={submitLabel} variant={submitVariant} testId={testId ? `${testId}-submit` : undefined} />
+        <Submit label={submitLabel} variant={submitVariant} testId={testId ? `${testId}-submit` : undefined} pending={pending} />
       </div>
     </form>
   );

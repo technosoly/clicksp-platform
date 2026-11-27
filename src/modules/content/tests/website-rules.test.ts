@@ -13,7 +13,7 @@ describe("links typed into menus and banners", () => {
   });
 
   it("refuses anything that could leave the store unexpectedly or run code", () => {
-    for (const bad of ["/fa//evil.example", "/en/\\evil.example", "/..//evil.example", "/a/../b", "/%2e%2e/x", "/.", "javascript:alert(1)", "//evil.example", "/\\evil.example", "http://example.ir", "https://user:pw@example.ir", "data:text/html,x", "c/brakes", "/a b", "/a\u0000", "https://localhost", ""]) {
+    for (const bad of ["/fa//evil.example", "/en/\\evil.example", "/..//evil.example", "/a/../b", "/%2e%2e/x", "/.", "javascript:alert(1)", "//evil.example", "/\\evil.example", "http://example.ir", "https://user:pw@example.ir", "data:text/html,x", "c/brakes", "/a b", "/a\u0000", "https://localhost", "/c/\u202Eexe", ""]) {
       expect(parseHref(bad)).toBeNull();
     }
   });
