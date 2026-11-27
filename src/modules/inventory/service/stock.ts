@@ -240,3 +240,39 @@ export async function takeOrderStock(tx: Parameters<typeof consumeOrderHolds>[0]
 export async function releaseOrderHolds(tx: Parameters<typeof closeOrderHolds>[0], orderId: string, reason: "released" | "expired"): Promise<void> {
   await closeOrderHolds(tx, orderId, reason);
 }
+
+/** Active locations in active warehouses, for the sales module's return screen (the caller authorizes). */
+export async function restockLocations() {
+  return locationsIn(db(), null);
+}
+
+/**
+ * Puts returned goods back on a shelf as 'return' movements, inside the
+ * sales module's transaction (which authorizes the return). False when a
+ * location was switched off meanwhile; the caller then rolls back.
+ */
+export async function restockReturn(
+  tx: Parameters<typeof insertMovement>[0],
+  input: { returnId: string; returnNumber: string; actorUserId: string; lines: readonly { variantId: string; locationId: string; quantity: number }[] },
+): Promise<boolean> {
+  // Location, then product: the same lock order as every other stock change.
+  const lines = [...input.lines].sort((a, b) => a.locationId.localeCompare(b.locationId) || a.variantId.localeCompare(b.variantId));
+  for (const line of lines) {
+    if (!(await lockUsableLocation(tx, line.locationId))) return false;
+    const location = await usableLocation(tx, line.locationId);
+    if (!location) return false;
+    await insertMovement(tx, {
+      variantId: line.variantId,
+      locationId: line.locationId,
+      warehouseId: location.warehouseId,
+      type: "return",
+      quantity: line.quantity,
+      referenceType: "order_return",
+      referenceId: input.returnId,
+      referenceCode: input.returnNumber,
+      reason: null,
+      actorUserId: input.actorUserId,
+    });
+  }
+  return true;
+}
