@@ -114,9 +114,11 @@ export default async function CartPage({ params }: { params: Promise<{ locale: s
                 {t("fixProblems")}
               </p>
             )}
-            <p className="text-sm text-muted-foreground" data-testid="cart-checkout-soon">
-              {t("checkoutSoon")}
-            </p>
+            {cart.ready ? (
+              <Button asChild className="w-full" data-testid="cart-checkout">
+                <Link href="/checkout">{t("checkout")}</Link>
+              </Button>
+            ) : null}
           </aside>
         </div>
       )}

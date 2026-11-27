@@ -202,6 +202,10 @@ export interface ShopVariant {
   compareAtPrice: bigint | null;
   minQty: number;
   maxQty: number | null;
+  /** Shipping weight; null when not entered. */
+  weightGrams: number | null;
+  /** Persian and English titles, for order snapshots. */
+  titles: { fa: string; en: string | null };
   image: { renditions: Rendition[]; alt: string };
 }
 
@@ -227,6 +231,8 @@ export async function shopVariants(locale: ShopLocale, ids: readonly string[]): 
       compareAtPrice: row.compareAtPrice && row.compareAtPrice > row.price ? row.compareAtPrice : null,
       minQty: Math.max(1, row.minOrderQty),
       maxQty: row.maxOrderQty,
+      weightGrams: row.weightGrams,
+      titles: { fa: pick(row.product.translations, "fa")?.title ?? text.title, en: row.product.translations.find((t) => t.locale === "en")?.title ?? null },
       image: { renditions: image ? servableRenditions(image.media) : [], alt: image ? altText(image.alt, locale, text.title) : text.title },
     });
   }

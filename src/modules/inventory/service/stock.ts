@@ -8,6 +8,7 @@ import { decide } from "@/modules/rbac/domain/authorize";
 import { authorize, authorizeAny, AuthzError } from "@/modules/rbac/service/authorize";
 import { MOVEMENT_KINDS, MOVEMENT_PERMISSION, movementInputSchema, type MovementInput, type MovementKind } from "../domain/inventory-input";
 import {
+  reserveVariantForOrder,
   availableByVariant,
   balancesFor,
   listWarehouses,
@@ -212,4 +213,17 @@ export async function shopAvailability(variantIds: readonly string[]): Promise<M
 export async function sellableQuantities(variantIds: readonly string[]): Promise<Map<string, number>> {
   const ids = variantIds.filter((id) => UUID.test(id)).slice(0, 200);
   return availableByVariant(db(), ids);
+}
+
+/**
+ * Holds stock for a new order, inside the order's transaction (called by the
+ * sales checkout, which owns the customer's authorization). False when any
+ * unit can't be held; the caller then rolls the whole order back.
+ */
+export async function reserveForOrder(tx: Parameters<typeof reserveVariantForOrder>[0], orderId: string, lines: readonly { variantId: string; quantity: number }[], expiresAt: Date): Promise<boolean> {
+  // A fixed lock order (by variant id) so two checkouts can't deadlock.
+  for (const line of [...lines].sort((x, y) => (x.variantId < y.variantId ? -1 : 1))) {
+    if (!(await reserveVariantForOrder(tx, { orderId, variantId: line.variantId, quantity: line.quantity, expiresAt }))) return false;
+  }
+  return true;
 }

@@ -179,6 +179,7 @@ export async function purchasableVariants(client: DbClient, ids: readonly string
       compareAtPrice: true,
       minOrderQty: true,
       maxOrderQty: true,
+      weightGrams: true,
       product: {
         select: {
           id: true,

@@ -192,7 +192,6 @@
   "Account": {
     "title": "My account",
     "signedInAs": "Signed in as",
-    "comingSoon": "Your orders, addresses and motorcycles will appear here when the store opens.",
     "logout": "Sign out"
   },
   "AdminForbidden": {
@@ -1190,7 +1189,6 @@
     "subtotal": "Parts total",
     "shippingLater": "Shipping is worked out at checkout.",
     "fixProblems": "Fix the marked items to continue.",
-    "checkoutSoon": "Checkout opens in the next update.",
     "unavailableItem": "This part is no longer sold.",
     "problems": {
       "unavailable": "No longer sold. Remove it to continue.",
@@ -1205,7 +1203,8 @@
       "out_of_stock": "This part is out of stock.",
       "cart_full": "Your cart is full. Remove something first.",
       "unexpected": "Something went wrong. Please try again."
-    }
+    },
+    "checkout": "Checkout"
   },
   "AdminShipping": {
     "title": "Shipping",
@@ -1280,5 +1279,75 @@
       "saved": "Saved.",
       "removed": "Removed."
     }
+  },
+  "Checkout": {
+    "title": "Checkout",
+    "summary": "Your order",
+    "goods": "Parts total",
+    "shippingAdded": "Delivery is added once you choose a method.",
+    "addressTitle": "Delivery address",
+    "recipientName": "Recipient's name",
+    "phone": "Recipient's mobile",
+    "province": "Province",
+    "chooseProvince": "Choose…",
+    "city": "City",
+    "addressLine": "Address",
+    "plaque": "No.",
+    "unit": "Unit",
+    "postalCode": "Postal code (10 digits)",
+    "saveAddress": "Remember this address",
+    "shippingTitle": "Delivery",
+    "chooseProvinceFirst": "Choose a province to see delivery options.",
+    "loadingShipping": "Finding delivery options…",
+    "noShipping": "We don't deliver to this province yet.",
+    "free": "Free",
+    "days": "{min}–{max} days",
+    "upToDays": "Up to {max} days",
+    "note": "Note for the store (optional)",
+    "paymentNote": "Your order is saved and its parts are held for you. Payment instructions are on the next page.",
+    "placeOrder": "Place order",
+    "placing": "Placing order…",
+    "errors": {
+      "invalid_name": "Enter the recipient's name.",
+      "invalid_phone": "Enter an Iranian mobile number, e.g. 0912 123 4567.",
+      "invalid_province": "Choose a province.",
+      "invalid_city": "Enter the city.",
+      "invalid_address": "Enter the full address.",
+      "invalid_plaque": "Number is too long.",
+      "invalid_unit": "Unit is too long.",
+      "invalid_postal_code": "The postal code has 10 digits.",
+      "choose_shipping": "Choose a delivery method.",
+      "invalid_note": "The note is too long.",
+      "cart_empty": "Your cart is empty.",
+      "cart_changed": "Your cart changed (a price or stock changed). Check it and try again.",
+      "out_of_stock": "Some parts just sold out. Check your cart and try again.",
+      "shipping_unavailable": "This delivery method isn't available for your address.",
+      "unexpected": "Something went wrong. Please try again."
+    }
+  },
+  "Orders": {
+    "myOrders": "Your orders",
+    "none": "You have no orders yet.",
+    "orderTitle": "Order {number}",
+    "status": {
+      "pending_payment": "Awaiting payment",
+      "paid": "Paid",
+      "processing": "Being prepared",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "cancelled": "Cancelled",
+      "return_requested": "Return requested",
+      "returned": "Returned",
+      "refunded": "Refunded"
+    },
+    "awaitingPayment": "Your order is saved and its parts are held for you. Online payment opens soon; the store will contact you about paying.",
+    "goods": "Parts",
+    "shipping": "Delivery",
+    "shippingVia": "Delivery ({method})",
+    "free": "Free",
+    "tax": "Tax",
+    "total": "Total",
+    "deliverTo": "Deliver to",
+    "allOrders": "All your orders"
   }
 }

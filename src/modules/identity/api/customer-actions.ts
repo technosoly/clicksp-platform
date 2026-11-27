@@ -8,6 +8,7 @@ import { redirect } from "@/lib/i18n/navigation";
 import { logger } from "@/lib/logger";
 import { requestPhoneOtp, verifyPhoneOtp } from "../service/customer-auth";
 import { endSession } from "../service/sessions";
+import { afterSignIn } from "./after-sign-in";
 import { clearSessionCookie, readSessionToken, setSessionCookie } from "./cookies";
 
 export type OtpFormState =
@@ -65,7 +66,7 @@ async function verifyOtp(prev: OtpFormState, form: FormData): Promise<OtpFormSta
     logger.error("OTP verification failed", { error: String(error) });
     return { ...prev, step: "code", phone: phone.data, error: "unexpected" };
   }
-  redirect({ href: "/account", locale });
+  redirect({ href: afterSignIn(form.get("next")), locale });
   return prev;
 }
 
