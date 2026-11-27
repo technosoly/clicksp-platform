@@ -20,8 +20,10 @@ describe("information pages", () => {
       "SELECT r.revision_no, r.status FROM page_revisions r JOIN pages p ON p.id = r.page_id WHERE p.key = 'returns' ORDER BY r.revision_no DESC LIMIT 2",
     );
     expect(revisions.map((r) => r.status)).toEqual(["published", "superseded"]);
-    const [audit] = await q<{ after: { revisionNo: number } }>("SELECT after FROM audit_logs WHERE action = 'content.page_published' AND actor_user_id = $1 ORDER BY occurred_at DESC LIMIT 1", [admin.userId]);
+    const [audit] = await q<{ entity_id: string; after: { revisionNo: number; revisionId: string } }>("SELECT entity_id, after FROM audit_logs WHERE action = 'content.page_published' AND actor_user_id = $1 ORDER BY occurred_at DESC LIMIT 1", [admin.userId]);
     expect(audit?.after.revisionNo).toBe(revisions[0]!.revision_no);
+    const [published] = await q<{ id: string; page_id: string }>("SELECT r.id, r.page_id FROM page_revisions r JOIN pages p ON p.published_revision_id = r.id WHERE p.key = 'returns'");
+    expect(audit).toMatchObject({ entity_id: published!.page_id, after: { revisionId: published!.id } });
 
     expect(await infoPageForAdmin(admin, "returns")).toMatchObject({ faBody: "متن تازه", enTitle: "Returns", enBody: "New text" });
     expect(await shopInfoPage("en", "returns")).toMatchObject({ title: "Returns", lang: "en", isFallback: false, blocks: [{ type: "paragraph", text: "New text" }] });
@@ -34,6 +36,15 @@ describe("information pages", () => {
     await saveInfoPage(staff, "privacy", { faTitle: "حریم خصوصی", faBody: "متن", enTitle: "", enBody: "" });
     expect(await shopInfoPage("en", "privacy")).toMatchObject({ title: "حریم خصوصی", lang: "fa", isFallback: true, hasEnglish: false });
     expect((await shopInfoPageLinks("en")).find((l) => l.key === "privacy")).toEqual({ key: "privacy", title: "حریم خصوصی", lang: "fa" });
+  });
+
+  it("brings back a soft-deleted page when it is written again", async () => {
+    const admin = await actorFor("super_admin");
+    await saveInfoPage(admin, "terms", { faTitle: "قوانین", faBody: "متن", enTitle: "", enBody: "" });
+    await q("UPDATE pages SET deleted_at = now() WHERE key = 'terms'");
+    expect(await shopInfoPage("fa", "terms")).toBeNull();
+    await saveInfoPage(admin, "terms", { faTitle: "قوانین", faBody: "متن تازه", enTitle: "", enBody: "" });
+    expect(await shopInfoPage("fa", "terms")).toMatchObject({ blocks: [{ type: "paragraph", text: "متن تازه" }] });
   });
 
   it("refuses unknown pages and invalid text without writing", async () => {

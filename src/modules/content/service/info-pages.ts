@@ -74,7 +74,7 @@ export async function saveInfoPage(actor: Actor, key: string, input: InfoPageInp
       entityType: "page",
       entityId: revision.id,
       before: revision.previousRevisionNo === null ? undefined : { key, revisionNo: revision.previousRevisionNo },
-      after: { key, revisionNo: revision.revisionNo, titles: parsed.titles },
+      after: { key, revisionId: revision.revisionId, revisionNo: revision.revisionNo, titles: parsed.titles },
     });
     return revision;
   });

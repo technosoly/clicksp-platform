@@ -34,7 +34,7 @@ export async function pageByKey(client: DbClient, key: string) {
 export async function publishRevision(
   tx: Tx,
   page: { key: string; userId: string; now: Date; titles: { fa: string; en: string | null }; document: Prisma.InputJsonValue },
-): Promise<{ id: string; revisionNo: number; previousRevisionNo: number | null }> {
+): Promise<{ id: string; revisionId: string; revisionNo: number; previousRevisionNo: number | null }> {
   await tx.$executeRaw`INSERT INTO pages (key, status) VALUES (${page.key}, 'draft') ON CONFLICT (key) DO NOTHING`;
   const [row] = await tx.$queryRaw<{ id: string; published_revision_id: string | null }[]>`
     SELECT id, published_revision_id FROM pages WHERE key = ${page.key} FOR UPDATE`;
@@ -59,7 +59,8 @@ export async function publishRevision(
     },
     select: { id: true },
   });
-  await tx.page.update({ where: { id }, data: { status: "published", publishedRevisionId: revision.id } });
+  // A system page that was soft-deleted comes back when it is written again.
+  await tx.page.update({ where: { id }, data: { status: "published", publishedRevisionId: revision.id, deletedAt: null } });
   await tx.pageTranslation.upsert({
     where: { pageId_locale: { pageId: id, locale: "fa" } },
     create: { pageId: id, locale: "fa", title: page.titles.fa, slug: page.key },
@@ -74,5 +75,5 @@ export async function publishRevision(
   } else {
     await tx.pageTranslation.deleteMany({ where: { pageId: id, locale: "en" } });
   }
-  return { id, revisionNo, previousRevisionNo };
+  return { id, revisionId: revision.id, revisionNo, previousRevisionNo };
 }
