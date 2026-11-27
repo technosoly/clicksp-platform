@@ -1929,5 +1929,263 @@
       "received": "Received. Stock is updated.",
       "refunded": "Refund recorded."
     }
+  },
+  "AdminAccounting": {
+    "title": "Accounting",
+    "intro": "Double-entry books: accounts, financial periods, the journal, expenses, income and reports.",
+    "disclaimer": "This accounting structure is a technical foundation. Have it reviewed by a qualified Iranian accountant before relying on it for tax or legal reporting.",
+    "tabs": {
+      "label": "Accounting sections",
+      "overview": "Overview",
+      "accounts": "Accounts",
+      "periods": "Periods",
+      "journal": "Journal",
+      "money": "Expenses and income",
+      "reports": "Reports"
+    },
+    "setup": {
+      "title": "Getting started",
+      "help": "Paid orders and refunds are posted to the books automatically once these steps are done.",
+      "done": "Done",
+      "todo": "To do",
+      "missing": "{count, plural, one {# posting account is not chosen yet} other {# posting accounts are not chosen yet}}",
+      "accounts": "Create the chart of accounts",
+      "mappings": "Choose the posting accounts",
+      "period": "Open a financial period for today"
+    },
+    "waiting": {
+      "title": "Postings waiting",
+      "help": "Paid orders and refunds that could not be posted yet, usually because a posting account or an open period is missing. Fix the cause, then retry.",
+      "none": "Nothing is waiting.",
+      "count": "{count, plural, one {# event is waiting} other {# events are waiting}}",
+      "retry": "Retry now",
+      "topics": {
+        "order_paid": "Order paid",
+        "refund_completed": "Refund paid"
+      },
+      "stopped": "Stopped after {attempts} attempts",
+      "retrying": "Will retry ({attempts} attempts so far)"
+    },
+    "accounts": {
+      "title": "Chart of accounts",
+      "intro": "The accounts the books use. Accounts are never deleted; deactivate one instead.",
+      "heading": "Accounts",
+      "empty": "No accounts yet.",
+      "code": "Code",
+      "codeHint": "Digits only, for example 1110.",
+      "name": "Name",
+      "type": "Type",
+      "subtype": "Role",
+      "parent": "Parent account",
+      "noParent": "No parent (top level)",
+      "postable": "Entries can be posted to it",
+      "active": "Active",
+      "inactive": "Inactive",
+      "newTitle": "New account",
+      "newHelp": "An account with children only groups them; post to the children."
+    },
+    "types": {
+      "asset": "Asset",
+      "liability": "Liability",
+      "equity": "Equity",
+      "income": "Income",
+      "expense": "Expense"
+    },
+    "subtypes": {
+      "general": "General",
+      "cash": "Cash",
+      "bank": "Bank",
+      "gateway_clearing": "Gateway clearing",
+      "receivable": "Receivable",
+      "payable": "Payable",
+      "vat_payable": "VAT payable",
+      "inventory": "Inventory",
+      "sales": "Sales",
+      "sales_returns": "Sales returns",
+      "shipping_income": "Shipping income",
+      "cogs": "Cost of goods sold"
+    },
+    "mappings": {
+      "title": "Posting accounts",
+      "help": "Choose the account each automatic posting uses. Only active, postable accounts of the right type are offered.",
+      "none": "Not chosen",
+      "keys": {
+        "gateway_clearing": "Gateway clearing",
+        "sales_income": "Sales income",
+        "shipping_income": "Shipping income",
+        "vat_payable": "VAT payable",
+        "sales_returns": "Sales returns",
+        "refund_bank_transfer": "Refunds by bank transfer",
+        "refund_cash": "Refunds in cash",
+        "sales_discounts": "Sales discounts"
+      },
+      "hints": {
+        "gateway_clearing": "An asset account: what the payment gateway owes the store for paid orders.",
+        "sales_income": "An income account for the goods sold (after discounts).",
+        "shipping_income": "An income account for shipping charged to customers.",
+        "vat_payable": "A liability account for the tax collected on orders.",
+        "sales_returns": "An income (contra) account that refunds are charged to.",
+        "refund_bank_transfer": "The bank account that bank-transfer refunds are paid from.",
+        "refund_cash": "The cash account that cash refunds are paid from.",
+        "sales_discounts": "An income (contra) account that order discounts are charged to."
+      }
+    },
+    "periods": {
+      "title": "Financial periods",
+      "intro": "Entries can be posted only into an open period. A closed period can't be reopened or changed.",
+      "empty": "No periods yet.",
+      "name": "Name",
+      "start": "First day",
+      "end": "Last day",
+      "newTitle": "New period",
+      "newHelp": "Periods can't overlap and are at most one year long.",
+      "close": "Close period",
+      "closeHelp": "Closing is final: nothing more can be posted into the period. Needs two-factor verification.",
+      "status": {
+        "open": "Open",
+        "closed": "Closed"
+      }
+    },
+    "journal": {
+      "title": "Journal",
+      "intro": "Every posted entry, newest first. Posted entries can't change; correct one with a reversal.",
+      "empty": "No entries yet.",
+      "number": "Number",
+      "all": "Back to the journal",
+      "account": "Account",
+      "debit": "Debit",
+      "credit": "Credit",
+      "memo": "Note",
+      "newTitle": "New manual entry",
+      "newHelp": "Amounts in {unit}. Each line has a debit or a credit, and both sides must be equal.",
+      "post": "Post entry",
+      "lineAccount": "Line {n} account",
+      "lineDebit": "Line {n} debit",
+      "lineCredit": "Line {n} credit",
+      "lineMemo": "Line {n} note",
+      "entryTitle": "Journal entry #{number}",
+      "reversedBy": "Reversed by #{number}",
+      "reverses": "Reverses #{number}",
+      "reverseTitle": "Reverse this entry",
+      "reverseHelp": "Posts an opposite entry dated today in the open period. The original stays as it is.",
+      "reverse": "Reverse"
+    },
+    "sources": {
+      "order_payment": "Order payment",
+      "refund": "Refund",
+      "payment_settlement": "Gateway settlement",
+      "expense": "Expense",
+      "income_record": "Other income",
+      "inventory": "Inventory",
+      "manual": "Manual entry",
+      "reversal": "Reversal"
+    },
+    "money": {
+      "title": "Expenses and income",
+      "intro": "Record a paid expense or other income; each is posted to the journal at once.",
+      "amount": "Amount ({unit})",
+      "expense": {
+        "title": "Expenses",
+        "account": "Expense account",
+        "moneyAccount": "Paid from",
+        "party": "Paid to (optional)",
+        "save": "Record expense",
+        "empty": "No expenses yet."
+      },
+      "income": {
+        "title": "Other income",
+        "account": "Income account",
+        "moneyAccount": "Received into",
+        "party": "Received from (optional)",
+        "save": "Record income",
+        "empty": "No income recorded yet."
+      },
+      "voided": "Reversed"
+    },
+    "reports": {
+      "title": "Reports",
+      "intro": "Profit and loss, trial balance and account ledgers from posted entries.",
+      "from": "From",
+      "to": "To",
+      "ledgerAccount": "Ledger for account",
+      "show": "Show",
+      "balance": "Balance",
+      "profit": {
+        "title": "Profit and loss",
+        "help": "Posted entries from {from} to {to}.",
+        "incomeTotal": "Total income",
+        "expenseTotal": "Total expenses",
+        "net": "Net profit (loss)"
+      },
+      "trial": {
+        "title": "Trial balance",
+        "help": "All posted entries up to {to}.",
+        "empty": "Nothing has been posted yet.",
+        "total": "Total",
+        "balanced": "Balanced",
+        "unbalanced": "Not balanced"
+      },
+      "ledger": {
+        "title": "Ledger: {account}",
+        "help": "Posted lines from {from} to {to}.",
+        "opening": "Opening balance",
+        "cut": "Only the first 500 lines are shown, so the balance stops there. Choose shorter dates to see the rest."
+      }
+    },
+    "unit": {
+      "toman": "Toman",
+      "rial": "Rial"
+    },
+    "date": "Date",
+    "description": "Description",
+    "reason": "Reason",
+    "save": "Save",
+    "create": "Create",
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page {page} of {pages}",
+    "errors": {
+      "invalid": "The form is not valid. Reload the page and try again.",
+      "invalid_code": "Enter a code of digits only.",
+      "name_required": "Enter a name.",
+      "invalid_type": "Choose a valid type.",
+      "invalid_parent": "Choose a valid parent account.",
+      "parent_type": "A child account must have the same type as its parent.",
+      "code_taken": "Another account already uses this code.",
+      "has_entries": "This account already has entries, so this can't change.",
+      "has_children": "This account has child accounts, so it can't take entries.",
+      "invalid_account": "Choose a valid, active account.",
+      "wrong_account_type": "That account is not of the right type for this posting.",
+      "invalid_date": "Enter a valid date.",
+      "end_before_start": "The last day must be after the first day.",
+      "period_too_long": "A period can be at most one year long.",
+      "period_overlap": "This period overlaps another period.",
+      "drafts_open": "The period has unposted drafts.",
+      "description_required": "Enter a description.",
+      "one_side": "Each line needs either a debit or a credit, not both.",
+      "unit_changed": "The money unit was changed meanwhile. Reload the page and enter the amount again.",
+      "invalid_amount": "Enter a whole amount greater than zero.",
+      "invalid_text": "The text is too long or not valid.",
+      "unbalanced": "Debits and credits are not equal.",
+      "two_lines": "An entry needs at least two lines.",
+      "no_open_period": "No open financial period contains this date.",
+      "is_reversal": "A reversal can't be reversed.",
+      "reason_required": "Enter a reason.",
+      "inactive_account": "One of the accounts is inactive or can't take entries.",
+      "invalid_money_account": "Choose a valid cash, bank or payable account.",
+      "wrong_status": "This can't be done in the current state.",
+      "not_found": "Not found.",
+      "postings_waiting": "Some automatic postings are still waiting and may belong to this period. Post them first (see the overview), then close."
+    },
+    "messages": {
+      "created": "Created.",
+      "saved": "Saved.",
+      "closed": "The period is closed.",
+      "retried": "Waiting postings will be retried shortly.",
+      "posted": "The entry is posted.",
+      "reversed": "The reversal is posted.",
+      "expense_recorded": "The expense is recorded and posted.",
+      "income_recorded": "The income is recorded and posted."
+    }
   }
 }

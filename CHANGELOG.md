@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6c: accounting)
+- **Accounting area** (`/admin/accounting`, Super and Business Admins): overview with setup steps and waiting postings; chart of accounts and posting accounts; financial periods (closing is final and needs a fresh two-factor check); the journal with manual entries and reversals; expenses and other income; reports (profit and loss, trial balance, account ledger). See `docs/ACCOUNTING.md`. The structure still needs review by a qualified Iranian accountant.
+- **Automatic postings** from the outbox: a paid order and a completed refund are posted once each, to the accounts the accountant chose. Without a chosen account or an open period the posting waits and is retried; the overview can retry at once.
+- Security review follow-ups: a period can't be closed while an automatic posting still waits; discounts post to their own account (so a discount larger than the goods still balances); reading expenses and income needs `accounting.view`; changing a posting account records the previous one; retrying postings and its audit entry happen together; reversing an expense or income entry voids the record; a cut-off ledger says so; the amount's unit is always checked.
+- E2E: a Business Admin creates accounts, opens a period, records an expense, opens its journal entry and sees a balanced trial balance.
+- Tests: unit (posting lines balance, discounts, missing account stops the posting), integration (setup, automatic postings posted once, waiting until set up, manual entries and reversals, expenses and income, period closing, reports, Store Staff and customers refused, stale two-factor refused).
+
 ### Added (Phase 6b: returns and refunds)
 - **Customer returns** (on the customer's order page): within 7 days of delivery the customer picks how many units of each line to send back and why. One open request per order; a line is never returned more times than it was ordered (database trigger). The order shows "Return requested" meanwhile.
 - **Returns in the admin** (`/admin/returns`, `return.manage`, Super and Business Admins): approve, or reject with a note the customer sees (the order goes back to delivered). When the goods arrive, each line is marked sellable (back on a chosen shelf as a `return` stock movement) or not; the order becomes "Returned" when every unit came back, otherwise "Delivered" again. A received return is closed by its refund, or without one (an exchange).

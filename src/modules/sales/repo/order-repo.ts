@@ -281,3 +281,14 @@ export async function setOrderStatus(tx: Tx, orderId: string, status: OrderStatu
   await tx.$executeRaw`SELECT set_config('app.status_reason', ${reason ?? ""}, true)`;
   await tx.order.update({ where: { id: orderId }, data: { status } });
 }
+
+// For accounting ------------------------------------------------------------------------
+
+/** An order's totals and when it was paid, for its journal posting. */
+export async function orderForPosting(client: DbClient, orderId: string) {
+  const [order, paid] = await Promise.all([
+    client.order.findUnique({ where: { id: orderId }, select: { id: true, orderNumber: true, subtotal: true, discountTotal: true, shippingTotal: true, taxTotal: true, grandTotal: true } }),
+    client.orderStatusHistory.findFirst({ where: { orderId, toStatus: "paid" }, orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
+  ]);
+  return order && paid ? { ...order, paidAt: paid.createdAt } : null;
+}

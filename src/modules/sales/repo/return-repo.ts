@@ -166,3 +166,12 @@ export async function refundsOfOrder(client: DbClient, orderId: string) {
     select: { id: true, amount: true, status: true, method: true, reason: true, createdAt: true, returnId: true, createdBy: { select: { name: true } } },
   });
 }
+
+// For accounting ---------------------------------------------------------------------
+
+export async function refundForPosting(client: DbClient, refundId: string) {
+  return client.orderRefund.findUnique({
+    where: { id: refundId },
+    select: { id: true, amount: true, method: true, status: true, processedAt: true, createdAt: true, order: { select: { orderNumber: true } } },
+  });
+}

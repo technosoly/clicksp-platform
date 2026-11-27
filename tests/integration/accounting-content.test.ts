@@ -20,10 +20,10 @@ describe("double-entry accounting", () => {
     await inTx(async (db) => {
       const accountant = await createUser(db);
       await setActor(db, accountant);
-      const period = await createPeriod(db, "2026-01-01", "2026-12-31");
+      const period = await createPeriod(db, "2031-01-01", "2031-12-31");
       const cash = await createAccount(db, "asset");
       const sales = await createAccount(db, "income");
-      const t = await createJournal(db, period, "2026-06-01", [
+      const t = await createJournal(db, period, "2031-06-01", [
         { accountId: cash, debit: 950000, credit: 0 },
         { accountId: sales, debit: 0, credit: 950000 },
       ]);
@@ -36,10 +36,10 @@ describe("double-entry accounting", () => {
 
   it("refuses to post an unbalanced or one-line transaction", async () => {
     await inTx(async (db) => {
-      const period = await createPeriod(db, "2026-01-01", "2026-12-31");
+      const period = await createPeriod(db, "2031-01-01", "2031-12-31");
       const cash = await createAccount(db, "asset");
       const sales = await createAccount(db, "income");
-      const t = await createJournal(db, period, "2026-06-01", [
+      const t = await createJournal(db, period, "2031-06-01", [
         { accountId: cash, debit: 950000, credit: 0 },
         { accountId: sales, debit: 0, credit: 900000 },
       ]);
@@ -47,9 +47,9 @@ describe("double-entry accounting", () => {
       expect((await commitCheck(db))?.message).toMatch(/does not balance/);
     });
     await inTx(async (db) => {
-      const period = await createPeriod(db, "2026-01-01", "2026-12-31");
+      const period = await createPeriod(db, "2031-01-01", "2031-12-31");
       const cash = await createAccount(db, "asset");
-      const t = await createJournal(db, period, "2026-06-01", [{ accountId: cash, debit: 1, credit: 0 }]);
+      const t = await createJournal(db, period, "2031-06-01", [{ accountId: cash, debit: 1, credit: 0 }]);
       await db.query(post(t));
       expect((await commitCheck(db))?.message).toMatch(/does not balance/);
     });
@@ -57,9 +57,9 @@ describe("double-entry accounting", () => {
 
   it("rejects lines with both or neither of debit and credit", async () => {
     await inTx(async (db) => {
-      const period = await createPeriod(db, "2026-01-01", "2026-12-31");
+      const period = await createPeriod(db, "2031-01-01", "2031-12-31");
       const cash = await createAccount(db, "asset");
-      const t = await createJournal(db, period, "2026-06-01", []);
+      const t = await createJournal(db, period, "2031-06-01", []);
       const ins = "INSERT INTO accounting_entries (transaction_id, line_no, account_id, debit, credit) VALUES ($1, 1, $2, $3, $4)";
       expect((await dbError(db, ins, [t, cash, 5, 5]))?.constraint).toBe("accounting_entries_one_side");
       expect((await dbError(db, ins, [t, cash, 0, 0]))?.constraint).toBe("accounting_entries_one_side");
@@ -69,14 +69,14 @@ describe("double-entry accounting", () => {
 
   it("makes posted transactions and their entries immutable; corrections are reversals", async () => {
     await inTx(async (db) => {
-      const period = await createPeriod(db, "2026-01-01", "2026-12-31");
+      const period = await createPeriod(db, "2031-01-01", "2031-12-31");
       const cash = await createAccount(db, "asset");
       const sales = await createAccount(db, "income");
       const lines = [
         { accountId: cash, debit: 500, credit: 0 },
         { accountId: sales, debit: 0, credit: 500 },
       ];
-      const t = await createJournal(db, period, "2026-06-01", lines);
+      const t = await createJournal(db, period, "2031-06-01", lines);
       await db.query(post(t));
       expect((await dbError(db, "UPDATE accounting_transactions SET description = 'x' WHERE id = $1", [t]))?.message).toMatch(
         /immutable/,
@@ -93,7 +93,7 @@ describe("double-entry accounting", () => {
       const reversal = await createJournal(
         db,
         period,
-        "2026-06-02",
+        "2031-06-02",
         lines.map((l) => ({ accountId: l.accountId, debit: l.credit, credit: l.debit })),
         { sourceType: "reversal", reversesId: t },
       );
@@ -109,7 +109,7 @@ describe("double-entry accounting", () => {
       const again = await dbError(
         db,
         `INSERT INTO accounting_transactions (entry_date, period_id, description, source_type, reverses_id)
-         VALUES ('2026-06-03', $1, 'TEST', 'reversal', $2)`,
+         VALUES ('2031-06-03', $1, 'TEST', 'reversal', $2)`,
         [period, t],
       );
       expect(again?.constraint).toBe("accounting_transactions_reverses_id_key");
@@ -172,12 +172,12 @@ describe("double-entry accounting", () => {
 
   it("only reverses posted transactions", async () => {
     await inTx(async (db) => {
-      const period = await createPeriod(db, "2026-01-01", "2026-12-31");
-      const draft = await createJournal(db, period, "2026-06-01", []);
+      const period = await createPeriod(db, "2031-01-01", "2031-12-31");
+      const draft = await createJournal(db, period, "2031-06-01", []);
       const err = await dbError(
         db,
         `INSERT INTO accounting_transactions (entry_date, period_id, description, source_type, reverses_id)
-         VALUES ('2026-06-01', $1, 'TEST', 'reversal', $2)`,
+         VALUES ('2031-06-01', $1, 'TEST', 'reversal', $2)`,
         [period, draft],
       );
       expect(err?.message).toMatch(/only posted transactions can be reversed/);
@@ -186,11 +186,11 @@ describe("double-entry accounting", () => {
 
   it("requires transactions to be inserted as drafts", async () => {
     await inTx(async (db) => {
-      const period = await createPeriod(db, "2026-01-01", "2026-12-31");
+      const period = await createPeriod(db, "2031-01-01", "2031-12-31");
       const err = await dbError(
         db,
         `INSERT INTO accounting_transactions (entry_date, period_id, description, source_type, status, posted_at)
-         VALUES ('2026-06-01', $1, 'TEST', 'manual', 'posted', now())`,
+         VALUES ('2031-06-01', $1, 'TEST', 'manual', 'posted', now())`,
         [period],
       );
       expect(err?.message).toMatch(/insert transactions as draft/);
@@ -200,7 +200,7 @@ describe("double-entry accounting", () => {
   it("rejects postings into closed periods and dates outside the period", async () => {
     await inTx(async (db) => {
       const closed = await createPeriod(db, "2025-01-01", "2025-12-31", "closed");
-      const open = await createPeriod(db, "2026-01-01", "2026-12-31");
+      const open = await createPeriod(db, "2031-01-01", "2031-12-31");
       expect((await dbError(db, `INSERT INTO accounting_transactions (entry_date, period_id, description, source_type) VALUES ('2025-05-01', $1, 'T', 'manual')`, [closed]))?.message).toMatch(
         /is closed/,
       );
@@ -212,10 +212,10 @@ describe("double-entry accounting", () => {
 
   it("does not allow overlapping periods", async () => {
     await inTx(async (db) => {
-      await createPeriod(db, "2026-01-01", "2026-06-30");
+      await createPeriod(db, "2031-01-01", "2031-06-30");
       const err = await dbError(
         db,
-        "INSERT INTO financial_periods (name, start_date, end_date) VALUES ($1, '2026-06-30', '2026-12-31')",
+        "INSERT INTO financial_periods (name, start_date, end_date) VALUES ($1, '2031-06-30', '2031-12-31')",
         [`TEST-${uid()}`],
       );
       expect(err?.constraint).toBe("financial_periods_no_overlap");
@@ -224,13 +224,13 @@ describe("double-entry accounting", () => {
 
   it("posts a business event once (idempotent source key)", async () => {
     await inTx(async (db) => {
-      const period = await createPeriod(db, "2026-01-01", "2026-12-31");
+      const period = await createPeriod(db, "2031-01-01", "2031-12-31");
       const source = { sourceType: "order_payment", sourceId: "00000000-0000-7000-8000-000000000001", sourceEvent: "order.paid" };
-      await createJournal(db, period, "2026-06-01", [], source);
+      await createJournal(db, period, "2031-06-01", [], source);
       const err = await dbError(
         db,
         `INSERT INTO accounting_transactions (entry_date, period_id, description, source_type, source_id, source_event)
-         VALUES ('2026-06-01', $1, 'TEST', 'order_payment', $2, 'order.paid')`,
+         VALUES ('2031-06-01', $1, 'TEST', 'order_payment', $2, 'order.paid')`,
         [period, source.sourceId],
       );
       expect(err?.constraint).toBe("accounting_transactions_source_key");
@@ -239,9 +239,9 @@ describe("double-entry accounting", () => {
 
   it("posts only to active, postable accounts and keeps the account tree consistent", async () => {
     await inTx(async (db) => {
-      const period = await createPeriod(db, "2026-01-01", "2026-12-31");
+      const period = await createPeriod(db, "2031-01-01", "2031-12-31");
       const group = await createAccount(db, "asset", { isPostable: false });
-      const t = await createJournal(db, period, "2026-06-01", []);
+      const t = await createJournal(db, period, "2031-06-01", []);
       expect(
         (await dbError(db, "INSERT INTO accounting_entries (transaction_id, line_no, account_id, debit) VALUES ($1, 1, $2, 1)", [t, group]))
           ?.message,
