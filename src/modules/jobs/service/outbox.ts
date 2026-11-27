@@ -22,16 +22,16 @@ export async function dispatchOutbox(handlers: ReadonlyMap<string, OutboxHandler
     for (const event of events) {
       try {
         await handlers.get(event.topic)!(event);
-        await markOutboxDone(db(), event.id, now());
+        await markOutboxDone(db(), event, now());
         counts.done++;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (event.attempts >= MAX_OUTBOX_ATTEMPTS) {
-          await markOutboxFailed(db(), event.id, message);
+          await markOutboxFailed(db(), event, message);
           logger.error("outbox event failed for good", { id: event.id, topic: event.topic, error: message });
           counts.failed++;
         } else {
-          await markOutboxRetry(db(), event.id, new Date(now().getTime() + retryDelayMs(event.attempts)), message);
+          await markOutboxRetry(db(), event, new Date(now().getTime() + retryDelayMs(event.attempts)), message);
           logger.warn("outbox event will be retried", { id: event.id, topic: event.topic, attempts: event.attempts, error: message });
           counts.retried++;
         }

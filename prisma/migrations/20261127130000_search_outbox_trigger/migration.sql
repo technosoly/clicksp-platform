@@ -3,6 +3,11 @@
 -- transaction, so the search index can never silently miss a change. At most
 -- one such event per product waits at a time: the handler reads the product's
 -- current state, so one delivery covers every change made before it.
+--
+-- The waiting event is locked until this transaction ends. The runner claims
+-- events with SKIP LOCKED, so it can't take that event (and read the product
+-- as it was before this change) until the change is committed. If the runner
+-- claimed it first, it is no longer 'pending' and a new event is written.
 CREATE OR REPLACE FUNCTION search_product_changed() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -14,10 +19,11 @@ BEGIN
   ELSE
     pid := row_data.product_id;
   END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM outbox_events
-     WHERE aggregate_type = 'product' AND aggregate_id = pid AND topic = 'search.product_changed' AND status = 'pending'
-  ) THEN
+  PERFORM 1 FROM outbox_events
+   WHERE aggregate_type = 'product' AND aggregate_id = pid AND topic = 'search.product_changed' AND status = 'pending'
+   LIMIT 1
+   FOR UPDATE;
+  IF NOT FOUND THEN
     INSERT INTO outbox_events (topic, aggregate_type, aggregate_id, payload)
     VALUES ('search.product_changed', 'product', pid, '{}'::jsonb);
   END IF;

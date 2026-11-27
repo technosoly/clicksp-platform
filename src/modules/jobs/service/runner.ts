@@ -32,29 +32,67 @@ export const JOBS: readonly JobSpec[] = [
 ];
 
 let running: PgBoss | null = null;
+let state: "off" | "starting" | "running" | "retrying" = "off";
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-export async function startJobRunner(): Promise<void> {
-  if (running || !env().JOBS_ENABLED) return;
+/** For the health endpoint: whether background jobs are running in this process. */
+export const jobRunnerState = () => state;
+
+async function startOnce(): Promise<PgBoss> {
   const boss = new PgBoss({ connectionString: env().DATABASE_URL, schema: "pgboss", application_name: "clicksp-jobs", max: 4 });
   boss.on("error", (error) => logger.error("job runner error", { error: String(error) }));
-  await boss.start();
-  for (const job of JOBS) {
-    await boss.createQueue(job.name, { policy: "stately", retryLimit: 2, retryDelay: 30, expireInSeconds: job.expireInSeconds });
-    await boss.schedule(job.name, job.cron, null, { tz: "Asia/Tehran" });
-    await boss.work(job.name, async () => {
-      const started = Date.now();
-      const result = await job.run();
-      logger.debug("job finished", { job: job.name, ms: Date.now() - started, result: result ?? null });
-    });
+  try {
+    await boss.start();
+    for (const job of JOBS) {
+      await boss.createQueue(job.name, { policy: "stately", retryLimit: 2, retryDelay: 30, expireInSeconds: job.expireInSeconds });
+      await boss.schedule(job.name, job.cron, null, { tz: "Asia/Tehran" });
+      await boss.work(job.name, async () => {
+        const started = Date.now();
+        const result = await job.run();
+        logger.debug("job finished", { job: job.name, ms: Date.now() - started, result: result ?? null });
+      });
+    }
+    return boss;
+  } catch (error) {
+    // Nothing half-started is left running: its pool and workers are closed before a retry.
+    await boss.stop({ graceful: false, timeout: 5_000 }).catch(() => undefined);
+    throw error;
   }
-  running = boss;
-  logger.info("job runner started", { jobs: JOBS.map((j) => j.name) });
-  // First start with a search engine: build the index now instead of waiting for the night.
-  if (await productIndexMissing().catch(() => false)) await boss.send("search-rebuild", null);
 }
 
+/**
+ * Starts the runner. If the database isn't reachable yet it keeps trying in
+ * the background (1 minute, doubling to 10 minutes) instead of giving up
+ * until the next restart; the site serves meanwhile.
+ */
+export async function startJobRunner(attempt = 0): Promise<void> {
+  if (running || !env().JOBS_ENABLED) return;
+  state = attempt === 0 ? "starting" : "retrying";
+  try {
+    running = await startOnce();
+  } catch (error) {
+    const delay = Math.min(60_000 * 2 ** attempt, 10 * 60_000);
+    state = "retrying";
+    logger.error("job runner did not start; retrying", { error: String(error), retryInSeconds: delay / 1000 });
+    retryTimer = setTimeout(() => void startJobRunner(attempt + 1), delay);
+    retryTimer.unref();
+    return;
+  }
+  state = "running";
+  logger.info("job runner started", { jobs: JOBS.map((j) => j.name) });
+  // First start with a search engine: build the index now instead of waiting
+  // for the night. Not awaited, so a slow search engine never delays start-up.
+  const boss = running;
+  void productIndexMissing()
+    .then((missing) => (missing ? boss.send("search-rebuild", null) : null))
+    .catch((error) => logger.warn("could not check the search index", { error: String(error) }));
+}
+
+/** Stops taking new jobs and lets running ones finish (up to 8 seconds). */
 export async function stopJobRunner(): Promise<void> {
+  if (retryTimer) clearTimeout(retryTimer);
   const boss = running;
   running = null;
+  state = "off";
   await boss?.stop({ graceful: true, timeout: 8_000 });
 }

@@ -72,7 +72,10 @@ export async function rebuildProductIndex(): Promise<number | null> {
   }
   if (last) await meili.waitForTask(config, last, 10 * 60_000);
   if (!(await meili.indexExists(config, PRODUCT_INDEX))) await meili.waitForTask(config, await meili.updateSettings(config, PRODUCT_INDEX, PRODUCT_INDEX_SETTINGS));
-  await meili.waitForTask(config, await meili.swapIndexes(config, PRODUCT_INDEX, next));
+  // A swap task belongs to no index, so a key scoped to these indexes can't
+  // read it back. Meilisearch runs tasks in the order they are queued: once
+  // the following deletion of the old index has finished, the swap has too.
+  await meili.swapIndexes(config, PRODUCT_INDEX, next);
   await meili.waitForTask(config, await meili.deleteIndex(config, next));
   logger.info("search index rebuilt", { products: count });
   return count;

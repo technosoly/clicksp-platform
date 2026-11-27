@@ -8,7 +8,8 @@ import { meili, meiliConfig } from "@/modules/search/adapters/meilisearch";
 import { PRODUCT_INDEX } from "@/modules/search/domain/product-document";
 import { rebuildProductIndex, searchStore } from "@/modules/search/service/product-search";
 import { q } from "./admin-actors";
-import { uid } from "./helpers";
+import { pool, uid } from "./helpers";
+import { markOutboxDone, markOutboxFailed } from "@/modules/jobs/repo/outbox-repo";
 import { ok, part, setup } from "./order-fixtures";
 
 afterAll(async () => {
@@ -73,6 +74,15 @@ describe("outbox delivery", () => {
     await dispatchOutbox(slow);
     expect(await eventRow(stuck)).toMatchObject({ status: "done", attempts: 2 });
   });
+
+  it("ignores a late result from a runner whose claim was taken over", async () => {
+    const id = await testEvent(`test.late.${uid()}`);
+    await q("UPDATE outbox_events SET status = 'processing', attempts = 2 WHERE id = $1", [id]);
+    // The first runner (attempt 1) finishes late: nothing changes.
+    await markOutboxDone(prisma(), { id, attempts: 1 }, new Date());
+    await markOutboxFailed(prisma(), { id, attempts: 1 }, "late");
+    expect(await eventRow(id)).toMatchObject({ status: "processing", attempts: 2, last_error: null });
+  });
 });
 
 describe("search index upkeep", () => {
@@ -83,6 +93,29 @@ describe("search index upkeep", () => {
     await q("UPDATE product_translations SET title = title || ' 2' WHERE product_id = $1", [productId]);
     await q("UPDATE product_variants SET weight_grams = 700 WHERE product_id = $1", [productId]);
     expect(await pendingSearchEvents(productId)).toEqual(waiting);
+  });
+
+  it("doesn't let the runner take a product's waiting event until a change in progress is committed", async () => {
+    const seen: string[] = [];
+    const record = new Map([["search.product_changed", async (e: OutboxEvent) => void seen.push(e.aggregateId)]]);
+    const { productId } = await part(0);
+    const [waiting] = await pendingSearchEvents(productId);
+    // Deliver everything else waiting (earlier suites' products), so this product's event is next in line.
+    await q("UPDATE outbox_events SET status = 'done' WHERE topic = 'search.product_changed' AND status = 'pending' AND id <> $1", [waiting!.id]);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("UPDATE product_translations SET title = title || ' 3' WHERE product_id = $1", [productId]);
+      // The change isn't committed: the runner must not read the product yet.
+      await dispatchOutbox(record);
+      expect(seen).not.toContain(productId);
+      await client.query("COMMIT");
+    } finally {
+      client.release();
+    }
+    await dispatchOutbox(record);
+    expect(seen).toContain(productId);
+    expect((await eventRow(waiting!.id)).status).toBe("done");
   });
 });
 
