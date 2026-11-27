@@ -24,7 +24,7 @@ export interface CheckoutAddress {
  * from the server for the chosen province; the order itself is priced again
  * on the server when it is placed.
  */
-export function CheckoutForm({ provinces, initial, accountPhone }: { provinces: { code: string; name: string }[]; initial: CheckoutAddress | null; accountPhone: string }) {
+export function CheckoutForm({ provinces, initial, accountPhone, accountName }: { provinces: { code: string; name: string }[]; initial: CheckoutAddress | null; accountPhone: string; accountName: string }) {
   const t = useTranslations("Checkout");
   const locale = useLocale();
   const shop = locale === "en" ? "en" : "fa";
@@ -49,7 +49,7 @@ export function CheckoutForm({ provinces, initial, accountPhone }: { provinces: 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
             <Label htmlFor="recipientName">{t("recipientName")}</Label>
-            <Input id="recipientName" name="recipientName" required maxLength={160} autoComplete="name" defaultValue={initial?.recipientName ?? ""} />
+            <Input id="recipientName" name="recipientName" required maxLength={160} autoComplete="name" defaultValue={initial?.recipientName ?? accountName} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="phone">{t("phone")}</Label>

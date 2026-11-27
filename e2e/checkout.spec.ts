@@ -131,6 +131,17 @@ test("a Business Admin sets up delivery and a customer places an order", async (
 
   await page.goto("/en/account");
   await expect(page.getByTestId("account-order-row")).toHaveCount(1);
+  // The address was saved at checkout; the customer can name themselves and remove it.
+  await expect(page.getByTestId("account-address")).toHaveCount(1);
+  await expect(page.getByTestId("account-address")).toContainText("E2E test street 1");
+  await page.getByTestId("account-name").getByLabel("Your name").fill("E2E Rider");
+  const saved = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/en/account"));
+  await page.getByTestId("account-name").getByRole("button", { name: "Save" }).click();
+  await saved;
+  await page.reload();
+  await expect(page.getByTestId("account-name").getByLabel("Your name")).toHaveValue("E2E Rider");
+  await page.getByTestId("account-address-remove").click();
+  await expect(page.getByTestId("account-address")).toHaveCount(0);
 });
 
 test("a guest is asked to sign in before checkout", async ({ page }) => {

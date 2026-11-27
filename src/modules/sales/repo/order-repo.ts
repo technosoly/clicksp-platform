@@ -220,3 +220,18 @@ export async function adminOrder(client: DbClient, orderNumber: bigint) {
     },
   });
 }
+
+/** Retires one of the customer's own addresses (the user id is part of the match). */
+export async function retireAddress(client: DbClient, userId: string, id: string): Promise<boolean> {
+  const { count } = await client.deliveryAddress.updateMany({ where: { id, userId, deletedAt: null }, data: { deletedAt: new Date(), isDefault: false } });
+  return count > 0;
+}
+
+/** Makes one of the customer's own addresses the default. */
+export async function makeDefaultAddress(tx: Tx, userId: string, id: string): Promise<boolean> {
+  const owned = await tx.deliveryAddress.findFirst({ where: { id, userId, deletedAt: null }, select: { id: true } });
+  if (!owned) return false;
+  await tx.deliveryAddress.updateMany({ where: { userId, isDefault: true, deletedAt: null }, data: { isDefault: false } });
+  await tx.deliveryAddress.update({ where: { id }, data: { isDefault: true } });
+  return true;
+}

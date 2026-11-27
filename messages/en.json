@@ -192,7 +192,14 @@
   "Account": {
     "title": "My account",
     "signedInAs": "Signed in as",
-    "logout": "Sign out"
+    "logout": "Sign out",
+    "name": "Your name",
+    "saveName": "Save",
+    "addresses": "Saved addresses",
+    "noAddresses": "Addresses you ask us to remember at checkout appear here.",
+    "defaultAddress": "Default",
+    "makeDefault": "Make default",
+    "removeAddress": "Remove"
   },
   "AdminForbidden": {
     "title": "You don't have access to this page",

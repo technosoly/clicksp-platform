@@ -38,6 +38,7 @@ export default async function CheckoutPage({ params }: { params: Promise<{ local
         <CheckoutForm
           provinces={PROVINCES.map((p) => ({ code: p.code, name: p[locale] }))}
           initial={saved ? { ...saved, phone: saved.phone.replace(/^\+98/, "0") } : null}
+          accountName={customer!.name ?? ""}
           accountPhone={customer!.phone.replace(/^\+98/, "0")}
         />
       </div>

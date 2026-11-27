@@ -192,7 +192,14 @@
   "Account": {
     "title": "حساب کاربری",
     "signedInAs": "وارد شده با شماره",
-    "logout": "خروج"
+    "logout": "خروج",
+    "name": "نام شما",
+    "saveName": "ذخیره",
+    "addresses": "نشانی‌های ذخیره‌شده",
+    "noAddresses": "نشانی‌هایی که هنگام خرید ذخیره می‌کنید اینجا نمایش داده می‌شوند.",
+    "defaultAddress": "پیش‌فرض",
+    "makeDefault": "پیش‌فرض شود",
+    "removeAddress": "حذف"
   },
   "AdminForbidden": {
     "title": "به این صفحه دسترسی ندارید",

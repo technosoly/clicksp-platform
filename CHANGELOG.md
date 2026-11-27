@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6b, part 5: customer account)
+- The account page (`/account`) lets a signed-in customer set their name (used to fill in the recipient at checkout) and manage the delivery addresses saved at checkout: make one the default or remove it. Every change is limited to the customer's own rows; another customer's address id has no effect.
+- Tests: integration (204 in total), the checkout E2E now also saves a name and removes the saved address.
+
 ### Added (Phase 6b, part 4: orders in the admin)
 - **Orders** (`/admin/orders`): every order, newest first, filtered by status; Store Staff see only orders with stock held or taken in their warehouses. The order screen shows the customer and their mobile number, the parts, delivery and total, the address, where the stock is held, and the history (who did what and why).
 - Super and Business Admins can **cancel** an order that awaits payment, with a reason: its stock is released, the change is audited and kept in the order's history.
