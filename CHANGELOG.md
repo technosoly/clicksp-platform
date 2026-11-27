@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6, part 2c: inventory)
+- **Warehouses** (`/admin/warehouses`, Super and Business Admin): code, name, city, address, phone and priority; each starts with a default storage location `MAIN`, and more locations (shelves, bins) can be added, one of them the default.
+- **Warehouses a Store Staff member works in**, ticked on their account screen. Staff see and move stock only there.
+- **Stock** on the product screen: on hand, reserved and available per warehouse and location; receive goods (with an optional document number), issue goods (with a note), and for Super and Business Admins adjust up or down with a reason; the last 30 movements with who and when. Stock can never go below zero or below what open orders hold, even when two people record at once.
+- **Inventory** (`/admin/inventory`): stock across your warehouses, searchable by SKU.
+- Tests: unit (180 in total), integration on PostgreSQL (174 in total), E2E (50 in total, desktop and mobile).
+
 ### Added (Phase 6, part 2b: motorcycles and fitment)
 - **Motorcycles** (`/admin/motorcycles`): makers, brands, models (with type), model years (generations) and engine versions (cc, engine, cooling, fuel system, market). Model years can be typed as solar years (1398) or Gregorian (2019); they are stored Gregorian.
 - **Fits these motorcycles** on the product screen: link a part to a whole generation (optionally some years) or to one engine version, with position, quantity, notes and a required source (an existing one or a new one: OEM catalogue, manufacturer document, supplier sheet, physical test, customer report). New links are unverified; Super and Business Admins verify, dispute or reject them. Store Staff link only parts in their categories and can't remove verified links.
