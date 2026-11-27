@@ -196,6 +196,7 @@ export interface MovementRow {
   quantity: number;
   referenceType: MovementReferenceType;
   referenceId?: string | null;
+  transferId?: string | null;
   referenceCode: string | null;
   reason: string | null;
   actorUserId: string;
@@ -203,7 +204,7 @@ export interface MovementRow {
 
 /** Inserts a movement; the database applies it to the balance and returns the new on-hand. */
 export async function insertMovement(tx: Tx, row: MovementRow): Promise<{ id: string; onHandAfter: number }> {
-  return tx.inventoryMovement.create({ data: { ...row, referenceId: row.referenceId ?? null }, select: { id: true, onHandAfter: true } });
+  return tx.inventoryMovement.create({ data: { ...row, referenceId: row.referenceId ?? null, transferId: row.transferId ?? null }, select: { id: true, onHandAfter: true } });
 }
 
 /**
@@ -238,6 +239,15 @@ export async function insertAppliedAdjustment(
 
 // Overview ---------------------------------------------------------------------
 
+/** Products within a category scope: all their categories (and at least one) in it. null = every product. */
+export const productsInCategories = (categoryIds: readonly string[] | null) =>
+  categoryIds === null
+    ? {}
+    : {
+        primaryCategoryId: { in: [...categoryIds] },
+        categories: { every: { categoryId: { in: [...categoryIds] } } },
+      };
+
 /** Stock per variant and warehouse, most recently changed first, optionally filtered by SKU. */
 export async function stockOverview(
   client: DbClient,
@@ -246,14 +256,7 @@ export async function stockOverview(
   skuNormalized: string | null,
   take: number,
 ) {
-  // A product is in a category scope only when all its categories are (and it has one).
-  const inCategories =
-    categoryIds === null
-      ? {}
-      : {
-          primaryCategoryId: { in: [...categoryIds] },
-          categories: { every: { categoryId: { in: [...categoryIds] } } },
-        };
+  const inCategories = productsInCategories(categoryIds);
   return client.inventoryBalance.findMany({
     where: {
       ...inWarehouses(warehouseIds),

@@ -93,3 +93,59 @@ test("a Business Admin creates a warehouse and records stock on a product", asyn
   await expect(page.getByTestId("admin-inventory-row")).toHaveCount(1);
   await expect(page.getByTestId("admin-inventory-row")).toContainText(`${code} / MAIN`);
 });
+
+async function warehouseWithStock(id: string, suffix: string, variantSku: string | null, quantity: number) {
+  const [w] = await sql<{ id: string }>("INSERT INTO warehouses (code, name) VALUES ($1, $2) RETURNING id", [`E2E${suffix}-${id.toUpperCase()}`, `E2E ${suffix} ${id}`]);
+  const [l] = await sql<{ id: string }>("INSERT INTO warehouse_locations (warehouse_id, code, is_default) VALUES ($1, 'MAIN', true) RETURNING id", [w!.id]);
+  if (variantSku) {
+    await sql(
+      "INSERT INTO inventory_movements (variant_id, location_id, warehouse_id, type, quantity, reference_type) SELECT id, $2, $3, 'receipt', $4, 'manual' FROM product_variants WHERE sku = $1",
+      [variantSku, l!.id, w!.id, quantity],
+    );
+  }
+  return { code: `E2E${suffix}-${id.toUpperCase()}`, warehouseId: w!.id, locationId: l!.id };
+}
+
+const stockAt = async (sku: string, locationId: string) =>
+  (await sql<{ on_hand: number }>("SELECT b.on_hand FROM inventory_balances b JOIN product_variants v ON v.id = b.variant_id WHERE v.sku = $1 AND b.location_id = $2", [sku, locationId]))[0]?.on_hand ?? 0;
+
+test("a Business Admin moves stock between warehouses and counts a warehouse", async ({ page }) => {
+  test.setTimeout(120_000);
+  const id = randomUUID().slice(0, 8);
+  const sku = `E2EI-${id}`;
+  await signInAndEnrol(page, await createBusinessAdmin());
+  await draftProduct(id);
+  const a = await warehouseWithStock(id, "A", sku, 10);
+  const b = await warehouseWithStock(id, "B", null, 0);
+
+  await page.goto("/en/admin/inventory");
+  await page.getByTestId("admin-inventory-transfers").click();
+  const create = page.getByTestId("admin-transfer-new");
+  await create.getByLabel("From warehouse").selectOption({ label: `${a.code} · E2E A ${id}` });
+  await create.getByLabel("To warehouse").selectOption({ label: `${b.code} · E2E B ${id}` });
+  await page.getByTestId("admin-transfer-new-submit").click();
+  await expect(page.getByTestId("admin-transfer-heading")).toBeVisible();
+  const add = page.getByTestId("admin-transfer-add");
+  await add.getByLabel("SKU").fill(sku.toLowerCase());
+  await add.getByLabel("Quantity").fill("4");
+  await page.getByTestId("admin-transfer-add-submit").click();
+  await expect(page.getByTestId("admin-transfer-line")).toHaveCount(1);
+  await page.getByTestId("admin-transfer-ship-submit").click();
+  await expect(page.getByTestId("admin-transfer-status")).toHaveText("On the way");
+  expect(await stockAt(sku, a.locationId)).toBe(6);
+  await page.getByTestId("admin-transfer-receive-submit").click();
+  await expect(page.getByTestId("admin-transfer-status")).toHaveText("Received");
+  expect(await stockAt(sku, b.locationId)).toBe(4);
+
+  await page.goto("/en/admin/inventory/counts");
+  await page.getByTestId("admin-count-new").getByLabel("What to count").selectOption({ label: `${a.code} · E2E A ${id} (whole warehouse)` });
+  await page.getByTestId("admin-count-new-submit").click();
+  await expect(page.getByTestId("admin-count-heading")).toBeVisible();
+  await expect(page.getByTestId("admin-count-line")).toHaveCount(1);
+  await page.getByLabel(`Counted quantity for ${sku}`).fill("5");
+  await page.getByTestId("admin-count-form-submit").click();
+  await expect(page.getByTestId("admin-count-form").getByTestId("form-success")).toBeVisible();
+  await page.getByTestId("admin-count-complete-submit").click();
+  await expect(page.getByTestId("admin-count-status")).toHaveText("Completed");
+  expect(await stockAt(sku, a.locationId)).toBe(5);
+});

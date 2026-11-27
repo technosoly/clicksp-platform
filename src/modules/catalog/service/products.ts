@@ -45,6 +45,7 @@ import {
   updateVariantRow,
   type PricePayload,
 } from "../repo/catalog-repo";
+import { variantsBySku } from "../repo/import-repo";
 import { adminId, allowedCategories, allows, IS_UUID } from "./catalog-access";
 
 /**
@@ -497,4 +498,19 @@ export async function removeIdentifier(actor: Actor, productId: string, identifi
 export async function productCategoriesForAuthorization(productId: string): Promise<string[] | null> {
   if (!IS_UUID.test(productId)) return null;
   return productCategoryIds(db(), productId);
+}
+
+/**
+ * The variant with this SKU (as typed: digits, case and separators don't
+ * matter), with its product's categories, for other modules that pick a
+ * product by SKU (stock transfers and counts). No check of its own: the
+ * caller authorizes with the categories. null when no variant has the SKU.
+ */
+export async function variantBySkuForAuthorization(skuInput: string): Promise<{ variantId: string; productId: string; sku: string; categoryIds: string[] } | null> {
+  const parsed = skuSchema.safeParse(skuInput);
+  if (!parsed.success) return null;
+  const [variant] = await variantsBySku(db(), [parsed.data.skuNormalized]);
+  if (!variant) return null;
+  const categoryIds = await productCategoryIds(db(), variant.productId);
+  return categoryIds ? { variantId: variant.id, productId: variant.productId, sku: variant.sku, categoryIds } : null;
 }
