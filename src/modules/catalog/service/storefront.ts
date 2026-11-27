@@ -9,6 +9,8 @@ import {
   categoryForShop,
   categoryWithDescendants,
   productCards,
+  productCardsByIdList,
+  productsForSearch,
   productForShop,
   productIdBySlug,
   lockPurchasableVariants,
@@ -183,12 +185,48 @@ export async function productCardsByIds(locale: ShopLocale, ids: readonly string
 // Search -----------------------------------------------------------------------
 
 export async function searchShop(locale: ShopLocale, query: string, page: number) {
-  const raw = normalizeForStorage(toEnDigits(query.slice(0, 200))).slice(0, 100).trim();
+  const { raw, text, identifier } = searchQuery(query);
   if (raw.length < 2) return { query: raw, products: [], total: 0, pages: 1 };
-  const text = normalizeForSearch(raw);
-  const identifier = normalizeIdentifier(raw);
   const { rows, total } = await productCards(db(), searchWhere(text, identifier.length >= 3 ? identifier : ""), (page - 1) * PAGE_SIZE, PAGE_SIZE);
   return { query: raw, products: cards(rows, locale), total, pages: Math.max(1, Math.ceil(total / PAGE_SIZE)) };
+}
+
+/** Product cards in the order a search engine ranked them; ids that aren't published are dropped. */
+export async function productCardsInOrder(locale: ShopLocale, ids: readonly string[]) {
+  const wanted = [...new Set(ids)].filter((id) => UUID.test(id)).slice(0, 100);
+  if (wanted.length === 0) return [];
+  return cards(await productCardsByIdList(db(), wanted), locale);
+}
+
+/**
+ * What the search index holds for published products, for the search module
+ * (public data only). `after` pages through all of them by id; `ids` asks for
+ * particular ones, and an id that is missing from the result is not published.
+ */
+export async function searchFeed(query: { ids: readonly string[] } | { after: string | null; take: number }) {
+  const rows =
+    "ids" in query
+      ? await productsForSearch(db(), { id: { in: [...query.ids].filter((id) => UUID.test(id)) } }, query.ids.length)
+      : await productsForSearch(db(), query.after ? { id: { gt: query.after } } : {}, query.take);
+  return rows.map((r) => {
+    const t = (locale: "fa" | "en") => r.translations.find((x) => x.locale === locale);
+    const brand = r.brand && r.brand.isActive && !r.brand.deletedAt ? r.brand.translations : [];
+    return {
+      id: r.id,
+      publishedAt: r.publishedAt,
+      fa: { title: t("fa")?.title ?? null, searchTitle: t("fa")?.searchTitle ?? null, brand: brand.find((b) => b.locale === "fa")?.name ?? null },
+      en: { title: t("en")?.title ?? null, searchTitle: t("en")?.searchTitle ?? null, brand: brand.find((b) => b.locale === "en")?.name ?? null },
+      // As written and as normalized, so "AB-12 3" and "AB123" both find it.
+      skus: r.variants.flatMap((v) => [v.sku, v.skuNormalized]),
+      identifiers: r.identifiers.flatMap((i) => [i.value, i.normalizedValue]),
+    };
+  });
+}
+
+/** The query as both search paths read it: digits to ASCII, normalized letters, at most 100 characters. */
+export function searchQuery(query: string) {
+  const raw = normalizeForStorage(toEnDigits(query.slice(0, 200))).slice(0, 100).trim();
+  return { raw, text: normalizeForSearch(raw), identifier: normalizeIdentifier(raw) };
 }
 
 // Cart -------------------------------------------------------------------------

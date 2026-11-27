@@ -5,7 +5,8 @@ import { ProductGrid } from "@/components/store/product-grid";
 import { SearchForm } from "@/components/store/search-form";
 import { shopLocale } from "@/components/store/shop-locale";
 import { formatCount } from "@/lib/i18n/numbers";
-import { pageNumber, searchShop } from "@/modules/catalog/service/storefront";
+import { pageNumber } from "@/modules/catalog/service/storefront";
+import { searchStore } from "@/modules/search/service/product-search";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export default async function SearchPage({ params, searchParams }: { params: Pro
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q : "";
   const page = pageNumber(sp.page);
-  const [t, result, unit] = await Promise.all([getTranslations("Shop"), searchShop(locale, q, page), getDisplayUnit()]);
+  const [t, result, unit] = await Promise.all([getTranslations("Shop"), searchStore(locale, q, page), getDisplayUnit()]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6">

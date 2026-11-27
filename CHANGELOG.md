@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6: background jobs and search indexing)
+- **Background jobs** with pg-boss (12.40, in the app's own database, schema `pgboss`), started with the app (`instrumentation.ts`): outbox delivery every minute, expiring unpaid orders every 5 minutes (checkout still does it as it goes), and a nightly search rebuild. `JOBS_ENABLED=false` turns them off.
+- **Outbox delivery** (`src/modules/jobs`): due events are claimed with `FOR UPDATE SKIP LOCKED` under a 5-minute lease, so two runners never take the same event and a runner that dies hands its events back. Only topics with a handler are claimed; failures are retried with a growing delay and parked as `failed` after 10 attempts.
+- **Search indexing** (`src/modules/search`): with `MEILISEARCH_HOST` set, the storefront search asks Meilisearch (v1.58) and shows the ranked products from the database; otherwise, or when it doesn't answer within 1.5 s, the database search answers. The index holds public fields only (titles, brand, SKUs and part numbers as written and normalized; no prices, costs or stock) and the engine returns ids only. Typos are forgiven in titles but never in part numbers. A database trigger writes one waiting `search.product_changed` event per changed product; the nightly rebuild fills a fresh index and swaps it in.
+- CI runs a Meilisearch service for the search tests.
+- Tests: unit (200 in total), integration (228 in total; new suites for outbox delivery: done, retry, parked after the last attempt, one runner per event, lease takeover; search: one waiting event per product, indexing on change, removal on unpublish, part numbers with and without dashes, database fallback when the engine is down).
+
 ### Added (Phase 6, content part 1: information pages)
 - **Content** (`/admin/content`, `content.manage`): the store's six information pages (about us, contact us, shipping and delivery, returns, terms, privacy). An admin writes each in Persian and optionally English, in plain text where `## ` starts a heading, `- ` a list item and a blank line a paragraph. The server turns the text into structured blocks (never HTML) and validates them; each save publishes a new revision of the page and keeps the older ones; every save is audited.
 - The storefront shows a written page at `/pages/<page>` and links the written pages in the footer. An English visitor of a page written only in Persian sees the Persian text with a note, and that URL is not indexed. Pages that haven't been written return 404. Nothing is seeded: the pages exist once the owner writes them.

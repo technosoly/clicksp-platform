@@ -212,3 +212,32 @@ export async function lockPurchasableVariants(tx: Prisma.TransactionClient, ids:
      ORDER BY v.id
        FOR SHARE OF v, p`;
 }
+
+// Search index feed --------------------------------------------------------------
+
+/** Published products as the search index needs them: titles, SKUs and part numbers. */
+export async function productsForSearch(client: DbClient, where: Prisma.ProductWhereInput, take: number) {
+  return client.product.findMany({
+    where: { AND: [PUBLISHED, where] },
+    orderBy: { id: "asc" },
+    take,
+    select: {
+      id: true,
+      publishedAt: true,
+      translations: { select: { locale: true, title: true, searchTitle: true } },
+      brand: { select: { isActive: true, deletedAt: true, translations: { select: { locale: true, name: true } } } },
+      variants: { where: { isActive: true, deletedAt: null }, select: { sku: true, skuNormalized: true } },
+      identifiers: {
+        where: { OR: [{ variantId: null }, { variant: { isActive: true, deletedAt: null } }] },
+        select: { value: true, normalizedValue: true },
+      },
+    },
+  });
+}
+
+/** Cards for these products in the given order, skipping any that are no longer published. */
+export async function productCardsByIdList(client: DbClient, ids: readonly string[]) {
+  const rows = await client.product.findMany({ where: { AND: [PUBLISHED, { id: { in: [...ids] } }] }, select: productCardSelect });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return ids.flatMap((id) => byId.get(id) ?? []);
+}

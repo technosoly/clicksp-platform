@@ -20,6 +20,15 @@ Upload limits and caching to set at the reverse proxy (Phase 10):
 - Server Actions accept bodies up to 11 MB (`next.config.ts`) so admins can upload photos; Next.js applies that limit to every Server Action. Cap request bodies at the proxy at 1 MB everywhere except `/fa/admin/*` and `/en/admin/*` (nginx `client_max_body_size`), so anonymous requests can't send large bodies.
 - `/media/*` responses are `immutable` for a year. A removed image stops being served by the app at once, but copies already in browsers or a proxy cache stay until they expire; purge the proxy cache when an image must disappear immediately.
 
+## Background jobs and search
+
+- **Jobs** run inside every app process (`instrumentation.ts`), with pg-boss 12.40 (https://pgboss.io) keeping its queue in the same PostgreSQL database, schema `pgboss` (created on first start; include it in backups, as `pg_dump` of the whole database does). pg-boss sends each scheduled job once however many app processes run. Times are Tehran time:
+  - `outbox-dispatch`, every minute: hands outbox events to the module that handles their topic. Events no module handles yet wait in `outbox_events`. A failing event is retried with a growing delay (30 s doubling, at most an hour) and after 10 attempts is left as `failed` with its last error, for a person to look at.
+  - `orders-expire`, every 5 minutes: releases the stock of unpaid orders whose payment window has passed.
+  - `search-rebuild`, 03:30 every night, and once on the first start with a search engine: rebuilds the product index.
+  - `JOBS_ENABLED=false` turns the runner off (for example in a one-off maintenance container).
+- **Search**: set `MEILISEARCH_HOST` and `MEILISEARCH_API_KEY` (server-only) to use Meilisearch v1.58. A database trigger writes a `search.product_changed` outbox event whenever a product, its texts, variants or part numbers change, so the index follows within about a minute. Without Meilisearch, or when it doesn't answer within 1.5 seconds, the storefront searches the database instead, so search never goes down with it. Use a key that can write documents and settings for the `products` and `products_rebuild` indexes (the master key works but is broader than needed).
+
 ## Authentication settings
 
 - `AUTH_SECRET` (required in production, at least 32 characters): encrypts TOTP secrets and keys SMS-code hashes. Keep it in the server's secret store, back it up with the database, and do not rotate it casually: a new value makes existing two-factor enrolments unreadable (admins must enrol again).

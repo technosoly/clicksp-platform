@@ -35,6 +35,15 @@ export const serverEnvSchema = z.object({
 
   REDIS_URL: z.string().optional(),
 
+  /**
+   * Background jobs (outbox delivery, expiring unpaid orders, the nightly
+   * search rebuild) run inside the app process. "false" turns them off.
+   */
+  JOBS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+
   MEILISEARCH_HOST: z.url().optional(),
   MEILISEARCH_API_KEY: z.string().optional(),
 
