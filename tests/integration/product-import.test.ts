@@ -133,6 +133,8 @@ describe("product import", () => {
     if (bad.status !== "ok" || latin.status !== "ok") throw new Error("upload");
     await processProductImports(20_000);
     expect(await job(bad.id)).toMatchObject({ status: "failed", dry_run_report: { error: "missing_column", detail: "category" } });
+    const [failedAudit] = await q<{ n: string }>("SELECT count(*) AS n FROM audit_logs WHERE entity_id = $1 AND action = 'import.failed'", [bad.id]);
+    expect(Number(failedAudit!.n)).toBe(1);
     expect(await job(latin.id)).toMatchObject({ status: "failed", dry_run_report: { error: "not_utf8" } });
     expect(await confirmProductImport(ba, bad.id)).toEqual({ status: "not_allowed" });
 
@@ -159,12 +161,55 @@ describe("product import", () => {
     expect(await job(uploaded.id)).toMatchObject({ status: "failed", dry_run_report: { error: "confirmer_not_allowed" } });
   });
 
+  it("lets only the uploader confirm, stops a cancelled import, and stops when the confirmer loses their role", async () => {
+    const { ba, slug } = await catalog();
+    const other = await actorFor("business_admin");
+    const lines = (n: number) => [HEADER, ...Array.from({ length: n }, () => `R-${uid()},TEST,,${slug},,1000,,,,`)];
+    const first = await uploadProductImport(ba, csv(lines(3)));
+    if (first.status !== "ok") throw new Error("upload");
+    await processProductImports(20_000);
+    expect(await confirmProductImport(other, first.id)).toEqual({ status: "not_allowed" });
+    expect((await getProductImport(other, first.id))?.canConfirm).toBe(false);
+    expect((await getProductImport(ba, first.id))?.canConfirm).toBe(true);
+    expect(await confirmProductImport(ba, first.id)).toEqual({ status: "ok", id: first.id });
+    // Cancelled while waiting to run: nothing is applied.
+    expect(await cancelProductImport(other, first.id)).toEqual({ status: "ok", id: first.id });
+    await processProductImports(20_000);
+    expect(await job(first.id)).toMatchObject({ status: "cancelled", applied_rows: 0 });
+    const [applied] = await q<{ n: string }>("SELECT count(*) AS n FROM data_import_rows WHERE job_id = $1 AND status <> 'valid'", [first.id]);
+    expect(Number(applied!.n)).toBe(0);
+
+    const second = await uploadProductImport(ba, csv(lines(1)));
+    if (second.status !== "ok") throw new Error("upload");
+    await processProductImports(20_000);
+    await confirmProductImport(ba, second.id);
+    await q("DELETE FROM user_roles WHERE user_id = $1", [ba.userId]);
+    await processProductImports(20_000);
+    expect(await job(second.id)).toMatchObject({ status: "failed", dry_run_report: { error: "confirmer_not_allowed" } });
+  });
+
+  it("limits unfinished imports per admin and cleans file names", async () => {
+    const { ba } = await catalog();
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const r = await uploadProductImport(ba, { ...csv([HEADER]), name: `a\u202Evsc.csv` });
+      if (r.status !== "ok") throw new Error(JSON.stringify(r));
+      ids.push(r.id);
+    }
+    expect(await uploadProductImport(ba, csv([HEADER]))).toEqual({ status: "invalid", field: "too_many_open" });
+    const [named] = await q<{ original_name: string }>("SELECT original_name FROM data_import_jobs WHERE id = $1", [ids[0]]);
+    expect(named!.original_name).toBe("avsc.csv");
+    for (const id of ids) await cancelProductImport(ba, id);
+    expect((await uploadProductImport(ba, csv([HEADER]))).status).toBe("ok");
+  });
+
   it("refuses Store Staff and customers", async () => {
     const staff = await actorFor("store_staff");
     await expect(uploadProductImport(staff, csv([HEADER]))).rejects.toBeInstanceOf(AuthzError);
     await expect(listProductImports(staff)).rejects.toBeInstanceOf(AuthzError);
     await expect(getProductImport(staff, "0190a1a2-0000-7000-8000-000000000001")).rejects.toBeInstanceOf(AuthzError);
     await expect(confirmProductImport(staff, "0190a1a2-0000-7000-8000-000000000001")).rejects.toBeInstanceOf(AuthzError);
+    await expect(cancelProductImport(staff, "0190a1a2-0000-7000-8000-000000000001")).rejects.toBeInstanceOf(AuthzError);
     const customer = { ...(await actorFor("business_admin")), kind: "customer" as const };
     await expect(uploadProductImport(customer, csv([HEADER]))).rejects.toBeInstanceOf(AuthzError);
   });

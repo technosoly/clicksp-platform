@@ -29,6 +29,8 @@ describe("CSV reading", () => {
     expect(parseCsv("a,b")).toEqual([["a", "b"]]);
     expect(parseCsv('a,"b')).toBeNull();
     expect(parseCsv('"a"b,c')).toBeNull();
+    expect(parseCsv("a,b,c", 2)).toBe("too_wide");
+    expect(parseCsv("a,b", 2)).toEqual([["a", "b"]]);
   });
 
   it("decodes only UTF-8 and drops the BOM", () => {
@@ -55,6 +57,9 @@ describe("CSV reading", () => {
     expect(readImportFile(utf8(""))).toEqual({ error: "empty" });
     expect(readImportFile(utf8(`${HEADER}\n${"a,b,c,1\n".repeat(5001)}`))).toEqual({ error: "too_many_rows" });
     expect(readImportFile(new Uint8Array([0xff, 0xfe, 0x00]))).toEqual({ error: "not_utf8" });
+    // A very wide line is refused while it is read, before any row work.
+    expect(readImportFile(utf8(`${HEADER}${",".repeat(1_000_000)}\n${"x\n".repeat(5000)}`))).toEqual({ error: "too_many_columns" });
+    expect(readImportFile(utf8(`${HEADER}\na,b,c,1${",".repeat(100)}\n`))).toEqual({ error: "too_many_columns" });
   });
 });
 

@@ -6,7 +6,7 @@ import { recordAudit } from "@/modules/audit/service/audit";
 import { backgroundAdminActor } from "@/modules/identity/service/admin-auth";
 import { readPrivateFile, storePrivateFile } from "@/modules/media/service/private-files";
 import type { Actor } from "@/modules/rbac/domain/actor";
-import { authorize, AuthzError } from "@/modules/rbac/service/authorize";
+import { authorize, AuthzError, MfaRequiredError } from "@/modules/rbac/service/authorize";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
 import { checkRow, IMPORT_LIMITS, importSlugKey, readImportFile, type ImportCells, type ImportLookups } from "../domain/product-import";
 import { skuSchema } from "../domain/catalog-input";
@@ -21,12 +21,15 @@ import {
   importRowsWithStatus,
   insertImportJob,
   listImportJobs,
+  jobStatus,
   nextJobToApply,
+  openJobCount,
   productIdentifierKeys,
   saveValidation,
   setRowResult,
   slugIds,
   variantsBySku,
+  withJobLock,
   type CheckedImportRow,
 } from "../repo/import-repo";
 import { IS_UUID } from "./catalog-access";
@@ -57,6 +60,11 @@ async function allow(actor: Actor): Promise<string> {
   return actor.userId;
 }
 
+/** At most this many unfinished imports per admin, so uploads can't pile up. */
+const MAX_OPEN_JOBS = 5;
+// Control and format characters (bidi overrides...) that could disguise a file name.
+const cleanName = (name: string) => name.replace(/[\p{Cc}\p{Cf}]/gu, "").trim().slice(0, 200) || "file.csv";
+
 const CSV_TYPES = new Set(["text/csv", "application/vnd.ms-excel", "text/plain", "application/octet-stream", ""]);
 
 export async function uploadProductImport(actor: Actor, file: { name: string; type: string; bytes: Uint8Array }, now = new Date()): Promise<ImportResult> {
@@ -64,7 +72,8 @@ export async function uploadProductImport(actor: Actor, file: { name: string; ty
   if (file.bytes.length === 0) return { status: "invalid", field: "file_missing" };
   if (file.bytes.length > IMPORT_LIMITS.bytes) return { status: "invalid", field: "file_too_large" };
   if (!/\.csv$/i.test(file.name) || !CSV_TYPES.has(file.type)) return { status: "invalid", field: "not_csv" };
-  const name = file.name.slice(0, 200);
+  if ((await openJobCount(db(), userId)) >= MAX_OPEN_JOBS) return { status: "invalid", field: "too_many_open" };
+  const name = cleanName(file.name);
   const fileMediaId = await storePrivateFile({ userId, name, mimeType: "text/csv", bytes: file.bytes }, now);
   const id = await transaction(async (tx) => {
     const id = await insertImportJob(tx, { fileMediaId, originalName: name, createdById: userId });
@@ -96,7 +105,8 @@ export async function getProductImport(actor: Actor, id: string) {
     errors: Array.isArray(r.errors) ? (r.errors as string[]) : [],
     productId: r.entityId,
   });
-  return { job, problems: problems.map(view), applied: done.map(view) };
+  // Only the admin who uploaded the file confirms it (see confirmJobRow).
+  return { job, canConfirm: job.createdById === actor.userId, problems: problems.map(view), applied: done.map(view) };
 }
 
 export async function confirmProductImport(actor: Actor, id: string, now = new Date()): Promise<ImportResult> {
@@ -142,12 +152,21 @@ const skuKeys = (rows: readonly { cells: ImportCells }[]) =>
     return sku.success ? [sku.data.skuNormalized] : [];
   });
 
+const SYSTEM_META = { ipAddress: null, userAgent: "background job", requestId: null };
+
+/** Marks a job failed and records why in the audit log. */
+async function fail(jobId: string, from: "validating" | "applying", report: { error: string; detail?: string | null }, now: Date): Promise<void> {
+  if (await failJob(db(), jobId, from, report, now)) {
+    await recordAudit(db(), { ...SYSTEM_META, requestId: `import-${jobId}` }, { actorUserId: null, action: "import.failed", entityType: "data_import_job", entityId: jobId, after: report });
+  }
+}
+
 /** Checks one uploaded file and writes the dry-run report. */
 async function validateJob(job: { id: string; fileMediaId: string }, now: Date): Promise<void> {
   const bytes = await readPrivateFile(job.fileMediaId);
-  if (!bytes) return failJob(db(), job.id, "validating", { error: "file_missing" }, now);
+  if (!bytes) return fail(job.id, "validating", { error: "file_missing" }, now);
   const file = readImportFile(bytes);
-  if ("error" in file) return failJob(db(), job.id, "validating", { error: file.error, detail: file.detail ?? null }, now);
+  if ("error" in file) return fail(job.id, "validating", { error: file.error, detail: file.detail ?? null }, now);
   const look = await lookups([...new Set(skuKeys(file.rows))]);
   const seen = new Set<string>();
   const report = { create: 0, update: 0, invalid: 0 };
@@ -260,17 +279,21 @@ const BATCH = 100;
 async function applyJob(job: { id: string; confirmedById: string | null }, deadline: number, now: () => Date): Promise<number> {
   const requestId = `import-${job.id}`;
   const actor = job.confirmedById ? await backgroundAdminActor(job.confirmedById, requestId, now()) : null;
-  const allowed = actor !== null && actor.permissions.has("import.run");
+  // The confirming admin must still be able to import and to create or edit
+  // products; otherwise the whole job stops instead of refusing every row.
+  const allowed = actor !== null && actor.permissions.has("import.run") && (actor.permissions.has("product.create") || actor.permissions.has("product.update"));
   if (!allowed) {
-    await failJob(db(), job.id, "applying", { error: "confirmer_not_allowed" }, now());
+    await fail(job.id, "applying", { error: "confirmer_not_allowed" }, now());
     return 0;
   }
   let applied = 0;
   while (Date.now() < deadline) {
+    // Cancelled while running: stop before the next batch.
+    if ((await jobStatus(db(), job.id)) !== "applying") return applied;
     const rows = await importRowsWithStatus(db(), job.id, ["valid"], BATCH);
     if (rows.length === 0) {
       const result = await finishJobRow(db(), job.id, now());
-      await recordAudit(db(), actor.meta, { actorUserId: actor.userId, action: "import.completed", entityType: "data_import_job", entityId: job.id, after: result });
+      if (result) await recordAudit(db(), actor.meta, { actorUserId: actor.userId, action: "import.completed", entityType: "data_import_job", entityId: job.id, after: result });
       return applied;
     }
     const cellsOf = rows.map((r) => ({ id: r.id, cells: r.data as unknown as ImportCells }));
@@ -281,7 +304,7 @@ async function applyJob(job: { id: string; confirmedById: string | null }, deadl
       try {
         result = await applyRow(actor, row.cells, look);
       } catch (error) {
-        if (error instanceof AuthzError) {
+        if (error instanceof AuthzError || error instanceof MfaRequiredError) {
           // The confirming admin lost a permission the row needs; the row is
           // refused, the rest carry on (they may need other permissions).
           result = { status: "failed", entityId: null, errors: ["forbidden"] };
@@ -304,8 +327,9 @@ async function applyJob(job: { id: string; confirmedById: string | null }, deadl
 
 /**
  * The background job ("imports-process"): checks uploaded files, then
- * applies confirmed ones, for at most `budgetMs`. Runs one at a time (the
- * queue is stately), so a row is never applied by two runs together.
+ * applies confirmed ones, for at most `budgetMs`. The queue runs one at a
+ * time, and each job is applied under an advisory lock, so a row is never
+ * applied by two runs together even if the queue gives up on a run that hangs.
  */
 export async function processProductImports(budgetMs = 50_000, now: () => Date = () => new Date()): Promise<{ validated: number; applied: number }> {
   const deadline = Date.now() + budgetMs;
@@ -318,14 +342,17 @@ export async function processProductImports(budgetMs = 50_000, now: () => Date =
       await validateJob(job, now());
     } catch (error) {
       logger.error("import check failed", { job: job.id, error: String(error) });
-      await failJob(db(), job.id, "validating", { error: "unexpected" }, now());
+      await fail(job.id, "validating", { error: "unexpected" }, now());
     }
     validated++;
   }
   while (Date.now() < deadline) {
     const job = await nextJobToApply(db());
     if (!job) break;
-    applied += await applyJob(job, deadline, now);
+    const done = await withJobLock(db(), job.id, () => applyJob(job, deadline, now), budgetMs + 10 * 60_000);
+    // Another run still holds this job: leave it to that run.
+    if (done === null) break;
+    applied += done;
   }
   return { validated, applied };
 }

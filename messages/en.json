@@ -1615,7 +1615,8 @@
       "duplicate_column": "The column “{detail}” appears twice.",
       "file_missing": "The uploaded file could not be found.",
       "confirmer_not_allowed": "The admin who confirmed this import can no longer run imports, so it was stopped.",
-      "unexpected": "Something went wrong while reading the file."
+      "unexpected": "Something went wrong while reading the file.",
+      "too_many_columns": "The file has too many columns (at most 40). Use the column names of the template."
     },
     "report": {
       "create": "New products",
@@ -1670,12 +1671,14 @@
       "file_too_large": "The file is larger than 2 MB. Split it into smaller files.",
       "not_csv": "Only .csv files can be imported.",
       "not_found": "This import was not found.",
-      "not_allowed": "This import can't be changed any more."
+      "not_allowed": "This import can't be changed any more.",
+      "too_many_open": "You have 5 imports waiting. Confirm or cancel one before uploading another."
     },
     "messages": {
       "uploaded": "Uploaded. The check starts in a moment; open the import below to see the report.",
       "confirmed": "Confirmed. The rows are being imported.",
       "cancelled": "The import was cancelled."
-    }
+    },
+    "uploaderConfirms": "Only the admin who uploaded this file can confirm it. You can cancel it."
   }
 }

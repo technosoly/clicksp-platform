@@ -31,7 +31,7 @@ export const IMPORT_COLUMNS = [
 export type ImportColumn = (typeof IMPORT_COLUMNS)[number];
 const REQUIRED_COLUMNS: readonly ImportColumn[] = ["sku", "title_fa", "category", "price"];
 
-export const IMPORT_LIMITS = { bytes: 2 * 1024 * 1024, rows: 5000, cell: 2000, partNumbers: 20 } as const;
+export const IMPORT_LIMITS = { bytes: 2 * 1024 * 1024, rows: 5000, cell: 2000, partNumbers: 20, fields: 40 } as const;
 
 /** One row as read from the file: every column, "" when empty. */
 export type ImportCells = Record<ImportColumn, string>;
@@ -41,7 +41,7 @@ export interface ImportFileRow {
   cells: ImportCells;
 }
 
-export type ImportFileError = "not_utf8" | "empty" | "malformed" | "too_many_rows" | "unknown_column" | "missing_column" | "duplicate_column";
+export type ImportFileError = "not_utf8" | "empty" | "malformed" | "too_many_columns" | "too_many_rows" | "unknown_column" | "missing_column" | "duplicate_column";
 
 /** Strict UTF-8 (a file saved in another encoding is refused, not misread). The BOM Excel adds is dropped. */
 export function decodeCsv(bytes: Uint8Array): string | null {
@@ -55,9 +55,11 @@ export function decodeCsv(bytes: Uint8Array): string | null {
 /**
  * RFC 4180 CSV: comma separated, fields in double quotes may hold commas,
  * line breaks and "" for a quote. Accepts CRLF, LF or CR line ends.
- * Returns null for a quote left open or text after a closing quote.
+ * Returns null for a quote left open or text after a closing quote, and
+ * "too_wide" as soon as a row has more than `maxFields` fields (so a line of
+ * a million commas costs nothing later).
  */
-export function parseCsv(text: string): string[][] | null {
+export function parseCsv(text: string, maxFields = Infinity): string[][] | null | "too_wide" {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -80,6 +82,7 @@ export function parseCsv(text: string): string[][] | null {
       continue;
     }
     if (c === ",") {
+      if (row.length + 1 >= maxFields) return "too_wide";
       row.push(field);
       field = "";
       afterQuote = false;
@@ -112,8 +115,9 @@ const isBlank = (cells: readonly string[]) => cells.every((c) => c.trim() === ""
 export function readImportFile(bytes: Uint8Array): { rows: ImportFileRow[] } | { error: ImportFileError; detail?: string } {
   const text = decodeCsv(bytes);
   if (text === null) return { error: "not_utf8" };
-  const table = parseCsv(text);
+  const table = parseCsv(text, IMPORT_LIMITS.fields);
   if (table === null) return { error: "malformed" };
+  if (table === "too_wide") return { error: "too_many_columns" };
   const headerIndex = table.findIndex((r) => !isBlank(r));
   if (headerIndex === -1) return { error: "empty" };
   const header = table[headerIndex]!.map((h) => h.trim().toLowerCase());
@@ -127,15 +131,15 @@ export function readImportFile(bytes: Uint8Array): { rows: ImportFileRow[] } | {
   const missing = REQUIRED_COLUMNS.find((c) => !seen.has(c));
   if (missing) return { error: "missing_column", detail: missing };
 
+  // The known columns' positions, so each row costs at most one step per column.
+  const positions = header.flatMap((name, index) => (name === "" ? [] : [{ name: name as ImportColumn, index }]));
   const rows: ImportFileRow[] = [];
   for (let i = headerIndex + 1; i < table.length; i++) {
     const raw = table[i]!;
     if (isBlank(raw)) continue;
     if (rows.length >= IMPORT_LIMITS.rows) return { error: "too_many_rows" };
     const cells = Object.fromEntries(IMPORT_COLUMNS.map((c) => [c, ""])) as ImportCells;
-    header.forEach((name, column) => {
-      if (name !== "") cells[name as ImportColumn] = (raw[column] ?? "").trim().slice(0, IMPORT_LIMITS.cell);
-    });
+    for (const { name, index } of positions) cells[name] = (raw[index] ?? "").trim().slice(0, IMPORT_LIMITS.cell);
     rows.push({ rowNumber: i + 1, cells });
   }
   if (rows.length === 0) return { error: "empty" };

@@ -2,7 +2,7 @@
  * Database access for product imports: the import jobs and their rows, and
  * the catalog lookups a row is checked against.
  */
-import type { Prisma } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import type { DbClient } from "@/lib/db";
 
 type Tx = Prisma.TransactionClient;
@@ -32,7 +32,16 @@ export async function listImportJobs(client: DbClient, take = 30) {
 }
 
 export async function getImportJob(client: DbClient, id: string) {
-  return client.dataImportJob.findFirst({ where: { id, type: "products" }, select: { ...jobSelect, confirmedById: true, fileMediaId: true } });
+  return client.dataImportJob.findFirst({ where: { id, type: "products" }, select: { ...jobSelect, createdById: true, confirmedById: true, fileMediaId: true } });
+}
+
+/** Jobs of this admin that are not finished yet (uploaded, being checked, or waiting for a decision). */
+export async function openJobCount(client: DbClient, userId: string): Promise<number> {
+  return client.dataImportJob.count({ where: { createdById: userId, status: { in: ["uploaded", "validating", "validated"] } } });
+}
+
+export async function jobStatus(client: DbClient, id: string): Promise<string | null> {
+  return (await client.dataImportJob.findUnique({ where: { id }, select: { status: true } }))?.status ?? null;
 }
 
 export async function importRowsWithStatus(client: DbClient, jobId: string, statuses: readonly ("valid" | "invalid" | "created" | "updated" | "skipped" | "failed")[], take: number) {
@@ -93,14 +102,19 @@ export async function saveValidation(
   return count === 1;
 }
 
-export async function failJob(client: DbClient, jobId: string, from: "validating" | "applying", report: Prisma.InputJsonValue, now: Date): Promise<void> {
-  await client.dataImportJob.updateMany({ where: { id: jobId, status: from }, data: { status: "failed", dryRunReport: report, finishedAt: now } });
+export async function failJob(client: DbClient, jobId: string, from: "validating" | "applying", report: Prisma.InputJsonValue, now: Date): Promise<boolean> {
+  const { count } = await client.dataImportJob.updateMany({ where: { id: jobId, status: from }, data: { status: "failed", dryRunReport: report, finishedAt: now } });
+  return count === 1;
 }
 
-/** validated -> applying, only when there is something to apply. */
+/**
+ * validated -> applying, only when there is something to apply and only by
+ * the admin who uploaded the file (the rows run with the confirming admin's
+ * permissions, so nobody confirms values someone else chose).
+ */
 export async function confirmJobRow(tx: Tx, jobId: string, userId: string, now: Date): Promise<boolean> {
   const { count } = await tx.dataImportJob.updateMany({
-    where: { id: jobId, type: "products", status: "validated", validRows: { gt: 0 } },
+    where: { id: jobId, type: "products", status: "validated", validRows: { gt: 0 }, createdById: userId },
     data: { status: "applying", confirmedById: userId, confirmedAt: now },
   });
   return count === 1;
@@ -108,7 +122,7 @@ export async function confirmJobRow(tx: Tx, jobId: string, userId: string, now: 
 
 export async function cancelJobRow(tx: Tx, jobId: string, now: Date): Promise<boolean> {
   const { count } = await tx.dataImportJob.updateMany({
-    where: { id: jobId, type: "products", status: { in: ["uploaded", "validated"] } },
+    where: { id: jobId, type: "products", status: { in: ["uploaded", "validated", "applying"] } },
     data: { status: "cancelled", finishedAt: now },
   });
   return count === 1;
@@ -134,12 +148,30 @@ export async function setRowResult(
   });
 }
 
-export async function finishJobRow(client: DbClient, jobId: string, now: Date): Promise<{ applied: number; failed: number }> {
+/** applying -> completed with the counts; null when the job was no longer applying (cancelled meanwhile). */
+export async function finishJobRow(client: DbClient, jobId: string, now: Date): Promise<{ applied: number; failed: number } | null> {
   const counts = await client.dataImportRow.groupBy({ by: ["status"], where: { jobId }, _count: { _all: true } });
   const count = (s: string) => counts.find((c) => c.status === s)?._count._all ?? 0;
   const applied = count("created") + count("updated");
-  await client.dataImportJob.updateMany({ where: { id: jobId, status: "applying" }, data: { status: "completed", appliedRows: applied, finishedAt: now } });
-  return { applied, failed: count("failed") };
+  const moved = await client.dataImportJob.updateMany({ where: { id: jobId, status: "applying" }, data: { status: "completed", appliedRows: applied, finishedAt: now } });
+  return moved.count === 1 ? { applied, failed: count("failed") } : null;
+}
+
+/**
+ * Runs fn while holding a PostgreSQL advisory lock for the job, so two runs
+ * never apply the same job at once, even if the job queue gives up on a run
+ * that hangs and starts another. The lock lives in an open transaction on
+ * its own connection; fn does its writes on other connections. Returns
+ * null without running fn when another run holds the lock.
+ */
+export async function withJobLock<T>(client: PrismaClient, jobId: string, fn: () => Promise<T>, maxMs: number): Promise<T | null> {
+  return client.$transaction(
+    async (tx) => {
+      const [row] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext('data_import_job'), hashtext(${jobId})) AS locked`;
+      return row?.locked ? fn() : null;
+    },
+    { timeout: maxMs, maxWait: 10_000 },
+  );
 }
 
 // Catalog lookups -------------------------------------------------------------
