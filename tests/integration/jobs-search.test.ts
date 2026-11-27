@@ -19,9 +19,13 @@ afterAll(async () => {
 const pendingSearchEvents = async (productId: string) =>
   q<{ id: string; status: string }>("SELECT id, status FROM outbox_events WHERE topic = 'search.product_changed' AND aggregate_id = $1 AND status = 'pending'", [productId]);
 
-/** An event of a topic only these tests use, so other suites' events are never touched. */
+/**
+ * An event of a topic only these tests use, so other suites' events are never
+ * touched. Due a second ago: the runner compares with this process's clock,
+ * which may run a little behind the database's.
+ */
 async function testEvent(topic: string): Promise<string> {
-  const [row] = await q<{ id: string }>("INSERT INTO outbox_events (topic, aggregate_type, aggregate_id, payload) VALUES ($1, 'test', gen_random_uuid(), '{}') RETURNING id", [topic]);
+  const [row] = await q<{ id: string }>("INSERT INTO outbox_events (topic, aggregate_type, aggregate_id, payload, available_at) VALUES ($1, 'test', gen_random_uuid(), '{}', now() - interval '1 second') RETURNING id", [topic]);
   return row!.id;
 }
 const eventRow = async (id: string) => (await q<{ status: string; attempts: number; last_error: string | null; available_at: Date }>("SELECT status, attempts, last_error, available_at FROM outbox_events WHERE id = $1", [id]))[0]!;
