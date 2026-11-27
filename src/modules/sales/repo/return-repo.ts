@@ -25,9 +25,13 @@ export async function orderTotal(client: DbClient, orderId: string) {
   return client.order.findUnique({ where: { id: orderId }, select: { status: true, grandTotal: true } });
 }
 
-/** When the order was last marked delivered (null if never). */
+/**
+ * When the order was first delivered (null if never). The order also goes
+ * back to delivered after a rejected or partial return; that must not
+ * restart the return window.
+ */
 export async function deliveredAt(client: DbClient, orderId: string): Promise<Date | null> {
-  const row = await client.orderStatusHistory.findFirst({ where: { orderId, toStatus: "delivered" }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
+  const row = await client.orderStatusHistory.findFirst({ where: { orderId, fromStatus: "shipped", toStatus: "delivered" }, orderBy: { createdAt: "asc" }, select: { createdAt: true } });
   return row?.createdAt ?? null;
 }
 

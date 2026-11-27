@@ -182,4 +182,63 @@ describe("returns", () => {
     expect(await refundOrder(ba, number, { amount: "1", method: "gateway", reason: "TEST", returnNumber: "", idempotencyKey: randomUUID() })).toEqual({ status: "invalid", field: "invalid_method" });
     expect(await refundOrder(ba, number, { amount: "-5", method: "cash", reason: "TEST", returnNumber: "", idempotencyKey: randomUUID() })).toEqual({ status: "invalid", field: "invalid_amount" });
   });
+
+  it("keeps the window from the first delivery, even after a rejection or a partial return", async () => {
+    const { c, number, itemId, ba } = await deliveredOrder(3);
+    const day = 24 * 60 * 60_000;
+    const sixDays = new Date(Date.now() + 6 * day);
+    const rn = ok(await requestReturn(c, number, { reason: "changed_mind", note: "", quantities: { [itemId]: "1" } }, sixDays)).returnNumber!;
+    ok(await decideReturn(ba, rn, "reject", "TEST no"));
+    const eightDays = new Date(Date.now() + 8 * day);
+    expect(await requestReturn(c, number, { reason: "changed_mind", note: "", quantities: { [itemId]: "1" } }, eightDays)).toEqual({ status: "invalid", field: "window_closed" });
+
+    // A partial return received doesn't reopen it either.
+    const rn2 = ok(await requestReturn(c, number, { reason: "defective", note: "", quantities: { [itemId]: "1" } })).returnNumber!;
+    ok(await decideReturn(ba, rn2, "approve", ""));
+    const item = (await returnForAdmin(ba, rn2))!.ret.items[0]!;
+    ok(await receiveReturn(ba, rn2, [{ itemId: item.id, restock: false, locationId: "", condition: "" }]));
+    expect(await requestReturn(c, number, { reason: "defective", note: "", quantities: { [itemId]: "1" } }, eightDays)).toEqual({ status: "invalid", field: "window_closed" });
+    // The request was audited with the customer as actor.
+    expect(await q("SELECT 1 FROM audit_logs WHERE action = 'return.requested' AND actor_user_id = $1", [c.userId])).toHaveLength(2);
+    // Closing without a refund works only for a received return.
+    expect(await decideReturn(ba, rn, "close", "")).toEqual({ status: "wrong_status" });
+    ok(await decideReturn(ba, rn2, "close", ""));
+    expect((await returnForAdmin(ba, rn2))!.ret.status).toBe("completed");
+  });
+
+  it("one request wins when the customer sends two at once", async () => {
+    const { c, number, itemId } = await deliveredOrder(2);
+    const results = await Promise.all([
+      requestReturn(c, number, { reason: "defective", note: "", quantities: { [itemId]: "2" } }),
+      requestReturn(c, number, { reason: "defective", note: "", quantities: { [itemId]: "2" } }),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual(["ok", "wrong_status"]);
+  });
+
+  it("refuses refunds that don't belong to the order, in the wrong state, or in a changed unit", async () => {
+    const a = await deliveredOrder(1);
+    const b = await deliveredOrder(1);
+    const sa = await actorFor("super_admin");
+    const key = randomUUID();
+    ok(await refundOrder(sa, a.number, { amount: "۱۰۰", method: "cash", reason: "TEST goodwill", returnNumber: "", idempotencyKey: key }));
+    expect(await q("SELECT amount::text FROM order_refunds WHERE order_id = $1", [a.order.id])).toEqual([{ amount: "1000" }]);
+    // The same key on another order records nothing and says so.
+    expect(await refundOrder(sa, b.number, { amount: "100", method: "cash", reason: "TEST reuse", returnNumber: "", idempotencyKey: key })).toEqual({ status: "invalid", field: "invalid" });
+    expect(await q("SELECT 1 FROM order_refunds WHERE order_id = $1", [b.order.id])).toHaveLength(0);
+    // A return of another order.
+    const rn = ok(await requestReturn(a.c, a.number, { reason: "defective", note: "", quantities: { [a.itemId]: "1" } })).returnNumber!;
+    expect(await refundOrder(sa, b.number, { amount: "100", method: "cash", reason: "TEST other", returnNumber: rn, idempotencyKey: randomUUID() })).toEqual({ status: "not_found" });
+    // Far more than the order, even beyond what the database can hold.
+    expect(await refundOrder(sa, b.number, { amount: "99999999999999999999999", method: "cash", reason: "TEST huge", returnNumber: "", idempotencyKey: randomUUID() })).toEqual({ status: "too_much" });
+    // The store switched from Toman to Rial while the form was open.
+    expect(await refundOrder(sa, b.number, { amount: "100", method: "cash", reason: "TEST unit", returnNumber: "", idempotencyKey: randomUUID(), unit: "rial" })).toEqual({ status: "invalid", field: "unit_changed" });
+    // A shipped order can't be refunded until it is delivered.
+    const shipped = await paidOrder(1);
+    ok(await fulfilOrder(sa, shipped.number, "pack"));
+    ok(await fulfilOrder(sa, shipped.number, "ship"));
+    expect(await refundOrder(sa, shipped.number, { amount: "100", method: "cash", reason: "TEST shipped", returnNumber: "", idempotencyKey: randomUUID() })).toEqual({ status: "wrong_status" });
+    // The customer sees no admin names or notes of returns still in progress.
+    const view = await myOrderReturns(a.c, a.number);
+    expect(Object.keys(view!.returns[0]!).sort()).toEqual(["adminNote", "createdAt", "id", "returnNumber", "status"]);
+  });
 });

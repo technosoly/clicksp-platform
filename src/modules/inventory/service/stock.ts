@@ -253,8 +253,12 @@ export async function restockLocations() {
  */
 export async function restockReturn(
   tx: Parameters<typeof insertMovement>[0],
-  input: { returnId: string; returnNumber: string; actorUserId: string; lines: readonly { variantId: string; locationId: string; quantity: number }[] },
+  actor: Actor,
+  input: { returnId: string; returnNumber: string; lines: readonly { variantId: string; locationId: string; quantity: number }[] },
 ): Promise<boolean> {
+  if (actor.kind !== "admin" || !actor.userId) throw new AuthzError("return.manage", "not_admin");
+  await authorize(actor, "return.manage", undefined, { stepUp: false });
+  const actorUserId = actor.userId;
   // Location, then product: the same lock order as every other stock change.
   const lines = [...input.lines].sort((a, b) => a.locationId.localeCompare(b.locationId) || a.variantId.localeCompare(b.variantId));
   for (const line of lines) {
@@ -271,7 +275,7 @@ export async function restockReturn(
       referenceId: input.returnId,
       referenceCode: input.returnNumber,
       reason: null,
-      actorUserId: input.actorUserId,
+      actorUserId,
     });
   }
   return true;

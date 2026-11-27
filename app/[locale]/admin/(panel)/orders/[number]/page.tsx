@@ -141,6 +141,7 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ loc
           <ActionForm action={refundAction} submitLabel={r("refund")} submitVariant="outline" testId="admin-order-refund-form" namespace="AdminReturns">
             <input type="hidden" name="orderNumber" value={order.orderNumber.toString()} />
             <input type="hidden" name="idempotencyKey" value={randomUUID()} />
+            <input type="hidden" name="unit" value={unit} />
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label={r("amount", { unit: r(`unit.${unit}`) })} htmlFor="order-refund-amount">
                 <Input id="order-refund-amount" name="amount" inputMode="numeric" dir="ltr" required />

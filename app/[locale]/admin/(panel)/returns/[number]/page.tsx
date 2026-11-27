@@ -124,6 +124,7 @@ export default async function AdminReturnPage({ params }: { params: Promise<{ lo
             <input type="hidden" name="orderNumber" value={ret.order.orderNumber.toString()} />
             <input type="hidden" name="returnNumber" value={ret.returnNumber.toString()} />
             <input type="hidden" name="idempotencyKey" value={randomUUID()} />
+            <input type="hidden" name="unit" value={unit} />
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label={t("amount", { unit: t(`unit.${unit}`) })} htmlFor="refund-amount" hint={t("suggested", { amount: money(data.suggestedRefund) })}>
                 <Input id="refund-amount" name="amount" inputMode="numeric" dir="ltr" defaultValue={suggested} required />

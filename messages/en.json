@@ -1919,7 +1919,8 @@
       "invalid_method": "Choose how the money was paid back.",
       "reason_required": "Write a reason (at least 3 characters).",
       "too_much": "That is more than is left to refund on this order.",
-      "invalid": "Something is not right. Reload the page and try again."
+      "invalid": "Something is not right. Reload the page and try again.",
+      "unit_changed": "The store's price unit changed while this form was open. Reload the page and enter the amount again."
     },
     "messages": {
       "approve": "Approved.",

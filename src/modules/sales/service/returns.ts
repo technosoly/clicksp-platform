@@ -5,6 +5,7 @@ import { cleanText } from "@/lib/i18n/names";
 import { MoneyError, parseMoneyInput, subtract } from "@/lib/money";
 import { toEnDigits } from "@/lib/persian-text";
 import { recordAudit } from "@/modules/audit/service/audit";
+import { EMPTY_REQUEST_META, type RequestMeta } from "@/lib/http/request-meta";
 import type { CurrentCustomer } from "@/modules/identity/service/current-customer";
 import { releaseOrderHolds, restockLocations, restockReturn } from "@/modules/inventory/service/stock";
 import type { Actor } from "@/modules/rbac/domain/actor";
@@ -116,7 +117,8 @@ export async function myOrderReturns(customer: CurrentCustomer, orderNumber: str
     }
   }
   return {
-    returns,
+    // Only what the customer may see: no admin names, and the admin's note only as the reason for a rejection.
+    returns: returns.map((r) => ({ id: r.id, returnNumber: r.returnNumber, status: r.status, createdAt: r.createdAt, adminNote: r.status === "rejected" ? r.adminNote : null })),
     refunds: refunds.map((r) => ({ id: r.id, amount: r.amount, status: r.status, method: r.method, createdAt: r.createdAt })),
     returnable,
     closedReason,
@@ -129,6 +131,7 @@ export async function requestReturn(
   orderNumber: string,
   input: { reason: string; note: string; quantities: Record<string, string> },
   now = new Date(),
+  meta: RequestMeta = EMPTY_REQUEST_META,
 ): Promise<ReturnResult> {
   if (!NUMBER.test(orderNumber)) return { status: "not_found" };
   const order = await customerOrder(db(), customer.userId, BigInt(orderNumber));
@@ -156,6 +159,7 @@ export async function requestReturn(
       const ret = await insertReturn(tx, { orderId: order.id, reason, customerNote: parsedNote.data, requestedById: customer.userId, items });
       await setActingUser(tx, customer.userId);
       await setOrderStatus(tx, order.id, "return_requested", `return ${ret.returnNumber}`);
+      await recordAudit(tx, meta, { actorUserId: customer.userId, action: "return.requested", entityType: "order_return", entityId: ret.id, after: { orderId: order.id, reason, items } });
       await insertOutboxEvent(tx, {
         topic: "return.requested",
         aggregateType: "order_return",
@@ -283,7 +287,7 @@ export async function receiveReturn(
       if (!order || locked?.status !== "approved") throw new Stop({ status: "wrong_status" });
       await setActingUser(tx, userId);
       const restocked = decided.filter((d) => d.restock).map((d) => ({ variantId: d.variantId, locationId: d.locationId!, quantity: d.quantity }));
-      if (!(await restockReturn(tx, { returnId: ret.id, returnNumber: ret.returnNumber.toString(), actorUserId: userId, lines: restocked }))) {
+      if (!(await restockReturn(tx, actor, { returnId: ret.id, returnNumber: ret.returnNumber.toString(), lines: restocked }))) {
         throw new Stop({ status: "invalid", field: "invalid_location" });
       }
       await markReturnReceived(tx, ret.id, now, decided);
@@ -310,7 +314,12 @@ export async function receiveReturn(
 
 export type RefundResult = { status: "ok"; refundId: string } | { status: "not_found" } | { status: "invalid"; field: string } | { status: "wrong_status" } | { status: "too_much" };
 
-/** Refunds and returns of an order for its admin screen, and whether this admin may refund now. */
+/**
+ * Refunds and returns of an order for its admin screen, and whether this
+ * admin may refund now. Only for the order screen, after orderForAdmin has
+ * authorized order.view on this order; admins without return.manage or
+ * refund.create get null (the section is hidden, nothing is refused).
+ */
 export async function orderRefundsForAdmin(actor: Actor, orderId: string) {
   adminId(actor, "order.view");
   const mayRefund = actor.permissions.has("refund.create");
@@ -336,27 +345,32 @@ export async function orderRefundsForAdmin(actor: Actor, orderId: string) {
 export async function refundOrder(
   actor: Actor,
   orderNumber: string,
-  input: { amount: string; method: string; reason: string; returnNumber: string; idempotencyKey: string },
+  input: { amount: string; method: string; reason: string; returnNumber: string; idempotencyKey: string; unit?: string },
   now = new Date(),
 ): Promise<RefundResult> {
   const userId = adminId(actor, "refund.create");
   await authorize(actor, "refund.create");
   if (!NUMBER.test(orderNumber)) return { status: "not_found" };
   if (!UUID.test(input.idempotencyKey)) return { status: "invalid", field: "invalid" };
-  const earlier = await refundByKey(db(), input.idempotencyKey);
-  if (earlier) return { status: "ok", refundId: earlier.id };
   const order = await adminOrder(db(), BigInt(orderNumber));
   if (!order) return { status: "not_found" };
+  const earlier = await refundByKey(db(), input.idempotencyKey);
+  // A key belongs to one form for one order; a key from another order records nothing and says so.
+  if (earlier) return earlier.orderId === order.id ? { status: "ok", refundId: earlier.id } : { status: "invalid", field: "invalid" };
   const method = REFUND_METHODS.find((m) => m === input.method);
   if (!method) return { status: "invalid", field: "invalid_method" };
+  const unit = await getDisplayUnit();
+  // The amount is read in the unit the form showed; if the store switched units meanwhile, ask again.
+  if (input.unit !== undefined && input.unit !== unit) return { status: "invalid", field: "unit_changed" };
   let amount: bigint;
   try {
-    amount = parseMoneyInput(input.amount, await getDisplayUnit());
+    amount = parseMoneyInput(input.amount, unit);
   } catch (error) {
     if (error instanceof MoneyError) return { status: "invalid", field: "invalid_amount" };
     throw error;
   }
   if (amount <= 0n) return { status: "invalid", field: "invalid_amount" };
+  if (amount > order.grandTotal) return { status: "too_much" };
   const reason = cleanText(500, "reason_required").safeParse(input.reason);
   if (!reason.success || reason.data.length < 3) return { status: "invalid", field: "reason_required" };
   let ret: Awaited<ReturnType<typeof returnByNumber>> = null;
@@ -369,7 +383,10 @@ export async function refundOrder(
       const locked = await lockOrderForReturn(tx, order.id);
       // Sent twice at once: the second waited for the order lock behind the first.
       const same = await refundByKey(tx, input.idempotencyKey);
-      if (same) return same.id;
+      if (same) {
+        if (same.orderId !== order.id) throw new Stop({ status: "invalid", field: "invalid" });
+        return same.id;
+      }
       if (!locked || !isRefundableStatus(locked.status)) throw new Stop({ status: "wrong_status" });
       if (ret && (await lockReturn(tx, ret.id))?.status !== "received") throw new Stop({ status: "wrong_status" });
       await setActingUser(tx, userId);
@@ -403,7 +420,7 @@ export async function refundOrder(
     if (tooMuch(error)) return { status: "too_much" };
     // The same form sent twice at once: the second insert hits the unique key.
     const again = await refundByKey(db(), input.idempotencyKey);
-    if (again) return { status: "ok", refundId: again.id };
+    if (again?.orderId === order.id) return { status: "ok", refundId: again.id };
     throw error;
   }
 }

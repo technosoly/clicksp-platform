@@ -1,6 +1,7 @@
 "use server";
 
 import { refresh } from "next/cache";
+import { currentRequestMeta } from "@/lib/http/server";
 import { runAdminAction, text, type ActionState } from "@/modules/identity/api/admin-action";
 import { currentCustomer } from "@/modules/identity/service/current-customer";
 import { decideReturn, receiveReturn, refundOrder, requestReturn } from "../service/returns";
@@ -39,6 +40,7 @@ export async function refundAction(_prev: ActionState, form: FormData): Promise<
         reason: text(form, "reason"),
         returnNumber: text(form, "returnNumber"),
         idempotencyKey: text(form, "idempotencyKey"),
+        unit: text(form, "unit"),
       }),
       "refunded",
     ),
@@ -63,7 +65,7 @@ export async function requestReturnAction(_prev: ReturnRequestState, form: FormD
     const value = form.get(key);
     return typeof value === "string" ? value : "";
   };
-  const result = await requestReturn(customer, field("orderNumber"), { reason: field("reason"), note: field("note"), quantities });
+  const result = await requestReturn(customer, field("orderNumber"), { reason: field("reason"), note: field("note"), quantities }, new Date(), await currentRequestMeta());
   if (result.status !== "ok") return { error: result.status === "invalid" ? result.field : result.status };
   refresh();
   return { ok: true };
