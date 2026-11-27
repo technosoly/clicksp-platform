@@ -63,4 +63,4 @@ Implemented so far:
 
 ## Not implemented yet
 
-Business services and screens for motorcycles and fitment, inventory, orders, accounting, payments, shipping and content; an S3 storage adapter; search indexing; background jobs; page builder. The catalog screens (Phase 6, part 1) and product photos, brand logos and category pictures (part 2a) exist. The database tables for the rest exist (Phase 3); the admin navigation lists their areas as "Coming soon". See [ROADMAP.md](ROADMAP.md).
+Business services and screens for imports, inventory, orders, accounting, payments, shipping and content; an S3 storage adapter; search indexing; background jobs; page builder. The catalog screens (Phase 6, part 1) product photos, brand logos and category pictures (part 2a), and the motorcycle catalog with fitment links (part 2b) exist. The database tables for the rest exist (Phase 3); the admin navigation lists their areas as "Coming soon". See [ROADMAP.md](ROADMAP.md).

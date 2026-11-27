@@ -488,3 +488,13 @@ export async function removeIdentifier(actor: Actor, productId: string, identifi
   });
   return removed ? { status: "ok", id: identifierId } : { status: "not_found" };
 }
+
+/**
+ * A product's categories, for other modules that authorize product-related
+ * work (fitment, inventory). No check of its own: the caller authorizes with
+ * the result. null when the product doesn't exist.
+ */
+export async function productCategoriesForAuthorization(productId: string): Promise<string[] | null> {
+  if (!IS_UUID.test(productId)) return null;
+  return productCategoryIds(db(), productId);
+}

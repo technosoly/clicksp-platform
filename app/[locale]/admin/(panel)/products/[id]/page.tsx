@@ -26,6 +26,9 @@ import { categoryOptions } from "@/modules/catalog/service/categories";
 import { listProductImagesForAdmin } from "@/modules/catalog/service/product-images";
 import { getProductForAdmin } from "@/modules/catalog/service/products";
 import { CatalogImage } from "@/components/media/catalog-image";
+import { FitmentCard } from "@/components/admin/fitment-card";
+import { fitmentForAdmin } from "@/modules/compatibility/service/fitment";
+import { motorcyclePicker } from "@/modules/vehicles/service/motorcycles";
 import { adminPage } from "@/modules/identity/api/admin-page";
 
 const STATUS_TONE = { draft: "neutral", active: "success", archived: "danger" } as const;
@@ -47,9 +50,12 @@ export default async function AdminProductPage({
       const detail = await getProductForAdmin(actor, id);
       if (!detail) return null;
       const editable = detail.can.edit;
+      const fitment = await fitmentForAdmin(actor, id);
       return {
         detail,
         images: await listProductImagesForAdmin(actor, id),
+        fitment,
+        picker: fitment?.can.manage ? await motorcyclePicker(actor) : [],
         categories: editable ? await categoryOptions(actor, "product.update") : [],
         brands: editable ? await brandOptions(actor) : [],
       };
@@ -297,6 +303,8 @@ export default async function AdminProductPage({
           </ActionForm>
         ) : null}
       </Card>
+
+      {data.fitment ? <FitmentCard productId={product.id} fitment={data.fitment} picker={data.picker} locale={locale} /> : null}
 
       <Card title={t("identifiersTitle")} description={t("identifiersHelp")} testId="admin-product-identifiers">
         {product.identifiers.length === 0 ? (

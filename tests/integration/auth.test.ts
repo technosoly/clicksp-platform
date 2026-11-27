@@ -129,6 +129,12 @@ describe("first Super Admin (CLI)", () => {
 
   it("creates one Super Admin with a hashed password and an audit row, then refuses a second", async () => {
     await inTx(async (db) => {
+      // Other test files create Super Admins in the shared test database, and
+      // the run order is not fixed: inside this rolled-back transaction, start
+      // from an empty system as the CLI expects.
+      await db.query("ALTER TABLE user_roles DISABLE TRIGGER user_roles_last_super_admin");
+      await db.query("DELETE FROM user_roles WHERE role_id = (SELECT id FROM roles WHERE key = 'super_admin')");
+      await db.query("ALTER TABLE user_roles ENABLE TRIGGER user_roles_last_super_admin");
       const hash = await hashPassword(PASSWORD);
       const first = await insertFirstSuperAdmin(db, { username: "test-owner", email: null, name: "TEST OWNER", passwordHash: hash });
       expect(first.ok).toBe(true);
