@@ -276,3 +276,14 @@ export async function stockOverview(
     },
   });
 }
+
+/** Sellable stock per variant: on hand minus reserved, in active locations of active warehouses. */
+export async function availableByVariant(client: DbClient, variantIds: readonly string[]): Promise<Map<string, number>> {
+  if (variantIds.length === 0) return new Map();
+  const rows = await client.inventoryBalance.groupBy({
+    by: ["variantId"],
+    where: { variantId: { in: [...variantIds] }, location: { isActive: true }, warehouse: { isActive: true } },
+    _sum: { onHand: true, reserved: true },
+  });
+  return new Map(rows.map((r) => [r.variantId, Math.max(0, (r._sum.onHand ?? 0) - (r._sum.reserved ?? 0))]));
+}

@@ -1,0 +1,188 @@
+import "server-only";
+import { db } from "@/lib/db";
+import { normalizeForSearch, normalizeForStorage, normalizeIdentifier, toEnDigits } from "@/lib/persian-text";
+import type { Rendition } from "@/modules/media/domain/image-rules";
+import {
+  categoryBySlug,
+  categoryCrumb,
+  categoryForShop,
+  categoryWithDescendants,
+  productCards,
+  productForShop,
+  productIdBySlug,
+  searchWhere,
+  servableRenditions,
+  topCategories,
+  type ProductCardRow,
+} from "../repo/storefront-repo";
+
+/**
+ * The public catalog for the storefront. These reads need no actor: they
+ * return only what any visitor may see (published products, active
+ * categories and brands, public images), never costs or internal fields.
+ * Anything that changes data or shows a customer's own data takes an actor.
+ */
+
+export type ShopLocale = "fa" | "en";
+export const PAGE_SIZE = 24;
+
+
+/** The row for the locale, else the Persian one (always present for business content). */
+export function pick<T extends { locale: string }>(rows: readonly T[], locale: ShopLocale): T | undefined {
+  return rows.find((r) => r.locale === locale) ?? rows.find((r) => r.locale === "fa") ?? rows[0];
+}
+
+function altText(alt: unknown, locale: ShopLocale, fallback: string): string {
+  if (alt && typeof alt === "object") {
+    const value = (alt as Record<string, unknown>)[locale] ?? (alt as Record<string, unknown>).fa;
+    if (typeof value === "string" && value) return value;
+  }
+  return fallback;
+}
+
+export interface ProductCard {
+  id: string;
+  title: string;
+  slug: string;
+  brand: string | null;
+  sku: string;
+  variantId: string;
+  price: bigint;
+  compareAtPrice: bigint | null;
+  image: { renditions: Rendition[]; alt: string };
+}
+
+function toCard(row: ProductCardRow, locale: ShopLocale): ProductCard | null {
+  const text = pick(row.translations, locale);
+  const variant = row.variants[0];
+  if (!text || !variant) return null;
+  const image = row.images[0];
+  return {
+    id: row.id,
+    title: text.title,
+    slug: text.slug,
+    brand: row.brand?.isActive ? (pick(row.brand.translations, locale)?.name ?? null) : null,
+    sku: variant.sku,
+    variantId: variant.id,
+    price: variant.price,
+    compareAtPrice: variant.compareAtPrice && variant.compareAtPrice > variant.price ? variant.compareAtPrice : null,
+    image: { renditions: image ? servableRenditions(image.media) : [], alt: image ? altText(image.alt, locale, text.title) : text.title },
+  };
+}
+
+const cards = (rows: ProductCardRow[], locale: ShopLocale) => rows.map((r) => toCard(r, locale)).filter((c): c is ProductCard => c !== null);
+
+/** Page numbers from the URL: 1..1000, anything else is page 1. */
+export function pageNumber(input: string | string[] | undefined): number {
+  const n = typeof input === "string" ? Number(toEnDigits(input)) : 1;
+  return Number.isInteger(n) && n >= 1 && n <= 1000 ? n : 1;
+}
+
+// Home -------------------------------------------------------------------------
+
+export async function shopHome(locale: ShopLocale) {
+  const [categories, latest] = await Promise.all([topCategories(db()), productCards(db(), {}, 0, 8)]);
+  return {
+    categories: categories.map((c) => {
+      const text = pick(c.translations, locale);
+      return { id: c.id, name: text?.name ?? "", slug: text?.slug ?? "", renditions: servableRenditions(c.image) };
+    }),
+    latest: cards(latest.rows, locale),
+  };
+}
+
+// Categories -------------------------------------------------------------------
+
+/** The category for a URL slug (any locale's slug works; the page links the locale's own). */
+export async function categoryPage(locale: ShopLocale, slug: string, page: number, onlyProductIds: readonly string[] | null = null) {
+  const matches = await categoryBySlug(db(), slug.slice(0, 160));
+  const match = matches.find((m) => m.locale === locale) ?? matches[0];
+  if (!match) return null;
+  const category = await categoryForShop(db(), match.categoryId);
+  if (!category) return null;
+
+  // Breadcrumbs up the tree (bounded; stops at an inactive parent).
+  const crumbs: { name: string; slug: string }[] = [];
+  let parentId = category.parentId;
+  for (let i = 0; parentId && i < 10; i += 1) {
+    const parent = await categoryCrumb(db(), parentId);
+    if (!parent || !parent.isActive) break;
+    const text = pick(parent.translations, locale);
+    crumbs.unshift({ name: text?.name ?? "", slug: text?.slug ?? "" });
+    parentId = parent.parentId;
+  }
+
+  const ids = await categoryWithDescendants(db(), category.id);
+  const where = {
+    categories: { some: { categoryId: { in: ids } } },
+    ...(onlyProductIds ? { id: { in: [...onlyProductIds] } } : {}),
+  };
+  const { rows, total } = await productCards(db(), where, (page - 1) * PAGE_SIZE, PAGE_SIZE);
+  const text = pick(category.translations, locale);
+  return {
+    id: category.id,
+    name: text?.name ?? "",
+    slug: text?.slug ?? slug,
+    alternates: Object.fromEntries(category.translations.map((t) => [t.locale, t.slug])) as Partial<Record<ShopLocale, string>>,
+    crumbs,
+    children: category.children.map((c) => {
+      const t = pick(c.translations, locale);
+      return { id: c.id, name: t?.name ?? "", slug: t?.slug ?? "", renditions: servableRenditions(c.image) };
+    }),
+    products: cards(rows, locale),
+    total,
+    pages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+  };
+}
+
+// Products ---------------------------------------------------------------------
+
+export async function productPage(locale: ShopLocale, slug: string) {
+  const matches = await productIdBySlug(db(), slug.slice(0, 260));
+  const match = matches.find((m) => m.locale === locale) ?? matches[0];
+  if (!match) return null;
+  const product = await productForShop(db(), match.productId);
+  if (!product) return null;
+  const text = pick(product.translations, locale);
+  if (!text) return null;
+
+  let category: { name: string; slug: string } | null = null;
+  if (product.primaryCategoryId) {
+    const c = await categoryCrumb(db(), product.primaryCategoryId);
+    if (c?.isActive) {
+      const t = pick(c.translations, locale);
+      if (t) category = { name: t.name, slug: t.slug };
+    }
+  }
+  return {
+    id: product.id,
+    title: text.title,
+    slug: text.slug,
+    shortDescription: text.shortDescription,
+    alternates: Object.fromEntries(product.translations.map((t) => [t.locale, t.slug])) as Partial<Record<ShopLocale, string>>,
+    brand: product.brand?.isActive ? { name: pick(product.brand.translations, locale)?.name ?? "", isGenuine: product.brand.isGenuine } : null,
+    warrantyMonths: product.warrantyMonths,
+    category,
+    variants: product.variants.map((v) => ({ ...v, compareAtPrice: v.compareAtPrice && v.compareAtPrice > v.price ? v.compareAtPrice : null })),
+    images: product.images.map((i) => ({ id: i.id, renditions: servableRenditions(i.media), alt: altText(i.alt, locale, text.title) })).filter((i) => i.renditions.length > 0),
+    identifiers: product.identifiers,
+  };
+}
+
+/** Product cards for a set of ids (e.g. the parts that fit a motorcycle), newest first. */
+export async function productCardsByIds(locale: ShopLocale, ids: readonly string[], page: number) {
+  const { rows, total } = await productCards(db(), { id: { in: [...ids] } }, (page - 1) * PAGE_SIZE, PAGE_SIZE);
+  return { products: cards(rows, locale), total, pages: Math.max(1, Math.ceil(total / PAGE_SIZE)) };
+}
+
+
+// Search -----------------------------------------------------------------------
+
+export async function searchShop(locale: ShopLocale, query: string, page: number) {
+  const raw = normalizeForStorage(toEnDigits(query)).slice(0, 100).trim();
+  if (raw.length < 2) return { query: raw, products: [], total: 0, pages: 1 };
+  const text = normalizeForSearch(raw);
+  const identifier = normalizeIdentifier(raw);
+  const { rows, total } = await productCards(db(), searchWhere(text, identifier.length >= 3 ? identifier : ""), (page - 1) * PAGE_SIZE, PAGE_SIZE);
+  return { query: raw, products: cards(rows, locale), total, pages: Math.max(1, Math.ceil(total / PAGE_SIZE)) };
+}

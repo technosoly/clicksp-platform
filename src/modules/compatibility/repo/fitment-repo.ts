@@ -133,3 +133,66 @@ export async function deleteFitment(tx: Tx, productId: string, id: string): Prom
   const { count } = await tx.productCompatibility.deleteMany({ where: { id, productId } });
   return count === 1;
 }
+
+// Storefront (verified links only) ---------------------------------------------
+
+export interface FitmentQuery {
+  modelId: string;
+  generationId: string | null;
+  variantId: string | null;
+  year: number | null;
+}
+
+/**
+ * Products with a verified link to the chosen motorcycle. A link without
+ * years covers its generation (or its engine version's years); a link with
+ * only a start year covers that one year.
+ */
+export async function verifiedProductIdsFor(client: DbClient, q: FitmentQuery, limit: number): Promise<string[]> {
+  const rows = await client.$queryRaw<{ product_id: string }[]>`
+    SELECT DISTINCT c.product_id
+      FROM product_compatibilities c
+      LEFT JOIN motorcycle_variants v ON v.id = c.motorcycle_variant_id
+      JOIN motorcycle_generations g ON g.id = coalesce(c.motorcycle_generation_id, v.generation_id)
+     WHERE c.verification_status = 'verified'
+       AND g.model_id = ${q.modelId}::uuid
+       AND (${q.generationId}::uuid IS NULL OR g.id = ${q.generationId}::uuid)
+       AND (${q.variantId}::uuid IS NULL OR c.motorcycle_variant_id IS NULL OR c.motorcycle_variant_id = ${q.variantId}::uuid)
+       AND (v.id IS NULL OR (v.is_active AND v.deleted_at IS NULL))
+       AND (${q.year}::int IS NULL OR (
+             ${q.year}::int >= coalesce(c.year_from, v.year_from, g.year_from)
+         AND ${q.year}::int <= coalesce(CASE WHEN c.year_from IS NOT NULL THEN coalesce(c.year_to, c.year_from) ELSE coalesce(v.year_to, g.year_to) END, 9999)))
+     LIMIT ${limit}`;
+  return rows.map((r) => r.product_id);
+}
+
+export async function verifiedFitmentRows(client: DbClient, productId: string) {
+  return client.productCompatibility.findMany({
+    where: {
+      productId,
+      verificationStatus: "verified",
+      OR: [
+        { motorcycleVariantId: null, motorcycleGeneration: { model: { isActive: true, deletedAt: null } } },
+        { motorcycleVariant: { isActive: true, deletedAt: null, generation: { model: { isActive: true, deletedAt: null } } } },
+      ],
+    },
+    orderBy: [{ createdAt: "asc" }],
+    take: 200,
+    select: {
+      yearFrom: true,
+      yearTo: true,
+      position: true,
+      quantityPerVehicle: true,
+      motorcycleGeneration: { select: { yearFrom: true, yearTo: true, model: { select: { translations: { select: { locale: true, name: true, slug: true } }, brand: { select: { translations: { select: { locale: true, name: true } } } } } } } },
+      motorcycleVariant: {
+        select: {
+          yearFrom: true,
+          yearTo: true,
+          engineDisplacementCc: true,
+          translations: { select: { locale: true, name: true } },
+          generation: { select: { yearFrom: true, yearTo: true, model: { select: { translations: { select: { locale: true, name: true, slug: true } }, brand: { select: { translations: { select: { locale: true, name: true } } } } } } } },
+        },
+      },
+    },
+  });
+}

@@ -8,6 +8,7 @@ import { decide } from "@/modules/rbac/domain/authorize";
 import { authorize, authorizeAny, AuthzError } from "@/modules/rbac/service/authorize";
 import { MOVEMENT_KINDS, MOVEMENT_PERMISSION, movementInputSchema, type MovementInput, type MovementKind } from "../domain/inventory-input";
 import {
+  availableByVariant,
   balancesFor,
   listWarehouses,
   databaseMessage,
@@ -40,6 +41,8 @@ export type MovementResult = { status: "ok"; id: string; onHandAfter: number } |
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HISTORY = 30;
 const OVERVIEW = 200;
+/** At or below this many sellable units the shop says "only a few left". */
+const LOW_STOCK = 3;
 
 function adminId(actor: Actor, key: string): string {
   if (actor.kind !== "admin" || !actor.userId) throw new AuthzError(key, "not_admin");
@@ -187,3 +190,16 @@ export async function existingWarehouses(ids: readonly string[]): Promise<string
 }
 
 export type { MovementKind };
+
+/**
+ * Whether each variant can be bought now, for the storefront. Public: it
+ * says only in stock / low / out, never how many or where.
+ */
+export async function shopAvailability(variantIds: readonly string[]): Promise<Map<string, "in_stock" | "low" | "out">> {
+  const ids = variantIds.filter((id) => UUID.test(id)).slice(0, 200);
+  const available = await availableByVariant(db(), ids);
+  return new Map(ids.map((id) => {
+    const n = available.get(id) ?? 0;
+    return [id, n <= 0 ? "out" : n <= LOW_STOCK ? "low" : "in_stock"] as const;
+  }));
+}

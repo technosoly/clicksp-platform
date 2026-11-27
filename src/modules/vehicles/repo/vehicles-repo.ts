@@ -365,3 +365,55 @@ export async function vehicleSnapshot(client: DbClient, level: VehicleLevel, id:
       return client.motorcycleVariant.findFirst({ where: { id }, select: { generationId: true, yearFrom: true, yearTo: true, engineDisplacementCc: true, marketCode: true, isActive: true, translations: { select: { locale: true, name: true } } } });
   }
 }
+
+// Storefront (public, active records only) -----------------------------------
+
+const shopNames = { select: { locale: true, name: true, slug: true } } as const;
+
+export async function shopBrandsWithModels(client: DbClient) {
+  return client.motorcycleBrand.findMany({
+    where: { isActive: true, deletedAt: null, manufacturer: { isActive: true, deletedAt: null }, models: { some: { isActive: true, deletedAt: null } } },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      translations: shopNames,
+      models: {
+        where: { isActive: true, deletedAt: null },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        select: { id: true, translations: shopNames },
+      },
+    },
+  });
+}
+
+export async function shopModelIdBySlug(client: DbClient, slug: string) {
+  return client.motorcycleModelTranslation.findMany({
+    where: { slug, model: { isActive: true, deletedAt: null, brand: { isActive: true, deletedAt: null } } },
+    select: { locale: true, modelId: true },
+  });
+}
+
+export async function shopModel(client: DbClient, id: string) {
+  return client.motorcycleModel.findFirst({
+    where: { id, isActive: true, deletedAt: null, brand: { isActive: true, deletedAt: null } },
+    select: {
+      id: true,
+      translations: shopNames,
+      brand: { select: { translations: shopNames } },
+      generations: {
+        orderBy: [{ yearFrom: "asc" }],
+        select: {
+          id: true,
+          code: true,
+          yearFrom: true,
+          yearTo: true,
+          variants: {
+            where: { isActive: true, deletedAt: null },
+            orderBy: [{ engineDisplacementCc: "asc" }, { createdAt: "asc" }],
+            select: { id: true, engineDisplacementCc: true, yearFrom: true, yearTo: true, translations: { select: { locale: true, name: true } } },
+          },
+        },
+      },
+    },
+  });
+}

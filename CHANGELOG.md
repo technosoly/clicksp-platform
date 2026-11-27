@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6b, part 1: storefront browsing)
+- **Home** with search, motorcycle brands, top categories and the latest parts. **Category pages** (`/c/<slug>`) with sub-categories, breadcrumbs and every published part below them, 24 per page. **Product pages** (`/p/<slug>`) with photos, price (and the old price when discounted), stock as in stock / only a few left / out of stock, part numbers, warranty and the motorcycles the part is verified to fit. Ordering opens in the next part.
+- **Search** (`/search`) by title, SKU or part number, whatever the separators and whether digits are Persian or English. Search pages are not indexed.
+- **Motorcycles** (`/motorcycles`): brands and models; a model page lists its years and engine versions and the parts verified to fit, narrowed by year (solar or Gregorian), generation or engine version.
+- Only published products (active, with a priced default variant), active categories, brands and motorcycles, public photos and verified fitment are ever shown; costs, notes and stock quantities are never sent to the shop. A Persian address opened under `/en` still finds the page; each page links its other-language address (canonical and hreflang).
+- Tests: unit (180 in total), integration on PostgreSQL (181 in total), E2E (52 in total, desktop and mobile).
+
 ### Added (Phase 6, part 2c: inventory)
 - **Warehouses** (`/admin/warehouses`, Super and Business Admin): code, name, city, address, phone and priority; each starts with a default storage location `MAIN`, and more locations (shelves, bins) can be added, one of them the default.
 - **Warehouses a Store Staff member works in**, ticked on their account screen. Staff see and move stock only there.
