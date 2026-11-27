@@ -84,6 +84,11 @@ export default async function AdminTransferPage({ params }: { params: Promise<{ 
       </Card>
 
       <Card title={t("linesTitle")} className="mt-4" testId="admin-transfer-lines">
+        {data.hiddenLines > 0 ? (
+          <p className="mb-3 text-sm text-muted-foreground" data-testid="admin-transfer-hidden">
+            {t("hiddenLines", { count: data.hiddenLines })}
+          </p>
+        ) : null}
         {transfer.lines.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("noLines")}</p>
         ) : (

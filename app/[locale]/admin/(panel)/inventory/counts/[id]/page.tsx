@@ -64,10 +64,12 @@ export default async function AdminCountPage({
             ) : (
               <p className="text-sm text-muted-foreground">{t("adminCompletes")}</p>
             )}
+            {can.cancel ? (
             <ActionForm action={finishCountAction} submitLabel={t("cancel")} submitVariant="secondary" testId="admin-count-cancel" namespace="AdminInventory">
               <input type="hidden" name="countId" value={count.id} />
               <input type="hidden" name="step" value="cancel" />
             </ActionForm>
+            ) : null}
           </div>
         ) : null}
       </Card>
@@ -93,7 +95,7 @@ export default async function AdminCountPage({
                     <th className="py-1 pe-3 text-start font-medium">{t("location")}</th>
                     <th className="py-1 pe-3 text-start font-medium">{t("product")}</th>
                     <th className="py-1 pe-3 text-start font-medium">{t("sku")}</th>
-                    <th className="py-1 pe-3 text-end font-medium">{t("expected")}</th>
+                    {data.showExpected ? <th className="py-1 pe-3 text-end font-medium">{t("expected")}</th> : null}
                     <th className="py-1 text-end font-medium">{t("counted")}</th>
                   </tr>
                 </thead>
@@ -103,7 +105,7 @@ export default async function AdminCountPage({
                       <td className="py-1.5 pe-3" dir="ltr">{code.get(line.locationId) ?? "–"}</td>
                       <td className="py-1.5 pe-3">{title(line.variant.product.translations)}</td>
                       <td className="py-1.5 pe-3" dir="ltr">{line.variant.sku}</td>
-                      <td className="py-1.5 pe-3 text-end tabular-nums">{n(line.expectedQty)}</td>
+                      {line.expectedQty !== null ? <td className="py-1.5 pe-3 text-end tabular-nums">{n(line.expectedQty)}</td> : null}
                       <td className="py-1.5 text-end">
                         <input type="hidden" name="lineId" value={line.id} />
                         <Input
@@ -129,7 +131,7 @@ export default async function AdminCountPage({
                     <td className="py-1.5 pe-3" dir="ltr">{code.get(line.locationId) ?? "–"}</td>
                     <td className="py-1.5 pe-3">{title(line.variant.product.translations)}</td>
                     <td className="py-1.5 pe-3" dir="ltr">{line.variant.sku}</td>
-                    <td className="py-1.5 pe-3 text-end tabular-nums">{n(line.expectedQty)}</td>
+                    {line.expectedQty !== null ? <td className="py-1.5 pe-3 text-end tabular-nums">{n(line.expectedQty)}</td> : null}
                     <td className="py-1.5 text-end tabular-nums">{line.countedQty === null ? "–" : n(line.countedQty)}</td>
                   </tr>
                 ))}

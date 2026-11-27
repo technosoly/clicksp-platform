@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { db, transaction } from "@/lib/db";
+import { db, isDeadlock, transaction } from "@/lib/db";
 import { cleanText } from "@/lib/i18n/names";
 import { toEnDigits } from "@/lib/persian-text";
 import { recordAudit } from "@/modules/audit/service/audit";
@@ -10,7 +10,17 @@ import { decide } from "@/modules/rbac/domain/authorize";
 import { authorize, authorizeAny, AuthzError } from "@/modules/rbac/service/authorize";
 import { MAX_MOVEMENT_QTY } from "../domain/inventory-input";
 import { databaseMessage, insertMovement, lockUsableLocation, locationsIn, usableLocation } from "../repo/inventory-repo";
-import { deleteTransferLine, getTransfer, insertTransfer, listTransfers, lockTransfer, setTransferStatus, transferLines, upsertTransferLine } from "../repo/transfer-count-repo";
+import {
+  deleteTransferLine,
+  getTransfer,
+  insertTransfer,
+  listTransfers,
+  lockTransfer,
+  setTransferStatus,
+  transferLineIdsInScope,
+  transferLines,
+  upsertTransferLine,
+} from "../repo/transfer-count-repo";
 
 /**
  * Stock transfers between warehouses (inventory.transfer, on the warehouse):
@@ -24,7 +34,14 @@ import { deleteTransferLine, getTransfer, insertTransfer, listTransfers, lockTra
  * destination locations (transfer_in). Between the two the goods are on the
  * road and in neither warehouse's stock. Creating a transfer and editing its
  * lines needs the permission in both warehouses; shipping and cancelling in
- * the source, receiving in the destination. Every step is audited.
+ * the source, receiving in the destination. Cancelling a transfer already
+ * on the road puts the stock back at the source, so it needs the permission
+ * in both warehouses (the destination may already hold the goods).
+ *
+ * A transfer is one document: people whose product.view is limited to some
+ * categories see only the lines of those categories, and can't change, ship,
+ * receive or cancel a transfer that holds products outside them. Every step
+ * is audited.
  */
 
 export type TransferResult =
@@ -32,7 +49,8 @@ export type TransferResult =
   | { status: "not_found" }
   | { status: "invalid"; field: string }
   | { status: "wrong_status" }
-  | { status: "insufficient_stock"; sku?: string };
+  | { status: "insufficient_stock"; sku?: string }
+  | { status: "busy" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LIST = 50;
@@ -53,9 +71,11 @@ function scope(actor: Actor): string[] | null {
 }
 
 const quantity = z
-  .union([z.number(), z.string()])
-  .transform((v) => (typeof v === "string" ? Number(toEnDigits(v).trim() || "NaN") : v))
-  .pipe(z.number("invalid_quantity").int("invalid_quantity").min(1, "invalid_quantity").max(MAX_MOVEMENT_QTY, "invalid_quantity"));
+  .string()
+  .transform((v) => toEnDigits(v).trim())
+  .pipe(z.string().regex(/^\d{1,7}$/, "invalid_quantity"))
+  .transform(Number)
+  .pipe(z.number().int().min(1, "invalid_quantity").max(MAX_MOVEMENT_QTY, "invalid_quantity"));
 const note = cleanText(1000, "invalid_text").transform((v) => v || null);
 
 class Stop extends Error {
@@ -64,8 +84,22 @@ class Stop extends Error {
   }
 }
 
+/** Categories whose products the actor sees: null = all. */
+function productScope(actor: Actor): string[] | null {
+  const grant = actor.permissions.get("product.view");
+  return !grant ? [] : grant.unscoped ? null : [...grant.categoryIds];
+}
+
+/** Refuses when the transfer holds a product outside the actor's categories. */
+async function requireWholeTransfer(actor: Actor, transferId: string, lineCount: number): Promise<void> {
+  const categories = productScope(actor);
+  if (categories === null) return;
+  if ((await transferLineIdsInScope(db(), transferId, categories)).size !== lineCount) throw new AuthzError("product.view", "out_of_scope");
+}
+
 function stockFailure(error: unknown, sku?: string): TransferResult {
   if (error instanceof Stop) return error.result;
+  if (isDeadlock(error)) return { status: "busy" };
   const message = databaseMessage(error);
   if (message.includes("inventory_balances_on_hand_non_negative") || message.includes("inventory_balances_reserved_le_on_hand")) return { status: "insufficient_stock", sku };
   if (message.includes("out of range for type integer")) return { status: "invalid", field: "invalid_quantity" };
@@ -95,15 +129,23 @@ export async function getTransferForAdmin(actor: Actor, id: string) {
   const atSource = allowedOn(actor, transfer.fromWarehouseId);
   const atDestination = allowedOn(actor, transfer.toWarehouseId);
   if (!atSource && !atDestination) return null;
-  const locations = await locationsIn(db(), [transfer.fromWarehouseId, transfer.toWarehouseId]);
+  const categories = productScope(actor);
+  const [locations, visible] = await Promise.all([
+    locationsIn(db(), [transfer.fromWarehouseId, transfer.toWarehouseId]),
+    categories === null ? null : transferLineIdsInScope(db(), transfer.id, categories),
+  ]);
+  const lines = visible === null ? transfer.lines : transfer.lines.filter((l) => visible.has(l.id));
+  const hiddenLines = transfer.lines.length - lines.length;
+  const whole = hiddenLines === 0;
   return {
-    transfer,
+    transfer: { ...transfer, lines },
+    hiddenLines,
     locations,
     can: {
-      edit: transfer.status === "draft" && atSource && atDestination,
-      ship: transfer.status === "draft" && atSource && transfer.lines.length > 0,
-      receive: transfer.status === "in_transit" && atDestination,
-      cancel: (transfer.status === "draft" || transfer.status === "in_transit") && atSource,
+      edit: whole && transfer.status === "draft" && atSource && atDestination,
+      ship: whole && transfer.status === "draft" && atSource && lines.length > 0,
+      receive: whole && transfer.status === "in_transit" && atDestination,
+      cancel: whole && ((transfer.status === "draft" && atSource) || (transfer.status === "in_transit" && atSource && atDestination)),
     },
   };
 }
@@ -157,6 +199,7 @@ export async function setTransferLine(
       const locked = await lockTransfer(tx, transferId);
       if (locked?.status !== "draft") throw new Stop({ status: "wrong_status" });
       const lineId = await upsertTransferLine(tx, { transferId, variantId: variant.variantId, fromLocationId: from.id, toLocationId: to.id, quantity: qty.data });
+      if (lineId === "full") throw new Stop({ status: "invalid", field: "too_many_lines" });
       await recordAudit(tx, actor.meta, { actorUserId: userId, action: "inventory.transfer_line_set", entityType: "stock_transfer", entityId: transferId, after: { lineId, sku: variant.sku, quantity: qty.data, fromLocationId: from.id, toLocationId: to.id } });
     });
   } catch (error) {
@@ -172,12 +215,17 @@ export async function removeTransferLine(actor: Actor, transferId: string, lineI
   if (!transfer) return { status: "not_found" };
   await onWarehouse(actor, transfer.fromWarehouseId);
   await onWarehouse(actor, transfer.toWarehouseId);
+  const categories = productScope(actor);
+  if (categories !== null && transfer.lines.some((l) => l.id === lineId) && !(await transferLineIdsInScope(db(), transferId, categories)).has(lineId)) {
+    throw new AuthzError("product.view", "out_of_scope");
+  }
   try {
     return await transaction(async (tx) => {
       const locked = await lockTransfer(tx, transferId);
       if (locked?.status !== "draft") return { status: "wrong_status" as const };
-      if (!(await deleteTransferLine(tx, transferId, lineId))) return { status: "not_found" as const };
-      await recordAudit(tx, actor.meta, { actorUserId: userId, action: "inventory.transfer_line_removed", entityType: "stock_transfer", entityId: transferId, before: { lineId } });
+      const removed = await deleteTransferLine(tx, transferId, lineId);
+      if (!removed) return { status: "not_found" as const };
+      await recordAudit(tx, actor.meta, { actorUserId: userId, action: "inventory.transfer_line_removed", entityType: "stock_transfer", entityId: transferId, before: removed });
       return { status: "ok" as const, id: transferId };
     });
   } catch (error) {
@@ -198,6 +246,7 @@ export async function advanceTransfer(actor: Actor, transferId: string, step: St
   const transfer = await getTransfer(db(), transferId);
   if (!transfer) return { status: "not_found" };
   await onWarehouse(actor, step === "receive" ? transfer.toWarehouseId : transfer.fromWarehouseId);
+  await requireWholeTransfer(actor, transferId, transfer.lines.length);
   const skuOf = new Map(transfer.lines.map((l) => [l.variant.id, l.variant.sku]));
   let currentSku: string | undefined;
   try {
@@ -207,14 +256,19 @@ export async function advanceTransfer(actor: Actor, transferId: string, step: St
       const from = locked.status;
       const allowed = step === "ship" ? from === "draft" : step === "receive" ? from === "in_transit" : from === "draft" || from === "in_transit";
       if (!allowed) throw new Stop({ status: "wrong_status" });
-      const lines = await transferLines(tx, transferId);
+      // Goods on the road may already be at the destination: putting them back needs both sides.
+      if (step === "cancel" && from === "in_transit") await onWarehouse(actor, locked.to_warehouse_id);
+      const locationOf = (l: { fromLocationId: string; toLocationId: string }) => (step === "receive" ? l.toLocationId : l.fromLocationId);
+      // Same lock order everywhere (location, then product), so two stock changes never wait on each other in a circle.
+      const lines = (await transferLines(tx, transferId)).sort((a, b) => locationOf(a).localeCompare(locationOf(b)) || a.variantId.localeCompare(b.variantId));
+      if (lines.length !== transfer.lines.length) throw new Stop({ status: "wrong_status" });
       if (step === "ship" && lines.length === 0) throw new Stop({ status: "invalid", field: "no_lines" });
       // Draft transfers have moved no stock; others move it out, in, or back.
       if (step !== "cancel" || from === "in_transit") {
         for (const line of lines) {
           currentSku = skuOf.get(line.variantId);
           const out = step === "ship";
-          const locationId = step === "receive" ? line.toLocationId : line.fromLocationId;
+          const locationId = locationOf(line);
           const warehouseId = step === "receive" ? locked.to_warehouse_id : locked.from_warehouse_id;
           if (!(await lockUsableLocation(tx, locationId))) throw new Stop({ status: "invalid", field: "invalid_location" });
           await insertMovement(tx, {
@@ -242,7 +296,7 @@ export async function advanceTransfer(actor: Actor, transferId: string, step: St
         before: { status: from },
         after: { lines: lines.map((l) => ({ variantId: l.variantId, quantity: l.quantity })) },
       });
-    });
+    }, { timeoutMs: 60_000 });
   } catch (error) {
     return stockFailure(error, currentSku);
   }

@@ -138,6 +138,62 @@ describe("stock transfers", () => {
     const customer = { ...ba, kind: "customer" as const };
     await expect(listTransfersForAdmin(customer)).rejects.toBeInstanceOf(AuthzError);
   });
+
+  it("keeps a transfer whole: scoped staff can't act on lines outside their categories, or on another transfer's lines", async () => {
+    const ba = await actorFor("business_admin");
+    const a = await warehouse(ba);
+    const b = await warehouse(ba);
+    const mine = await product(ba);
+    const theirs = await product(ba);
+    ok(await receive(ba, mine, a.locationId, 5));
+    ok(await receive(ba, theirs, a.locationId, 5));
+    const t = ok(await createTransfer(ba, { fromWarehouseId: a.warehouseId, toWarehouseId: b.warehouseId, note: "" }));
+    ok(await setTransferLine(ba, t.id, { sku: mine.sku, quantity: "1", fromLocationId: a.locationId, toLocationId: b.locationId }));
+    ok(await setTransferLine(ba, t.id, { sku: theirs.sku, quantity: "1", fromLocationId: a.locationId, toLocationId: b.locationId }));
+    const [hidden] = await q<{ id: string }>("SELECT id FROM stock_transfer_lines WHERE transfer_id = $1 AND variant_id = $2", [t.id, theirs.variantId]);
+
+    const staff = await actorFor("store_staff", [mine.categoryId], [a.warehouseId, b.warehouseId]);
+    const view = await getTransferForAdmin(staff, t.id);
+    expect(view?.transfer.lines.map((l) => l.variant.id)).toEqual([mine.variantId]);
+    expect(view?.hiddenLines).toBe(1);
+    expect(view?.can).toEqual({ edit: false, ship: false, receive: false, cancel: false });
+    await expect(advanceTransfer(staff, t.id, "ship")).rejects.toBeInstanceOf(AuthzError);
+    await expect(advanceTransfer(staff, t.id, "cancel")).rejects.toBeInstanceOf(AuthzError);
+    await expect(removeTransferLine(staff, t.id, hidden!.id)).rejects.toBeInstanceOf(AuthzError);
+    expect(await onHand(theirs.variantId, a.locationId)).toBe(5);
+
+    // A line id of another transfer is not found, and nothing is removed.
+    const other = ok(await createTransfer(ba, { fromWarehouseId: a.warehouseId, toWarehouseId: b.warehouseId, note: "" }));
+    expect(await removeTransferLine(ba, other.id, hidden!.id)).toEqual({ status: "not_found" });
+    expect(await q("SELECT 1 FROM stock_transfer_lines WHERE id = $1", [hidden!.id])).toHaveLength(1);
+
+    // Quantities are plain whole numbers.
+    for (const quantity of ["1e2", "0x10", "2.5", "0", ""]) {
+      expect(await setTransferLine(ba, t.id, { sku: mine.sku, quantity, fromLocationId: a.locationId, toLocationId: b.locationId })).toEqual({ status: "invalid", field: "invalid_quantity" });
+    }
+
+    // Removing a line is audited with what it held.
+    ok(await removeTransferLine(ba, t.id, hidden!.id));
+    const [audit] = await q<{ before: { sku: string; quantity: number } }>("SELECT before FROM audit_logs WHERE entity_id = $1 AND action = 'inventory.transfer_line_removed'", [t.id]);
+    expect(audit?.before).toMatchObject({ sku: theirs.sku, quantity: 1 });
+  });
+
+  it("only someone at both ends cancels a transfer on the road", async () => {
+    const ba = await actorFor("business_admin");
+    const a = await warehouse(ba);
+    const b = await warehouse(ba);
+    const p = await product(ba);
+    ok(await receive(ba, p, a.locationId, 3));
+    const staffA = await actorFor("store_staff", [p.categoryId], [a.warehouseId]);
+    const t = ok(await createTransfer(ba, { fromWarehouseId: a.warehouseId, toWarehouseId: b.warehouseId, note: "" }));
+    ok(await setTransferLine(ba, t.id, { sku: p.sku, quantity: "2", fromLocationId: a.locationId, toLocationId: b.locationId }));
+    ok(await advanceTransfer(staffA, t.id, "ship"));
+    expect((await getTransferForAdmin(staffA, t.id))?.can.cancel).toBe(false);
+    await expect(advanceTransfer(staffA, t.id, "cancel")).rejects.toBeInstanceOf(AuthzError);
+    expect(await onHand(p.variantId, a.locationId)).toBe(1);
+    ok(await advanceTransfer(ba, t.id, "cancel"));
+    expect(await onHand(p.variantId, a.locationId)).toBe(3);
+  });
 });
 
 describe("stock counts", () => {
@@ -192,6 +248,82 @@ describe("stock counts", () => {
     const next = ok(await startCount(ba, { warehouseId: w.warehouseId, locationId: shelf.id, note: "" }));
     expect((await getCountForAdmin(ba, next.id))?.total).toBe(1);
     ok(await cancelCount(ba, next.id));
+  });
+
+  it("saving a page again keeps the difference found earlier", async () => {
+    const ba = await actorFor("business_admin");
+    const w = await warehouse(ba);
+    const p = await product(ba);
+    ok(await receive(ba, p, w.locationId, 10));
+    const c = ok(await startCount(ba, { warehouseId: w.warehouseId, locationId: "", note: "" }));
+    const lineId = (await getCountForAdmin(ba, c.id))!.lines[0]!.id;
+    // 8 on the shelf where the system shows 10: 2 missing.
+    expect(await enterCounts(ba, c.id, [{ lineId, quantity: "8" }])).toEqual({ status: "ok", id: c.id, changed: 1 });
+    // A sale of 2 afterwards, then the same page is saved again unchanged.
+    ok(await recordMovement(ba, p.productId, { kind: "issue", variantId: p.variantId, locationId: w.locationId, quantity: "2", reference: "", reason: "TEST sold", adjustmentReason: "" }));
+    expect(await enterCounts(ba, c.id, [{ lineId, quantity: "8" }])).toEqual({ status: "ok", id: c.id, changed: 0 });
+    expect((await getCountForAdmin(ba, c.id))!.lines[0]!.expectedQty).toBe(10);
+    ok(await completeCount(ba, c.id));
+    expect(await onHand(p.variantId, w.locationId)).toBe(6);
+    const audits = await q<{ after: { lines: unknown[] } }>("SELECT after FROM audit_logs WHERE entity_id = $1 AND action = 'inventory.count_entered'", [c.id]);
+    expect(audits).toHaveLength(1);
+  });
+
+  it("enters counts only on the count's own lines in the actor's categories; counting is blind", async () => {
+    const ba = await actorFor("business_admin");
+    const w = await warehouse(ba);
+    const w2 = await warehouse(ba);
+    const mine = await product(ba);
+    const theirs = await product(ba);
+    ok(await receive(ba, mine, w.locationId, 5));
+    ok(await receive(ba, theirs, w.locationId, 5));
+    ok(await receive(ba, mine, w2.locationId, 5));
+    const c = ok(await startCount(ba, { warehouseId: w.warehouseId, locationId: "", note: "" }));
+    const c2 = ok(await startCount(ba, { warehouseId: w2.warehouseId, locationId: "", note: "" }));
+    const lines = (await getCountForAdmin(ba, c.id))!.lines;
+    const theirLine = lines.find((l) => l.variant.id === theirs.variantId)!;
+    const otherCountLine = (await getCountForAdmin(ba, c2.id))!.lines[0]!;
+
+    const staff = await actorFor("store_staff", [mine.categoryId], [w.warehouseId, w2.warehouseId]);
+    const view = await getCountForAdmin(staff, c.id);
+    expect(view?.lines.map((l) => l.expectedQty)).toEqual([null]);
+    expect(view?.showExpected).toBe(false);
+    expect(view?.counted).toBe(0);
+    // Out of category, and a line of another count: nothing is saved.
+    expect(await enterCounts(staff, c.id, [{ lineId: theirLine.id, quantity: "1" }])).toEqual({ status: "ok", id: c.id, changed: 0 });
+    expect(await enterCounts(ba, c.id, [{ lineId: otherCountLine.id, quantity: "1" }])).toEqual({ status: "ok", id: c.id, changed: 0 });
+    const untouched = await q<{ counted_qty: number | null }>("SELECT counted_qty FROM inventory_count_lines WHERE id = ANY($1::uuid[])", [[theirLine.id, otherCountLine.id]]);
+    expect(untouched.map((r) => r.counted_qty)).toEqual([null, null]);
+    expect(await q("SELECT 1 FROM audit_logs WHERE entity_id = $1 AND action = 'inventory.count_entered'", [c.id])).toHaveLength(0);
+
+    // Their count of the other product isn't in the staff member's progress figure.
+    ok(await enterCounts(ba, c.id, [{ lineId: theirLine.id, quantity: "5" }]));
+    expect((await getCountForAdmin(staff, c.id))?.counted).toBe(0);
+    // Only whoever started the count (or an admin) cancels it.
+    expect((await getCountForAdmin(staff, c.id))?.can.cancel).toBe(false);
+    await expect(cancelCount(staff, c.id)).rejects.toBeInstanceOf(AuthzError);
+    // Odd page numbers don't break the page.
+    expect((await getCountForAdmin(ba, c.id, 1.5))?.page).toBe(1);
+    ok(await cancelCount(ba, c.id));
+    ok(await cancelCount(ba, c2.id));
+  });
+
+  it("a count typed while it is being completed is either applied or refused, never lost", async () => {
+    const ba = await actorFor("business_admin");
+    const w = await warehouse(ba);
+    const p = await product(ba);
+    ok(await receive(ba, p, w.locationId, 10));
+    const c = ok(await startCount(ba, { warehouseId: w.warehouseId, locationId: "", note: "" }));
+    const lineId = (await getCountForAdmin(ba, c.id))!.lines[0]!.id;
+    const [entered, completed] = await Promise.all([enterCounts(ba, c.id, [{ lineId, quantity: "7" }]), completeCount(ba, c.id)]);
+    ok(completed);
+    if (entered.status === "ok") {
+      // Saved before completion took the lock, so completion applied it.
+      expect(await onHand(p.variantId, w.locationId)).toBe(7);
+    } else {
+      expect(entered).toEqual({ status: "wrong_status" });
+      expect(await onHand(p.variantId, w.locationId)).toBe(10);
+    }
   });
 
   it("Store Staff count only in their warehouses; customers are refused", async () => {

@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { db, transaction } from "@/lib/db";
+import { db, isDeadlock, transaction } from "@/lib/db";
 import { cleanText } from "@/lib/i18n/names";
 import { toEnDigits } from "@/lib/persian-text";
 import { recordAudit } from "@/modules/audit/service/audit";
@@ -13,6 +13,7 @@ import { databaseMessage, insertMovement, isUniqueViolation, locationsIn, lockUs
 import {
   addCountLine,
   COUNT_LINE_LIMIT,
+  countedLineCount,
   countedLines,
   countLines,
   finishCount,
@@ -22,6 +23,8 @@ import {
   listCounts,
   lockCount,
   setCountedQty,
+  stockedRows,
+  type CountEntryChange,
 } from "../repo/transfer-count-repo";
 
 /**
@@ -40,10 +43,12 @@ import {
  *   refused, so the count can be fixed first.
  *
  * Store Staff count only in their warehouses and see only products of
- * their categories.
+ * their categories. People who only count don't see the expected quantity
+ * (a blind count); those who can complete the count do. A count is
+ * cancelled by whoever started it or by someone who can complete it.
  */
 
-export type CountResult = { status: "ok"; id: string; changed?: number } | { status: "not_found" } | { status: "invalid"; field: string } | { status: "wrong_status" } | { status: "count_open" } | { status: "insufficient_stock"; sku?: string };
+export type CountResult = { status: "ok"; id: string; changed?: number } | { status: "not_found" } | { status: "invalid"; field: string } | { status: "wrong_status" } | { status: "count_open" } | { status: "insufficient_stock"; sku?: string } | { status: "busy" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE = 100;
@@ -102,6 +107,7 @@ export async function startCount(actor: Actor, input: { warehouseId: string; loc
   const parsedNote = note.safeParse(input.note);
   if (!parsedNote.success) return { status: "invalid", field: "invalid_text" };
   if (!(await locationsIn(db(), [input.warehouseId])).length) return { status: "invalid", field: "invalid_warehouse" };
+  if ((await stockedRows(db(), input.warehouseId, locationId)) > COUNT_LINE_LIMIT) return { status: "invalid", field: "too_many_lines" };
   try {
     const count = await transaction(async (tx) => {
       const count = await insertCount(tx, { warehouseId: input.warehouseId, locationId, note: parsedNote.data, startedById: userId });
@@ -122,15 +128,19 @@ export async function getCountForAdmin(actor: Actor, id: string, page = 1, onlyU
   const count = await getCount(db(), id);
   if (!count) return null;
   await onWarehouse(actor, "inventory.count", count.warehouseId, false);
-  const current = Math.max(1, Math.min(page, Math.ceil(COUNT_LINE_LIMIT / PAGE)));
+  // A count holds at most COUNT_LINE_LIMIT lines, plus a few added by hand.
+  const current = Math.min(Math.max(1, Math.trunc(Number.isFinite(page) ? page : 1)), 2 * Math.ceil(COUNT_LINE_LIMIT / PAGE));
   const [lines, locations] = await Promise.all([
     countLines(db(), id, productScope(actor), { skip: (current - 1) * PAGE, take: PAGE, onlyUncounted }),
     locationsIn(db(), [count.warehouseId]),
   ]);
   const open = count.status === "open";
+  const adjusts = decide(actor.permissions, "inventory.adjust", { warehouseIds: [count.warehouseId] }).allowed;
   return {
     count,
-    lines: lines.rows,
+    // Blind count: the expected quantity is shown only to those who complete counts.
+    lines: lines.rows.map((line) => ({ ...line, expectedQty: adjusts || !open ? line.expectedQty : null })),
+    showExpected: adjusts || !open,
     total: lines.total,
     counted: lines.counted,
     page: current,
@@ -138,8 +148,8 @@ export async function getCountForAdmin(actor: Actor, id: string, page = 1, onlyU
     locations,
     can: {
       enter: open,
-      complete: open && decide(actor.permissions, "inventory.adjust", { warehouseIds: [count.warehouseId] }).allowed,
-      cancel: open,
+      complete: open && adjusts,
+      cancel: open && (adjusts || count.startedById === actor.userId),
     },
   };
 }
@@ -164,10 +174,15 @@ export async function enterCounts(actor: Actor, countId: string, entries: readon
     const saved = await transaction(async (tx) => {
       const locked = await lockCount(tx, countId);
       if (locked?.status !== "open") throw new Stop({ status: "wrong_status" });
-      let saved = 0;
-      for (const entry of parsed) if (await setCountedQty(tx, countId, entry.lineId, categories, entry.quantity, now)) saved++;
-      await recordAudit(tx, actor.meta, { actorUserId: userId, action: "inventory.count_entered", entityType: "inventory_count", entityId: countId, after: { lines: parsed } });
-      return saved;
+      const changes: CountEntryChange[] = [];
+      for (const entry of parsed) {
+        const change = await setCountedQty(tx, countId, entry.lineId, categories, entry.quantity, now);
+        if (change && change !== "unchanged") changes.push(change);
+      }
+      if (changes.length > 0) {
+        await recordAudit(tx, actor.meta, { actorUserId: userId, action: "inventory.count_entered", entityType: "inventory_count", entityId: countId, after: { lines: changes } });
+      }
+      return changes.length;
     });
     return { status: "ok", id: countId, changed: saved };
   } catch (error) {
@@ -192,7 +207,9 @@ export async function addProductToCount(actor: Actor, countId: string, input: { 
     await transaction(async (tx) => {
       const locked = await lockCount(tx, countId);
       if (locked?.status !== "open") throw new Stop({ status: "wrong_status" });
-      if ((await addCountLine(tx, countId, variant.variantId, location.id)) === "exists") throw new Stop({ status: "invalid", field: "already_listed" });
+      const added = await addCountLine(tx, countId, variant.variantId, location.id);
+      if (added === "exists") throw new Stop({ status: "invalid", field: "already_listed" });
+      if (added === "full") throw new Stop({ status: "invalid", field: "too_many_lines" });
       await recordAudit(tx, actor.meta, { actorUserId: userId, action: "inventory.count_line_added", entityType: "inventory_count", entityId: countId, after: { sku: variant.sku, locationId: location.id } });
     });
   } catch (error) {
@@ -240,10 +257,11 @@ export async function completeCount(actor: Actor, countId: string, now = new Dat
       await finishCount(tx, countId, "completed", userId, now);
       await recordAudit(tx, actor.meta, { actorUserId: userId, action: "inventory.count_completed", entityType: "inventory_count", entityId: countId, after: { counted: lines.length, differences } });
       return differences.length;
-    });
+    }, { timeoutMs: 120_000 });
     return { status: "ok", id: countId, changed };
   } catch (error) {
     if (error instanceof Stop) return error.result;
+    if (isDeadlock(error)) return { status: "busy" };
     const message = databaseMessage(error);
     if (message.includes("inventory_balances_reserved_le_on_hand") || message.includes("inventory_balances_on_hand_non_negative")) {
       return { status: "insufficient_stock", sku: currentSku };
@@ -258,11 +276,14 @@ export async function cancelCount(actor: Actor, countId: string, now = new Date(
   const count = await getCount(db(), countId);
   if (!count) return { status: "not_found" };
   await onWarehouse(actor, "inventory.count", count.warehouseId);
+  // Cancelling throws away everyone's counting: only whoever started the count, or someone who completes counts.
+  if (count.startedById !== userId) await onWarehouse(actor, "inventory.adjust", count.warehouseId);
   return transaction(async (tx) => {
     const locked = await lockCount(tx, countId);
     if (locked?.status !== "open") return { status: "wrong_status" as const };
+    const counted = await countedLineCount(tx, countId);
     await finishCount(tx, countId, "cancelled", userId, now);
-    await recordAudit(tx, actor.meta, { actorUserId: userId, action: "inventory.count_cancelled", entityType: "inventory_count", entityId: countId });
+    await recordAudit(tx, actor.meta, { actorUserId: userId, action: "inventory.count_cancelled", entityType: "inventory_count", entityId: countId, before: { status: "open", countedLines: counted } });
     return { status: "ok" as const, id: countId };
   });
 }

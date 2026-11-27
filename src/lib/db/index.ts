@@ -36,7 +36,17 @@ export async function pingDatabase(): Promise<boolean> {
 /** A client or an open transaction: repositories accept either. */
 export type DbClient = PrismaClient | Prisma.TransactionClient;
 
-/** Runs fn in one database transaction (critical writes, see CLAUDE.md). */
-export function transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-  return db().$transaction(fn);
+/**
+ * Runs fn in one database transaction (critical writes, see CLAUDE.md).
+ * Prisma gives up on a transaction after 5 seconds; work that writes many
+ * rows (completing a large stock count) passes a longer timeout.
+ */
+export function transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>, options?: { timeoutMs?: number }): Promise<T> {
+  return options?.timeoutMs ? db().$transaction(fn, { timeout: options.timeoutMs, maxWait: 10_000 }) : db().$transaction(fn);
+}
+
+/** PostgreSQL gave up on one of two transactions waiting for each other (SQLSTATE 40P01). */
+export function isDeadlock(error: unknown): boolean {
+  const text = error instanceof Error ? `${error.message} ${String((error as { code?: unknown }).code ?? "")}` : "";
+  return text.includes("40P01") || text.includes("deadlock detected");
 }

@@ -69,8 +69,23 @@ export async function transferLines(tx: Tx, transferId: string) {
   return tx.stockTransferLine.findMany({ where: { transferId }, orderBy: { id: "asc" }, select: { id: true, variantId: true, fromLocationId: true, toLocationId: true, quantity: true } });
 }
 
-/** Adds a line, or replaces the quantity when the product is already on the transfer from that location. */
-export async function upsertTransferLine(tx: Tx, line: { transferId: string; variantId: string; fromLocationId: string; toLocationId: string; quantity: number }): Promise<string> {
+/** Ids of the transfer's lines whose products are in the categories (null = all). */
+export async function transferLineIdsInScope(client: DbClient, transferId: string, categoryIds: readonly string[] | null): Promise<Set<string>> {
+  const rows = await client.stockTransferLine.findMany({ where: { transferId, variant: { product: productsInCategories(categoryIds) } }, select: { id: true } });
+  return new Set(rows.map((r) => r.id));
+}
+
+export const TRANSFER_LINE_LIMIT = 500;
+
+/**
+ * Adds a line, or replaces the quantity when the product is already on the
+ * transfer from that location. "full" when a new line would pass
+ * TRANSFER_LINE_LIMIT.
+ */
+export async function upsertTransferLine(tx: Tx, line: { transferId: string; variantId: string; fromLocationId: string; toLocationId: string; quantity: number }): Promise<string | "full"> {
+  const key = { transferId: line.transferId, variantId: line.variantId, fromLocationId: line.fromLocationId };
+  const exists = await tx.stockTransferLine.findUnique({ where: { transferId_variantId_fromLocationId: key }, select: { id: true } });
+  if (!exists && (await tx.stockTransferLine.count({ where: { transferId: line.transferId } })) >= TRANSFER_LINE_LIMIT) return "full";
   const row = await tx.stockTransferLine.upsert({
     where: { transferId_variantId_fromLocationId: { transferId: line.transferId, variantId: line.variantId, fromLocationId: line.fromLocationId } },
     create: line,
@@ -80,8 +95,15 @@ export async function upsertTransferLine(tx: Tx, line: { transferId: string; var
   return row.id;
 }
 
-export async function deleteTransferLine(tx: Tx, transferId: string, lineId: string): Promise<boolean> {
-  return (await tx.stockTransferLine.deleteMany({ where: { id: lineId, transferId } })).count === 1;
+/** Deletes a line of the transfer; returns what it held, null when the transfer has no such line. */
+export async function deleteTransferLine(tx: Tx, transferId: string, lineId: string) {
+  const line = await tx.stockTransferLine.findFirst({
+    where: { id: lineId, transferId },
+    select: { id: true, variantId: true, fromLocationId: true, toLocationId: true, quantity: true, variant: { select: { sku: true } } },
+  });
+  if (!line) return null;
+  await tx.stockTransferLine.delete({ where: { id: line.id } });
+  return { lineId: line.id, variantId: line.variantId, sku: line.variant.sku, fromLocationId: line.fromLocationId, toLocationId: line.toLocationId, quantity: line.quantity };
 }
 
 export async function setTransferStatus(
@@ -100,10 +122,17 @@ export async function setTransferStatus(
 
 export const COUNT_LINE_LIMIT = 5000;
 
+/** How many product-and-location rows hold stock in the warehouse (or one of its locations). */
+export async function stockedRows(client: DbClient, warehouseId: string, locationId: string | null): Promise<number> {
+  return client.inventoryBalance.count({ where: { warehouseId, onHand: { gt: 0 }, ...(locationId ? { locationId } : {}) } });
+}
+
 /**
  * Starts a count: one line per product and location holding stock in the
  * warehouse, expecting what the system shows now (updated when each line
- * is counted). Returns the count id and how many lines it has.
+ * is counted). The service refuses a count that would pass
+ * COUNT_LINE_LIMIT, so the LIMIT here is only a backstop. Returns the count
+ * id and how many lines it has.
  */
 export async function insertCount(tx: Tx, row: { warehouseId: string; locationId: string | null; note: string | null; startedById: string }): Promise<{ id: string; lines: number }> {
   const count = await tx.inventoryCount.create({ data: { warehouseId: row.warehouseId, note: row.note, startedById: row.startedById }, select: { id: true } });
@@ -136,6 +165,7 @@ export async function getCount(client: DbClient, id: string) {
       note: true,
       warehouseId: true,
       startedAt: true,
+      startedById: true,
       completedAt: true,
       warehouse: { select: { code: true, name: true } },
       startedBy: { select: { name: true } },
@@ -160,30 +190,40 @@ export async function countLines(client: DbClient, countId: string, categoryIds:
       select: { id: true, locationId: true, expectedQty: true, countedQty: true, countedAt: true, movementId: true, variant: { select: { id: true, sku: true, product: productTitles } } },
     }),
     client.inventoryCountLine.count({ where }),
-    client.inventoryCountLine.count({ where: { countId, countedQty: { not: null } } }),
+    client.inventoryCountLine.count({ where: { countId, countedQty: { not: null }, variant: { product: productsInCategories(categoryIds) } } }),
   ]);
   return { rows, total, counted };
 }
+
+export type CountEntryChange = { lineId: string; sku: string; before: { counted: number | null; expected: number }; after: { counted: number; expected: number } };
 
 /**
  * Records a counted quantity on a line of an open count, for a product in
  * the category scope. The expected quantity becomes what the system shows
  * at this moment, so sales and receipts between the start of the count and
- * this line's count are not counted twice. false when no such line.
+ * this line's count are not counted twice.
+ *
+ * A line already holding this counted quantity is left as it is: saving a
+ * page again must not move its expected quantity to today's stock, or the
+ * difference found earlier would be lost. Returns the change, "unchanged",
+ * or null when the count has no such line in scope.
  */
-export async function setCountedQty(tx: Tx, countId: string, lineId: string, categoryIds: readonly string[] | null, counted: number, at: Date): Promise<boolean> {
+export async function setCountedQty(tx: Tx, countId: string, lineId: string, categoryIds: readonly string[] | null, counted: number, at: Date): Promise<CountEntryChange | "unchanged" | null> {
   const line = await tx.inventoryCountLine.findFirst({
     where: { id: lineId, countId, variant: { product: productsInCategories(categoryIds) } },
-    select: { variantId: true, locationId: true },
+    select: { variantId: true, locationId: true, countedQty: true, expectedQty: true, variant: { select: { sku: true } } },
   });
-  if (!line) return false;
+  if (!line) return null;
+  if (line.countedQty === counted) return "unchanged";
   const balance = await tx.inventoryBalance.findUnique({ where: { variantId_locationId: { variantId: line.variantId, locationId: line.locationId } }, select: { onHand: true } });
-  await tx.inventoryCountLine.update({ where: { id: lineId }, data: { countedQty: counted, countedAt: at, expectedQty: balance?.onHand ?? 0 } });
-  return true;
+  const expected = balance?.onHand ?? 0;
+  await tx.inventoryCountLine.update({ where: { id: lineId }, data: { countedQty: counted, countedAt: at, expectedQty: expected } });
+  return { lineId, sku: line.variant.sku, before: { counted: line.countedQty, expected: line.expectedQty }, after: { counted, expected } };
 }
 
 /** Adds a product found at a location that the count doesn't list yet (expected: what the system shows now). */
-export async function addCountLine(tx: Tx, countId: string, variantId: string, locationId: string): Promise<"added" | "exists"> {
+export async function addCountLine(tx: Tx, countId: string, variantId: string, locationId: string): Promise<"added" | "exists" | "full"> {
+  if ((await tx.inventoryCountLine.count({ where: { countId } })) >= COUNT_LINE_LIMIT) return "full";
   const balance = await tx.inventoryBalance.findUnique({ where: { variantId_locationId: { variantId, locationId } }, select: { onHand: true } });
   const inserted = await tx.$executeRaw`
     INSERT INTO inventory_count_lines (count_id, variant_id, location_id, expected_qty)
@@ -201,9 +241,15 @@ export async function lockCount(tx: Tx, id: string) {
 export async function countedLines(tx: Tx, countId: string) {
   return tx.inventoryCountLine.findMany({
     where: { countId, countedQty: { not: null }, movementId: null },
-    orderBy: { id: "asc" },
+    // Always lock balances in the same order (location, then product), so two
+    // stock changes never wait for each other in a circle.
+    orderBy: [{ locationId: "asc" }, { variantId: "asc" }],
     select: { id: true, variantId: true, locationId: true, expectedQty: true, countedQty: true, variant: { select: { sku: true } } },
   });
+}
+
+export async function countedLineCount(client: DbClient, countId: string): Promise<number> {
+  return client.inventoryCountLine.count({ where: { countId, countedQty: { not: null } } });
 }
 
 export async function linkCountMovement(tx: Tx, lineId: string, movementId: string): Promise<void> {

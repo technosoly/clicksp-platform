@@ -1126,7 +1126,9 @@
       "count_open": "This warehouse already has an open count. Finish or cancel it first.",
       "nothing_counted": "Type at least one counted quantity.",
       "already_listed": "That product is already on the list at this location.",
-      "invalid": "Something is not right. Reload the page and try again."
+      "invalid": "Something is not right. Reload the page and try again.",
+      "too_many_lines": "Too many products for one list. Count one location at a time, or split the transfer.",
+      "busy": "Someone else was changing the same stock. Try again."
     },
     "transfers": {
       "title": "Stock transfers",
@@ -1172,7 +1174,8 @@
       "quantity": "Quantity",
       "remove": "Remove",
       "addLine": "Add product",
-      "addLineHelp": "Adding a SKU that is already on the list changes its quantity."
+      "addLineHelp": "Adding a SKU that is already on the list changes its quantity.",
+      "hiddenLines": "{count, plural, one {# product on this transfer is} other {# products on this transfer are}} outside your categories, so only an administrator can change, ship, receive or cancel it."
     },
     "counts": {
       "title": "Stock counts",
