@@ -44,3 +44,27 @@ export async function markOutboxRetry(client: DbClient, claim: { id: string; att
 export async function markOutboxFailed(client: DbClient, claim: { id: string; attempts: number }, error: string): Promise<void> {
   await client.outboxEvent.updateMany({ where: { id: claim.id, attempts: claim.attempts, status: "processing" }, data: { status: "failed", lastError: error.slice(0, 2000) } });
 }
+
+/** Events of these topics that failed at least once and aren't done (waiting to retry, or parked as failed). */
+export async function troubledEvents(client: DbClient, topics: readonly string[], take: number) {
+  const where = { topic: { in: [...topics] }, status: { in: ["pending", "failed"] as ("pending" | "failed")[] }, attempts: { gt: 0 } };
+  const [rows, total] = await Promise.all([
+    client.outboxEvent.findMany({ where, orderBy: { seq: "asc" }, take, select: { id: true, topic: true, aggregateId: true, status: true, attempts: true, lastError: true, createdAt: true } }),
+    client.outboxEvent.count({ where }),
+  ]);
+  return { rows, total };
+}
+
+/** Events of these topics not handled yet (waiting, being handled or stopped). */
+export async function unfinishedEventCount(client: DbClient, topics: readonly string[]): Promise<number> {
+  return client.outboxEvent.count({ where: { topic: { in: [...topics] }, status: { in: ["pending", "processing", "failed"] } } });
+}
+
+/** Puts failed or waiting events of these topics back in line now, with a fresh count of attempts. */
+export async function requeueEvents(client: DbClient, topics: readonly string[], now: Date): Promise<number> {
+  const { count } = await client.outboxEvent.updateMany({
+    where: { topic: { in: [...topics] }, status: { in: ["pending", "failed"] }, attempts: { gt: 0 } },
+    data: { status: "pending", attempts: 0, availableAt: now },
+  });
+  return count;
+}
