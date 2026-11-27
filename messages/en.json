@@ -1173,6 +1173,7 @@
     "exactYear": "Model year",
     "apply": "Show",
     "verifiedPartsCount": "{count} verified parts",
-    "motorcyclePartsEmpty": "No verified parts for this choice yet. Ask us, we may still have the part."
+    "motorcyclePartsEmpty": "No verified parts for this choice yet. Ask us, we may still have the part.",
+    "yearPlaceholder": "2019"
   }
 }

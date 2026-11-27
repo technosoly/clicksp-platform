@@ -5,7 +5,7 @@ import { CatalogImage, ImagePlaceholder } from "@/components/media/catalog-image
 import { Breadcrumbs } from "@/components/store/breadcrumbs";
 import { Price } from "@/components/store/price";
 import { alternatesFor } from "@/components/store/seo";
-import { shopLocale } from "@/components/store/shop-locale";
+import { shopLocale, slugParam } from "@/components/store/shop-locale";
 import { formatCount } from "@/lib/i18n/numbers";
 import { jalaliModelYear } from "@/lib/i18n/model-year";
 import { Link } from "@/lib/i18n/navigation";
@@ -20,7 +20,7 @@ type Props = { params: Promise<{ locale: string; slug: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
-  const product = await productPage(shopLocale(locale), decodeURIComponent(slug));
+  const product = await productPage(shopLocale(locale), slugParam(slug));
   if (!product) return {};
   return {
     title: product.title,
@@ -33,7 +33,7 @@ export default async function ProductPage({ params }: Props) {
   const { locale: raw, slug } = await params;
   setRequestLocale(raw);
   const locale = shopLocale(raw);
-  const product = await productPage(locale, decodeURIComponent(slug));
+  const product = await productPage(locale, slugParam(slug));
   if (!product) notFound();
   const [t, unit, fitment, availability] = await Promise.all([
     getTranslations("Shop"),

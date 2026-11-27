@@ -4,6 +4,7 @@ import { normalizeForSearch, normalizeForStorage, normalizeIdentifier, toEnDigit
 import type { Rendition } from "@/modules/media/domain/image-rules";
 import {
   categoryBySlug,
+  categoryChainActive,
   categoryCrumb,
   categoryForShop,
   categoryWithDescendants,
@@ -61,7 +62,7 @@ function toCard(row: ProductCardRow, locale: ShopLocale): ProductCard | null {
     id: row.id,
     title: text.title,
     slug: text.slug,
-    brand: row.brand?.isActive ? (pick(row.brand.translations, locale)?.name ?? null) : null,
+    brand: row.brand?.isActive && !row.brand.deletedAt ? (pick(row.brand.translations, locale)?.name ?? null) : null,
     sku: variant.sku,
     variantId: variant.id,
     price: variant.price,
@@ -99,14 +100,15 @@ export async function categoryPage(locale: ShopLocale, slug: string, page: numbe
   const match = matches.find((m) => m.locale === locale) ?? matches[0];
   if (!match) return null;
   const category = await categoryForShop(db(), match.categoryId);
-  if (!category) return null;
+  // A category under a switched-off parent is hidden with it.
+  if (!category || !(await categoryChainActive(db(), category.id))) return null;
 
   // Breadcrumbs up the tree (bounded; stops at an inactive parent).
   const crumbs: { name: string; slug: string }[] = [];
   let parentId = category.parentId;
   for (let i = 0; parentId && i < 10; i += 1) {
     const parent = await categoryCrumb(db(), parentId);
-    if (!parent || !parent.isActive) break;
+    if (!parent || !parent.isActive || parent.deletedAt) break;
     const text = pick(parent.translations, locale);
     crumbs.unshift({ name: text?.name ?? "", slug: text?.slug ?? "" });
     parentId = parent.parentId;
@@ -149,7 +151,7 @@ export async function productPage(locale: ShopLocale, slug: string) {
   let category: { name: string; slug: string } | null = null;
   if (product.primaryCategoryId) {
     const c = await categoryCrumb(db(), product.primaryCategoryId);
-    if (c?.isActive) {
+    if (c?.isActive && !c.deletedAt && (await categoryChainActive(db(), c.id))) {
       const t = pick(c.translations, locale);
       if (t) category = { name: t.name, slug: t.slug };
     }
@@ -160,7 +162,7 @@ export async function productPage(locale: ShopLocale, slug: string) {
     slug: text.slug,
     shortDescription: text.shortDescription,
     alternates: Object.fromEntries(product.translations.map((t) => [t.locale, t.slug])) as Partial<Record<ShopLocale, string>>,
-    brand: product.brand?.isActive ? { name: pick(product.brand.translations, locale)?.name ?? "", isGenuine: product.brand.isGenuine } : null,
+    brand: product.brand?.isActive && !product.brand.deletedAt ? { name: pick(product.brand.translations, locale)?.name ?? "", isGenuine: product.brand.isGenuine } : null,
     warrantyMonths: product.warrantyMonths,
     category,
     variants: product.variants.map((v) => ({ ...v, compareAtPrice: v.compareAtPrice && v.compareAtPrice > v.price ? v.compareAtPrice : null })),
@@ -179,7 +181,7 @@ export async function productCardsByIds(locale: ShopLocale, ids: readonly string
 // Search -----------------------------------------------------------------------
 
 export async function searchShop(locale: ShopLocale, query: string, page: number) {
-  const raw = normalizeForStorage(toEnDigits(query)).slice(0, 100).trim();
+  const raw = normalizeForStorage(toEnDigits(query.slice(0, 200))).slice(0, 100).trim();
   if (raw.length < 2) return { query: raw, products: [], total: 0, pages: 1 };
   const text = normalizeForSearch(raw);
   const identifier = normalizeIdentifier(raw);

@@ -4,7 +4,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Breadcrumbs } from "@/components/store/breadcrumbs";
 import { Pagination } from "@/components/store/pagination";
 import { ProductGrid } from "@/components/store/product-grid";
-import { shopLocale } from "@/components/store/shop-locale";
+import { shopLocale, slugParam } from "@/components/store/shop-locale";
 import { CategoryTile } from "@/components/store/tile";
 import { formatCount } from "@/lib/i18n/numbers";
 import { categoryPage, pageNumber } from "@/modules/catalog/service/storefront";
@@ -17,7 +17,7 @@ type Props = { params: Promise<{ locale: string; slug: string }>; searchParams: 
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
-  const category = await categoryPage(shopLocale(locale), decodeURIComponent(slug), 1);
+  const category = await categoryPage(shopLocale(locale), slugParam(slug), 1);
   if (!category) return {};
   return { title: category.name, alternates: alternatesFor(shopLocale(locale), "c", category.alternates) };
 }
@@ -27,7 +27,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   setRequestLocale(raw);
   const locale = shopLocale(raw);
   const page = pageNumber((await searchParams).page);
-  const category = await categoryPage(locale, decodeURIComponent(slug), page);
+  const category = await categoryPage(locale, slugParam(slug), page);
   if (!category) notFound();
   const [t, unit] = await Promise.all([getTranslations("Shop"), getDisplayUnit()]);
 

@@ -120,6 +120,30 @@ describe("storefront catalog", () => {
     expect(await categoryPage("fa", childSlug!.slug, 1)).toBeNull();
   });
 
+  it("hides a category whose parent is switched off, and a switched-off variant's SKU", async () => {
+    const ba = await actorFor("business_admin");
+    const parent = ok(await createCategory(ba, categoryInput()));
+    const child = ok(await createCategory(ba, categoryInput(parent.id)));
+    const p = await product(ba, child.id, `TEST زیرشاخه ${uid()}`);
+    const [childSlug] = await q<{ slug: string }>("SELECT slug FROM category_translations WHERE category_id = $1 AND locale = 'fa'", [child.id]);
+    expect((await categoryPage("fa", childSlug!.slug, 1))?.id).toBe(child.id);
+    expect((await productPage("fa", p.slugFa))?.category).not.toBeNull();
+
+    ok(await updateCategory(ba, parent.id, { ...categoryInput(), isActive: false }));
+    expect(await categoryPage("fa", childSlug!.slug, 1)).toBeNull();
+    expect((await productPage("fa", p.slugFa))?.category).toBeNull();
+
+    // A second, switched-off variant: its SKU finds nothing.
+    const hiddenSku = `HID-${uid()}`;
+    await q(
+      "INSERT INTO product_variants (product_id, sku, sku_normalized, is_default, is_active, price) VALUES ($1, $2::text, upper(replace($2::text, '-', '')), false, false, 1000)",
+      [p.id, hiddenSku],
+    );
+    expect((await searchShop("fa", hiddenSku, 1)).total).toBe(0);
+    await q("UPDATE product_variants SET is_active = true WHERE sku = $1", [hiddenSku]);
+    expect((await searchShop("fa", hiddenSku, 1)).products.map((x) => x.id)).toEqual([p.id]);
+  });
+
   it("finds parts by title, SKU or part number, whatever the separators and digits", async () => {
     const ba = await actorFor("business_admin");
     const category = ok(await createCategory(ba, categoryInput()));

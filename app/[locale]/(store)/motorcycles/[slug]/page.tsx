@@ -5,7 +5,7 @@ import { Breadcrumbs } from "@/components/store/breadcrumbs";
 import { Pagination } from "@/components/store/pagination";
 import { ProductGrid } from "@/components/store/product-grid";
 import { alternatesFor } from "@/components/store/seo";
-import { shopLocale } from "@/components/store/shop-locale";
+import { shopLocale, slugParam } from "@/components/store/shop-locale";
 import { jalaliModelYear } from "@/lib/i18n/model-year";
 import { formatCount } from "@/lib/i18n/numbers";
 import { Link } from "@/lib/i18n/navigation";
@@ -21,7 +21,7 @@ type Props = { params: Promise<{ locale: string; slug: string }>; searchParams: 
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { locale, slug } = await params;
-  const model = await shopMotorcycleModel(shopLocale(locale), decodeURIComponent(slug));
+  const model = await shopMotorcycleModel(shopLocale(locale), slugParam(slug));
   if (!model) return {};
   const t = await getTranslations("Shop");
   return { title: t("partsFor", { bike: `${model.brand} ${model.name}` }), alternates: alternatesFor(shopLocale(locale), "motorcycles", model.alternates) };
@@ -33,7 +33,7 @@ export default async function MotorcycleModelPage({ params, searchParams }: Prop
   const { locale: raw, slug } = await params;
   setRequestLocale(raw);
   const locale = shopLocale(raw);
-  const model = await shopMotorcycleModel(locale, decodeURIComponent(slug));
+  const model = await shopMotorcycleModel(locale, slugParam(slug));
   if (!model) notFound();
   const sp = await searchParams;
   const page = pageNumber(sp.page);
@@ -102,7 +102,7 @@ export default async function MotorcycleModelPage({ params, searchParams }: Prop
           {variant ? <input type="hidden" name="v" value={variant.id} /> : null}
           <label className="text-sm">
             <span className="mb-1 block font-semibold">{t("exactYear")}</span>
-            <input name="y" inputMode="numeric" dir="ltr" maxLength={4} defaultValue={choice.year ? year(choice.year) : ""} placeholder={locale === "fa" ? "1398" : "2019"} className="h-11 w-28 rounded-md border border-input bg-background px-3" />
+            <input name="y" inputMode="numeric" dir="ltr" maxLength={4} defaultValue={choice.year ? year(choice.year) : ""} placeholder={t("yearPlaceholder")} className="h-11 w-28 rounded-md border border-input bg-background px-3" />
           </label>
           <button type="submit" className="h-11 rounded-md border px-4 text-sm hover:bg-accent">
             {t("apply")}

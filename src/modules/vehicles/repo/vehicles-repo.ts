@@ -388,14 +388,14 @@ export async function shopBrandsWithModels(client: DbClient) {
 
 export async function shopModelIdBySlug(client: DbClient, slug: string) {
   return client.motorcycleModelTranslation.findMany({
-    where: { slug, model: { isActive: true, deletedAt: null, brand: { isActive: true, deletedAt: null } } },
+    where: { slug, model: { isActive: true, deletedAt: null, brand: { isActive: true, deletedAt: null, manufacturer: { isActive: true, deletedAt: null } } } },
     select: { locale: true, modelId: true },
   });
 }
 
 export async function shopModel(client: DbClient, id: string) {
   return client.motorcycleModel.findFirst({
-    where: { id, isActive: true, deletedAt: null, brand: { isActive: true, deletedAt: null } },
+    where: { id, isActive: true, deletedAt: null, brand: { isActive: true, deletedAt: null, manufacturer: { isActive: true, deletedAt: null } } },
     select: {
       id: true,
       translations: shopNames,

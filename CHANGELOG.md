@@ -9,7 +9,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - **Search** (`/search`) by title, SKU or part number, whatever the separators and whether digits are Persian or English. Search pages are not indexed.
 - **Motorcycles** (`/motorcycles`): brands and models; a model page lists its years and engine versions and the parts verified to fit, narrowed by year (solar or Gregorian), generation or engine version.
 - Only published products (active, with a priced default variant), active categories, brands and motorcycles, public photos and verified fitment are ever shown; costs, notes and stock quantities are never sent to the shop. A Persian address opened under `/en` still finds the page; each page links its other-language address (canonical and hreflang).
-- Tests: unit (180 in total), integration on PostgreSQL (181 in total), E2E (52 in total, desktop and mobile).
+- Security review fixes: a category under a switched-off parent is hidden with it; deleted categories and brands, switched-off motorcycle brands and makers, and switched-off variants (their SKUs, part numbers and photos) never show; a badly encoded address is a 404, not an error.
+- Tests: unit (180 in total), integration on PostgreSQL (182 in total), E2E (52 in total, desktop and mobile).
 
 ### Added (Phase 6, part 2c: inventory)
 - **Warehouses** (`/admin/warehouses`, Super and Business Admin): code, name, city, address, phone and priority; each starts with a default storage location `MAIN`, and more locations (shelves, bins) can be added, one of them the default.

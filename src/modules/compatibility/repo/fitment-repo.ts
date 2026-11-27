@@ -166,14 +166,17 @@ export async function verifiedProductIdsFor(client: DbClient, q: FitmentQuery, l
   return rows.map((r) => r.product_id);
 }
 
+/** A motorcycle model the shop shows: it, its brand and its maker are active and not deleted. */
+const shopModel = { isActive: true, deletedAt: null, brand: { isActive: true, deletedAt: null, manufacturer: { isActive: true, deletedAt: null } } };
+
 export async function verifiedFitmentRows(client: DbClient, productId: string) {
   return client.productCompatibility.findMany({
     where: {
       productId,
       verificationStatus: "verified",
       OR: [
-        { motorcycleVariantId: null, motorcycleGeneration: { model: { isActive: true, deletedAt: null } } },
-        { motorcycleVariant: { isActive: true, deletedAt: null, generation: { model: { isActive: true, deletedAt: null } } } },
+        { motorcycleVariantId: null, motorcycleGeneration: { model: shopModel } },
+        { motorcycleVariant: { isActive: true, deletedAt: null, generation: { model: shopModel } } },
       ],
     },
     orderBy: [{ createdAt: "asc" }],
