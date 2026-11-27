@@ -14,6 +14,7 @@ import {
   customerOrder,
   customerOrders,
   expiredUnpaidOrders,
+  hasPaymentInProgress,
   insertOrder,
   insertOutboxEvent,
   lockCustomerCart,
@@ -51,6 +52,8 @@ export async function expireUnpaidOrders(now = new Date(), batch = 20): Promise<
       try {
         const cancelled = await transaction(async (tx) => {
           if (!(await lockUnpaidOrder(tx, orderId))) return false;
+          // A payment started being checked after the search: let it finish.
+          if (await hasPaymentInProgress(tx, orderId, now)) return false;
           await releaseOrderHolds(tx, orderId, "expired");
           await cancelUnpaidOrder(tx, orderId, "payment_window_expired");
           await insertOutboxEvent(tx, { topic: "order.expired", aggregateType: "order", aggregateId: orderId, payload: { reason: "payment_window_expired" }, dedupeKey: `order.expired:${orderId}` });

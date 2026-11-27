@@ -33,6 +33,15 @@ What is implemented so far. This file grows with each phase.
   - Independent security review done on Phase 3; its findings were fixed in `20261126100300_security_hardening` or are listed as known gaps in [DATABASE.md](DATABASE.md#known-gaps-until-the-phase-10-database-roles).
   - Media types are allow-listed (no SVG, HTML or scripts); banner links must be relative or `https://`.
   - No business data is seeded.
+- **Online payment** (Phase 6b part 6, `src/modules/payments`):
+  - The amount always comes from the order in the database; the browser only learns where to go. Gateway redirect URLs must be `https` on the adapter's own hosts.
+  - Payment is decided only by the server-to-server `verify()` for the exact amount, never by what the callback says. One callback claims an attempt (`initiated`/`redirected` → `verifying`), so replays and concurrent callbacks change nothing; the database also allows one succeeded payment per order and one use of a gateway reference.
+  - An order that stopped awaiting payment (cancelled or expired) is never verified, so the gateway returns the money. Verified money for an order that closed in between, amount mismatches, reused references and forged callbacks are written to `security_events`.
+  - Every callback is logged (append-only, no card data). Gateway credentials live only in server variables named by the provider row's prefix.
+  - One payment per order is checked with the bank at a time (claimed with the order locked); while it is, the order can't expire, be cancelled or start another payment (for up to 30 minutes).
+  - The callback must carry the gateway's own token for the attempt (constant-time compare); verify uses the stored token. Money the bank took that can't be applied (wrong amount, reused reference, order closed) is recorded as owed back: a `payment.refund_required` outbox event and a critical security event.
+  - Rejected callbacks are limited per IP (20 in 10 minutes, counted in `security_events`); after that the route answers 404 and writes nothing. Logged callback parameters are capped in number and length.
+  - The test gateway (`fake`) runs only with `APP_ENV=development` on a local address (localhost or 127.0.0.1); the environment check refuses it in any other environment.
 
 ## Personal data (PII) stored
 
@@ -57,4 +66,6 @@ No national ID numbers are stored.
 - The storefront's static CSP allows inline scripts (Next.js inlines hydration data into pre-rendered pages, and a nonce needs per-request rendering). Hashes of the inline scripts could replace `'unsafe-inline'` later (Phase 9).
 - Resource scopes (categories, warehouses per Store Staff member) have no editing screen until those entities exist (Phase 6).
 - Phase 4 independent security review: no critical findings; the high and medium findings (spoofable IP limits, two-factor lockout race, SMS-code guessing limits, admin lockout abuse) and the low ones on cookies, enrolment races, AES-GCM tag length, session replacement and the CLI check were fixed in the same pull request; the two deferred items (session rows on role change, admin phone numbers) were done in Phase 5.
+- A payment left `verifying` (the gateway didn't answer) waits for reconciliation, which is not built yet; after 30 minutes its order can expire again. Refunds owed (`payment.refund_required`) are made by hand until the refund flow exists.
+- Starting payments has no per-user rate limit; it is bounded by 2 unpaid orders per customer and 10 attempts per order.
 - Phase 10: separate least-privilege database roles for the app and for migrations, encrypted off-site backups.

@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Phase 6b, part 6: online payment, gateway-ready)
+- **Gateway contract** (`src/modules/payments/domain/gateway.ts`, from the iranian-ecommerce skill): initiate, parse callback, verify. Amounts are integer Rial; an adapter converts if its provider counts in Toman. No real provider is connected yet: Zarinpal or Zibal is added from the official docs once the store's merchant and sandbox credentials are supplied (`PAYMENT_PROVIDERS` lists the adapters a server may use; credentials go in `<PREFIX>_*` server variables, never in the database).
+- A **test-only gateway** (`fake`) for development and tests "pays" instantly. The environment check refuses it in production.
+- **Customers** pay for their own unpaid order from the order page (amount from the database, at most 10 attempts per order). The bank page is opened from script, so the strict `form-action 'self'` policy stays.
+- **Callback** `/api/webhooks/payments/<provider>` (GET or POST): the attempt is found by our own reference and checked with the gateway server to server. Only the exact amount counts. One transaction marks the payment succeeded and the order paid, and writes `payment.succeeded` and `order.paid` to the outbox. A replayed or concurrent callback changes nothing. An order that stopped awaiting payment is never verified, so the gateway returns the money. Forged callbacks, amount mismatches and reused references are recorded as security events; every callback is logged.
+- **Admin:** `/admin/payments` lists gateways; a Super Admin (with a fresh MFA check) switches them on or off, audited. The order screen shows an order's payments to admins with `order.view_payment`.
+- Security review fixes: one payment per order is checked with the bank at a time, and while it is the order can't expire, be cancelled or start another payment; callbacks must carry the gateway's token for the attempt; money that can't be applied is recorded as owed back (`payment.refund_required`); rejected callbacks are limited per IP; the test gateway runs only in development on a local address.
+- Tests: unit (190 in total), integration (213 in total, a new payments suite covering payment, replay, two payments at once, decline, wrong amount, forged callbacks, the per-IP limit, cancelled orders, payments in progress and denied access), the checkout E2E now pays through the test gateway.
+
 ### Added (Phase 6b, part 5: customer account)
 - The account page (`/account`) lets a signed-in customer set their name (used to fill in the recipient at checkout) and manage the delivery addresses saved at checkout: make one the default or remove it. Every change is limited to the customer's own rows; another customer's address id has no effect.
 - Tests: integration (204 in total), the checkout E2E now also saves a name and removes the saved address.

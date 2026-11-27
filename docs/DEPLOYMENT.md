@@ -53,6 +53,7 @@ docker build \
 | Docker Hub (`node`, `postgres`, `redis`, `getmeili/meilisearch`) | build / first pull | often blocked or rate-limited | mirror images to a reachable registry (ArvanCloud Container Registry or self-hosted) |
 | GitHub (source, Actions) | development and CI | can be restricted | keep a mirror of the repository |
 | Fonts | never at runtime | n/a | Vazirmatn is bundled in the build |
+| Payment gateway (Zarinpal, Zibal, ...) | online payment, once connected | Iranian gateways, reachable from Iranian hosting; the customer's browser goes to the bank page and back to `/api/webhooks/payments/<provider>` | none yet: orders stay awaiting payment. `PAYMENT_PROVIDERS` lists the adapters; credentials are `<PREFIX>_*` server variables. `fake` is for development and tests only and is refused in production |
 | SMS provider | customer phone sign-in, once chosen | must be an Iranian provider reachable from the server | none yet: phone sign-in is off |
 | Authenticator apps | admins' phones only | offline (TOTP needs no network) | any RFC 6238 app |
 | Google Fonts, CDNs, foreign SaaS | not used | n/a | n/a |

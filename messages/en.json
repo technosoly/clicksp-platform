@@ -1357,7 +1357,36 @@
     "total": "Total",
     "deliverTo": "Deliver to",
     "allOrders": "All your orders",
-    "addressSeparator": ", "
+    "addressSeparator": ", ",
+    "pay": {
+      "awaiting": "Your order is saved and its parts are held for 24 hours. Pay online below to confirm it.",
+      "title": "Pay {total} online",
+      "with": "Pay with {gateway}",
+      "starting": "Starting…",
+      "opening": "Opening the bank page…",
+      "paidReference": "Payment reference:",
+      "gateways": {
+        "fake": "the test gateway"
+      },
+      "last": {
+        "initiated": "Your last payment didn't reach the bank. You can try again.",
+        "redirected": "Your last payment wasn't completed. You can try again.",
+        "verifying": "We're checking your last payment with the bank. Refresh in a minute.",
+        "failed": "Your last payment didn't go through. No money was taken, or the bank returns it within 72 hours. You can try again.",
+        "cancelled": "You left the bank page before paying. You can try again.",
+        "expired": "Your last payment expired. You can try again."
+      },
+      "errors": {
+        "not_found": "Order not found.",
+        "not_payable": "This order no longer awaits payment.",
+        "unavailable": "Online payment is not available right now.",
+        "too_many_attempts": "Too many payment attempts for this order. Please contact the store.",
+        "gateway_error": "The bank's payment page couldn't be opened. Please try again in a few minutes.",
+        "signed_out": "Please sign in again.",
+        "unexpected": "Something went wrong. Please try again.",
+        "payment_in_progress": "Your last payment is still being confirmed by the bank. Refresh in a minute."
+      }
+    }
   },
   "AdminOrders": {
     "title": "Orders",
@@ -1387,10 +1416,50 @@
     "errors": {
       "reason_required": "Write a reason (3 to 500 characters).",
       "not_cancellable": "This order can no longer be cancelled here.",
-      "not_found": "Order not found."
+      "not_found": "Order not found.",
+      "payment_in_progress": "The bank is confirming a payment for this order right now. Try again in a few minutes."
     },
     "messages": {
       "cancelled": "Order cancelled; stock released."
+    },
+    "onlinePaymentReason": "paid online"
+  },
+  "AdminPayments": {
+    "title": "Payments",
+    "intro": "Online payment gateways. A gateway works only after its adapter is added to the site and the store's own merchant credentials are set on the server.",
+    "gatewaysTitle": "Gateways",
+    "gatewaysHelp": "Customers see the gateways that are on, on their unpaid orders.",
+    "none": "No gateway is connected yet. Orders stay awaiting payment until one is.",
+    "on": "On",
+    "off": "Off",
+    "test": "Test only",
+    "notOnServer": "Not set up on this server",
+    "switchOn": "Switch on",
+    "switchOff": "Switch off",
+    "superAdminOnly": "Only a Super Admin can switch gateways on or off.",
+    "connectTitle": "Connecting Zarinpal or Zibal",
+    "connectHelp": "Send the store's merchant code and sandbox access to the developer. They are set as server settings, never typed here, and the gateway is tested in sandbox before it is switched on.",
+    "gateways": {
+      "fake": "Test gateway (development only)"
+    },
+    "orderPayments": "Payments",
+    "noPayments": "No payment yet.",
+    "reference": "Reference:",
+    "status": {
+      "initiated": "Started",
+      "redirected": "At the bank",
+      "verifying": "Being checked",
+      "succeeded": "Paid",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "expired": "Expired"
+    },
+    "messages": {
+      "activated": "Gateway switched on.",
+      "deactivated": "Gateway switched off."
+    },
+    "errors": {
+      "not_found": "This gateway is not set up on this server."
     }
   }
 }

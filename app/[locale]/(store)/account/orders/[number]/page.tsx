@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { PayButton } from "@/components/store/pay-button";
 import { shopLocale } from "@/components/store/shop-locale";
 import { formatCount } from "@/lib/i18n/numbers";
 import { Link, redirect } from "@/lib/i18n/navigation";
 import { formatMoney, subtract } from "@/lib/money";
 import { currentCustomer } from "@/modules/identity/service/current-customer";
+import { myOrderPayments } from "@/modules/payments/service/gateway";
 import { myOrder } from "@/modules/sales/service/checkout";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
 import { provinceName } from "@/modules/shipping/service/provinces";
@@ -29,7 +31,8 @@ export default async function OrderPage({ params }: Props) {
   if (!customer) redirect({ href: "/login", locale });
   const order = await myOrder(customer!, number);
   if (!order) notFound();
-  const [t, unit] = await Promise.all([getTranslations("Orders"), getDisplayUnit()]);
+  const [t, unit, payment] = await Promise.all([getTranslations("Orders"), getDisplayUnit(), myOrderPayments(customer!, number)]);
+  const lastPayment = payment?.payments.at(-1);
   const money = (v: bigint) => formatMoney(v, { locale, unit });
   const address = order.addresses[0];
   const method = order.shippingMethod?.translations.find((x) => x.locale === locale) ?? order.shippingMethod?.translations[0];
@@ -48,7 +51,26 @@ export default async function OrderPage({ params }: Props) {
       </div>
       {order.status === "pending_payment" ? (
         <p role="status" className="rounded-md bg-accent px-3 py-2 text-sm" data-testid="order-awaiting-payment">
-          {t("awaitingPayment")}
+          {payment && payment.gateways.length > 0 ? t("pay.awaiting") : t("awaitingPayment")}
+        </p>
+      ) : null}
+      {order.status === "pending_payment" && lastPayment && lastPayment.status !== "succeeded" ? (
+        <p role="status" className="rounded-md border px-3 py-2 text-sm" data-testid="order-last-payment">
+          {t(`pay.last.${lastPayment.status}`)}
+        </p>
+      ) : null}
+      {order.status === "pending_payment" && payment && payment.gateways.length > 0 ? (
+        <section className="space-y-2 rounded-lg border p-4" data-testid="order-pay">
+          <h2 className="font-semibold">{t("pay.title", { total: money(order.grandTotal) })}</h2>
+          {payment.gateways.map((code) => (
+            <PayButton key={code} orderNumber={order.orderNumber.toString()} provider={code} label={t("pay.with", { gateway: t.has(`pay.gateways.${code}`) ? t(`pay.gateways.${code}`) : code })} />
+          ))}
+        </section>
+      ) : null}
+      {payment?.payments.some((p) => p.status === "succeeded") ? (
+        <p className="text-sm text-muted-foreground" data-testid="order-paid-reference">
+          {t("pay.paidReference")}{" "}
+          <span dir="ltr">{payment.payments.find((p) => p.status === "succeeded")!.reference}</span>
         </p>
       ) : null}
       <ul className="divide-y rounded-lg border" data-testid="order-items">

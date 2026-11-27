@@ -5,7 +5,7 @@ import { recordAudit } from "@/modules/audit/service/audit";
 import { releaseOrderHolds } from "@/modules/inventory/service/stock";
 import type { Actor } from "@/modules/rbac/domain/actor";
 import { authorize, authorizeAny, AuthzError } from "@/modules/rbac/service/authorize";
-import { adminOrder, adminOrderList, cancelUnpaidOrder, insertOutboxEvent, lockUnpaidOrder, setActingUser } from "../repo/order-repo";
+import { adminOrder, adminOrderList, cancelUnpaidOrder, hasPaymentInProgress, insertOutboxEvent, lockUnpaidOrder, setActingUser } from "../repo/order-repo";
 
 /**
  * Orders in the admin. Viewing needs `order.view`, which Store Staff hold
@@ -58,7 +58,7 @@ export async function orderForAdmin(actor: Actor, orderNumber: string) {
   return { order, canCancel: actor.permissions.has("order.cancel") && order.status === "pending_payment" };
 }
 
-export type AdminOrderResult = { status: "ok" } | { status: "not_found" } | { status: "invalid"; field: string } | { status: "not_cancellable" };
+export type AdminOrderResult = { status: "ok" } | { status: "not_found" } | { status: "invalid"; field: string } | { status: "not_cancellable" } | { status: "payment_in_progress" };
 
 /** Cancels an order that awaits payment and gives its stock back. */
 export async function cancelOrderByAdmin(actor: Actor, orderNumber: string, reasonInput: string): Promise<AdminOrderResult> {
@@ -70,13 +70,15 @@ export async function cancelOrderByAdmin(actor: Actor, orderNumber: string, reas
   const order = await adminOrder(db(), BigInt(orderNumber));
   if (!order) return { status: "not_found" };
   const done = await transaction(async (tx) => {
-    if (!(await lockUnpaidOrder(tx, order.id))) return false;
+    if (!(await lockUnpaidOrder(tx, order.id))) return "not_cancellable" as const;
+    // The bank is confirming a payment for it right now: wait for the result.
+    if (await hasPaymentInProgress(tx, order.id)) return "payment_in_progress" as const;
     await setActingUser(tx, userId);
     await releaseOrderHolds(tx, order.id, "released");
     await cancelUnpaidOrder(tx, order.id, reason);
     await recordAudit(tx, actor.meta, { actorUserId: userId, action: "order.cancelled", entityType: "order", entityId: order.id, before: { status: order.status }, after: { status: "cancelled", reason } });
     await insertOutboxEvent(tx, { topic: "order.cancelled", aggregateType: "order", aggregateId: order.id, payload: { orderNumber: order.orderNumber.toString() }, dedupeKey: `order.cancelled:${order.id}` });
-    return true;
+    return "ok" as const;
   });
-  return done ? { status: "ok" } : { status: "not_cancellable" };
+  return { status: done };
 }

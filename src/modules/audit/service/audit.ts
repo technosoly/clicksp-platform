@@ -2,7 +2,7 @@ import "server-only";
 import { db, type DbClient } from "@/lib/db";
 import type { RequestMeta } from "@/lib/http/request-meta";
 import { logger } from "@/lib/logger";
-import { insertAuditLog, insertSecurityEvent } from "../repo/audit-repo";
+import { countSecurityEvents, insertAuditLog, insertSecurityEvent } from "../repo/audit-repo";
 
 const SECRET_KEYS = /password|secret|token|code|hash|otp/i;
 
@@ -73,4 +73,9 @@ export async function recordSecurityEvent(meta: RequestMeta, input: SecurityEven
   } catch (error) {
     logger.error("security event not recorded", { type: input.type, error: String(error) });
   }
+}
+
+/** How many security events of a type this IP caused since a time (for limits counted in PostgreSQL, ADR 0002). */
+export async function countRecentSecurityEvents(type: string, ipAddress: string | null, since: Date): Promise<number> {
+  return countSecurityEvents(db(), { type, ipAddress, since });
 }

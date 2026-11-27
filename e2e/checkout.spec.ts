@@ -53,6 +53,14 @@ async function stockedPart(id: string) {
   return { slug: `e2e-clutch-${id}`, variantId: v!.id };
 }
 
+/** The test-only gateway on, as a Super Admin would switch it on under Admin › Payments. */
+async function fakeGatewayOn() {
+  await sql(
+    `INSERT INTO payment_providers (code, adapter_key, credentials_env_prefix, is_sandbox, is_active) VALUES ('fake', 'fake', 'FAKE', true, true)
+     ON CONFLICT (code) DO UPDATE SET is_active = true, config = '{}'`,
+  );
+}
+
 /** Signs a new customer in by giving the browser a session, as the SMS sign-in would. */
 async function signInCustomer(page: Page): Promise<string> {
   const phone = `+98912${String(Math.floor(Math.random() * 1e7)).padStart(7, "0")}`;
@@ -70,6 +78,7 @@ test("a Business Admin sets up delivery and a customer places an order", async (
   test.setTimeout(120_000);
   const id = randomUUID().slice(0, 8);
   const { slug } = await stockedPart(id);
+  await fakeGatewayOn();
 
   await signInBusinessAdmin(page);
   await page.goto("/en/admin/shipping");
@@ -124,6 +133,7 @@ test("a Business Admin sets up delivery and a customer places an order", async (
   await page.getByTestId("checkout-submit").click();
 
   await expect(page).toHaveURL(/\/en\/account\/orders\/\d+$/);
+  const orderUrl = new URL(page.url()).pathname;
   await expect(page.getByTestId("order-status")).toHaveText("Awaiting payment");
   await expect(page.getByTestId("order-total")).toHaveText("150,000 Toman");
   await expect(page.getByTestId("order-address")).toContainText("8134567890");
@@ -142,6 +152,14 @@ test("a Business Admin sets up delivery and a customer places an order", async (
   await expect(page.getByTestId("account-name").getByLabel("Your name")).toHaveValue("E2E Rider");
   await page.getByTestId("account-address-remove").click();
   await expect(page.getByTestId("account-address")).toHaveCount(0);
+
+  // Paying online: the (test) bank sends the customer back, and the order is paid.
+  await page.goto(orderUrl);
+  await page.getByTestId("order-pay-submit").click();
+  await expect(page.getByTestId("order-status")).toHaveText("Paid");
+  await expect(page).toHaveURL(new RegExp(`${orderUrl}$`));
+  await expect(page.getByTestId("order-paid-reference")).toContainText("FAKE");
+  await expect(page.getByTestId("order-pay")).toHaveCount(0);
 });
 
 test("a guest is asked to sign in before checkout", async ({ page }) => {
