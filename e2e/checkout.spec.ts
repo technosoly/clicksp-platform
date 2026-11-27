@@ -163,6 +163,7 @@ test("a Business Admin sets up delivery and a customer places an order", async (
 
   // A Business Admin packs and ships it with the carrier's tracking code.
   const orderNumber = orderUrl.split("/").pop()!;
+  const customerCookies = await page.context().cookies();
   await page.context().clearCookies();
   await signInBusinessAdmin(page);
   await page.goto(`/en/admin/orders/${orderNumber}`);
@@ -172,6 +173,47 @@ test("a Business Admin sets up delivery and a customer places an order", async (
   await page.getByTestId("admin-order-ship-submit").click();
   await expect(page.getByTestId("admin-order-shipments")).toContainText("IR123456789");
   await expect(page.getByTestId("admin-order-deliver")).toBeVisible();
+  await page.getByTestId("admin-order-deliver-submit").click();
+  await expect(page.getByTestId("admin-order-deliver")).toHaveCount(0);
+  const adminCookies = await page.context().cookies();
+
+  // The customer sends one unit back.
+  await page.context().clearCookies();
+  await page.context().addCookies(customerCookies);
+  await page.goto(orderUrl);
+  await expect(page.getByTestId("order-status")).toHaveText("Delivered");
+  const ask = page.getByTestId("return-form");
+  await ask.getByRole("textbox").first().fill("1");
+  await ask.getByLabel("Why are you returning it?").selectOption({ label: "Defective" });
+  await page.getByTestId("return-submit").click();
+  // The page updates at once: the request is listed and the form is gone.
+  await expect(page.getByTestId("order-return")).toContainText("Requested");
+  await expect(page.getByTestId("order-status")).toHaveText("Return requested");
+  await expect(page.getByTestId("return-form")).toHaveCount(0);
+
+  // The admin approves, receives it back on sale, and records the refund.
+  await page.context().clearCookies();
+  await page.context().addCookies(adminCookies);
+  await page.goto("/en/admin/returns?status=requested");
+  await page.getByTestId("admin-return-row").filter({ hasText: `Order ${orderNumber}` }).getByRole("link").first().click();
+  await page.getByTestId("admin-return-approve-submit").click();
+  await expect(page.getByTestId("admin-return-status")).toHaveText("Approved, waiting for the goods");
+  await page.getByTestId("admin-return-receive-submit").click();
+  await expect(page.getByTestId("admin-return-status")).toHaveText("Goods received");
+  // The suggestion is the unit's price: 50,000 Toman.
+  await expect(page.getByLabel("Amount (Toman)")).toHaveValue("50000");
+  await page.getByLabel("Paid back by").selectOption({ label: "Bank transfer" });
+  await page.getByTestId("admin-return-refund-submit").click();
+  await expect(page.getByTestId("admin-return-status")).toHaveText("Completed");
+  await expect(page.getByTestId("admin-return-refunds")).toContainText("50,000 Toman");
+  await page.goto(`/en/admin/orders/${orderNumber}`);
+  await expect(page.getByTestId("admin-order-refund")).toContainText("Refunded 50,000 Toman");
+
+  await page.context().clearCookies();
+  await page.context().addCookies(customerCookies);
+  await page.goto(orderUrl);
+  await expect(page.getByTestId("order-status")).toHaveText("Delivered");
+  await expect(page.getByTestId("order-refund")).toContainText("Refunded 50,000 Toman");
 });
 
 test("a guest is asked to sign in before checkout", async ({ page }) => {

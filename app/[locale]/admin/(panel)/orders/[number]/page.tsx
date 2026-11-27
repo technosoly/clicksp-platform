@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { ActionForm } from "@/components/admin/action-form";
-import { Card, Field, PageHeader } from "@/components/admin/admin-ui";
+import { Card, Field, PageHeader, selectClass } from "@/components/admin/admin-ui";
 import { Input } from "@/components/ui/input";
 import { formatCount } from "@/lib/i18n/numbers";
 import { Link } from "@/lib/i18n/navigation";
@@ -9,7 +10,10 @@ import { formatMoney } from "@/lib/money";
 import { adminPage } from "@/modules/identity/api/admin-page";
 import { orderPaymentsForAdmin } from "@/modules/payments/service/payments-admin";
 import { cancelOrderAction, fulfilOrderAction } from "@/modules/sales/api/order-admin-actions";
+import { refundAction } from "@/modules/sales/api/return-actions";
+import { REFUND_METHODS } from "@/modules/sales/domain/returns";
 import { orderForAdmin } from "@/modules/sales/service/orders-admin";
+import { orderRefundsForAdmin } from "@/modules/sales/service/returns";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
 import { provinceName } from "@/modules/shipping/service/provinces";
 
@@ -21,13 +25,14 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ loc
     raw,
     async (actor) => {
       const found = await orderForAdmin(actor, number);
-      return found ? { ...found, payments: await orderPaymentsForAdmin(actor, found.order.id) } : null;
+      return found ? { ...found, payments: await orderPaymentsForAdmin(actor, found.order.id), money: await orderRefundsForAdmin(actor, found.order.id) } : null;
     },
     `/admin/orders/${number}`,
   );
   if (!data) notFound();
   const { order, canCancel, payments, fulfilStep, shipments } = data;
   const p = await getTranslations("AdminPayments");
+  const r = await getTranslations("AdminReturns");
   const [t, s, o, unit] = await Promise.all([getTranslations("AdminOrders"), getTranslations("Orders.status"), getTranslations("Orders"), getDisplayUnit()]);
   const money = (v: bigint) => formatMoney(v, { locale, unit });
   const date = new Intl.DateTimeFormat(locale === "fa" ? "fa-IR-u-ca-persian" : "en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Tehran" });
@@ -105,6 +110,54 @@ export default async function AdminOrderPage({ params }: { params: Promise<{ loc
               ))}
             </ul>
           )}
+        </Card>
+      ) : null}
+      {data.money && (data.money.returns.length > 0 || data.money.refunds.length > 0) ? (
+        <Card title={r("orderTitle")} testId="admin-order-returns">
+          <ul className="divide-y text-sm">
+            {data.money.returns.map((ret) => (
+              <li key={ret.id} className="flex flex-wrap gap-3 py-1.5">
+                <Link href={`/admin/returns/${ret.returnNumber}`} className="font-semibold underline">
+                  {r("returnNumber", { number: ret.returnNumber.toString() })}
+                </Link>
+                <span>{r(`status.${ret.status}`)}</span>
+                <span>{r(`reasons.${ret.reason}`)}</span>
+              </li>
+            ))}
+            {data.money.refunds.map((ref) => (
+              <li key={ref.id} className="flex flex-wrap gap-3 py-1.5" data-testid="admin-order-refund">
+                <span className="font-semibold">{r("refunded", { amount: money(ref.amount) })}</span>
+                <span>{r(`methods.${ref.method}`)}</span>
+                <span>{date.format(ref.createdAt)}</span>
+                {ref.createdBy.name ? <span>{ref.createdBy.name}</span> : null}
+                <span className="text-muted-foreground">{ref.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+      {data.money?.canRefund ? (
+        <Card title={r("refundTitle")} description={r("orderRefundHelp", { remaining: money(data.money.remaining) })}>
+          <ActionForm action={refundAction} submitLabel={r("refund")} submitVariant="outline" testId="admin-order-refund-form" namespace="AdminReturns">
+            <input type="hidden" name="orderNumber" value={order.orderNumber.toString()} />
+            <input type="hidden" name="idempotencyKey" value={randomUUID()} />
+            <input type="hidden" name="unit" value={unit} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label={r("amount", { unit: r(`unit.${unit}`) })} htmlFor="order-refund-amount">
+                <Input id="order-refund-amount" name="amount" inputMode="numeric" dir="ltr" required />
+              </Field>
+              <Field label={r("method")} htmlFor="order-refund-method">
+                <select id="order-refund-method" name="method" className={selectClass}>
+                  {REFUND_METHODS.map((m) => (
+                    <option key={m} value={m}>{r(`methods.${m}`)}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={r("reason")} htmlFor="order-refund-reason">
+                <Input id="order-refund-reason" name="reason" maxLength={500} required />
+              </Field>
+            </div>
+          </ActionForm>
         </Card>
       ) : null}
       {fulfilStep ? (

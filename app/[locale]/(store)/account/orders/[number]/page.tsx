@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { PayButton } from "@/components/store/pay-button";
+import { ReturnRequestForm } from "@/components/store/return-request-form";
 import { shopLocale } from "@/components/store/shop-locale";
 import { formatCount } from "@/lib/i18n/numbers";
 import { Link, redirect } from "@/lib/i18n/navigation";
@@ -9,6 +10,7 @@ import { formatMoney, subtract } from "@/lib/money";
 import { currentCustomer } from "@/modules/identity/service/current-customer";
 import { myOrderPayments } from "@/modules/payments/service/gateway";
 import { myOrder, myOrderShipments } from "@/modules/sales/service/checkout";
+import { myOrderReturns } from "@/modules/sales/service/returns";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
 import { provinceName } from "@/modules/shipping/service/provinces";
 
@@ -31,7 +33,7 @@ export default async function OrderPage({ params }: Props) {
   if (!customer) redirect({ href: "/login", locale });
   const order = await myOrder(customer!, number);
   if (!order) notFound();
-  const [t, unit, payment, shipments] = await Promise.all([getTranslations("Orders"), getDisplayUnit(), myOrderPayments(customer!, number), myOrderShipments(customer!, number)]);
+  const [t, unit, payment, shipments, returns] = await Promise.all([getTranslations("Orders"), getDisplayUnit(), myOrderPayments(customer!, number), myOrderShipments(customer!, number), myOrderReturns(customer!, number)]);
   const lastPayment = payment?.payments.at(-1);
   const money = (v: bigint) => formatMoney(v, { locale, unit });
   const address = order.addresses[0];
@@ -108,6 +110,36 @@ export default async function OrderPage({ params }: Props) {
           </li>
         ))}
       </ul>
+      {returns && (returns.returns.length > 0 || returns.refunds.length > 0 || returns.returnable.length > 0 || returns.closedReason) ? (
+        <section className="space-y-3 rounded-lg border p-4 text-sm" data-testid="order-returns">
+          <h2 className="font-semibold">{t("returns.title")}</h2>
+          {returns.returns.map((r) => (
+            <p key={r.id} data-testid="order-return">
+              {t("returns.line", { number: r.returnNumber.toString(), status: t(`returns.status.${r.status}`) })}
+              {r.adminNote && r.status === "rejected" ? ` · ${r.adminNote}` : ""}
+            </p>
+          ))}
+          {returns.refunds.map((r) => (
+            <p key={r.id} data-testid="order-refund">
+              {t("returns.refunded", { amount: money(r.amount) })}
+            </p>
+          ))}
+          {returns.returnable.length > 0 ? (
+            <>
+              <p className="text-muted-foreground">{t("returns.help")}</p>
+              <ReturnRequestForm
+                orderNumber={order.orderNumber.toString()}
+                lines={returns.returnable.map((l) => {
+                  const item = order.items.find((i) => i.id === l.orderItemId)!;
+                  return { orderItemId: l.orderItemId, title: (locale === "en" ? item.titleEn : null) ?? item.titleFa, sku: item.sku, max: l.max };
+                })}
+              />
+            </>
+          ) : returns.closedReason === "window" ? (
+            <p className="text-muted-foreground">{t("returns.windowClosed")}</p>
+          ) : null}
+        </section>
+      ) : null}
       <dl className="grid grid-cols-[1fr_auto] gap-y-1 rounded-lg border p-4 text-sm">
         <dt>{t("goods")}</dt>
         <dd>{money(subtract(order.subtotal, order.discountTotal))}</dd>

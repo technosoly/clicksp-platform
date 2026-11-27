@@ -59,7 +59,8 @@
       "technical": "Technical",
       "account": "My account",
       "warehouses": "Warehouses",
-      "imports": "Product import"
+      "imports": "Product import",
+      "returns": "Returns"
     },
     "welcome": "Welcome, {name}",
     "yourRole": "Your role",
@@ -1516,6 +1517,49 @@
         "returned": "Returned",
         "cancelled": "Cancelled"
       }
+    },
+    "returns": {
+      "title": "Returns",
+      "help": "You can send back goods within 7 days of delivery. Choose how many of each and tell us why; we'll get back to you.",
+      "line": "Return {number}: {status}",
+      "refunded": "Refunded {amount}",
+      "windowClosed": "The 7-day return period for this order has ended.",
+      "status": {
+        "requested": "Requested",
+        "approved": "Approved, waiting for the goods",
+        "rejected": "Rejected",
+        "received": "Goods received",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      },
+      "reasons": {
+        "wrong_fitment": "Doesn't fit my motorcycle",
+        "defective": "Defective",
+        "damaged_in_transit": "Damaged in delivery",
+        "wrong_item": "Wrong item sent",
+        "not_as_described": "Not as described",
+        "changed_mind": "Changed my mind",
+        "other": "Other"
+      },
+      "upTo": "Up to {count}",
+      "reason": "Why are you returning it?",
+      "chooseReason": "Choose a reason",
+      "note": "Anything else we should know? (optional)",
+      "submit": "Ask for a return",
+      "sending": "Sending…",
+      "requested": "Your return request was sent. We'll check it and let you know.",
+      "errors": {
+        "reason_required": "Choose a reason.",
+        "nothing_selected": "Enter how many of at least one item you want to return.",
+        "invalid_quantity": "Quantities are whole numbers.",
+        "invalid_text": "The note is too long.",
+        "too_much": "That is more than you can return of an item.",
+        "window_closed": "The 7-day return period has ended.",
+        "wrong_status": "This order already has a return in progress, or can't be returned now. Reload the page.",
+        "not_found": "Order not found.",
+        "signed_out": "Please sign in again.",
+        "unexpected": "Something went wrong. Please try again."
+      }
     }
   },
   "AdminOrders": {
@@ -1792,5 +1836,98 @@
       "cancelled": "The import was cancelled."
     },
     "uploaderConfirms": "Only the admin who uploaded this file can confirm it. You can cancel it."
+  },
+  "AdminReturns": {
+    "title": "Returns",
+    "intro": "Customers' return requests. Approve or reject them, receive the goods and refund the customer.",
+    "filter": "Filter by status",
+    "all": "All",
+    "empty": "No returns.",
+    "returnNumber": "Return {number}",
+    "forOrder": "Order {number}",
+    "back": "All returns",
+    "status": {
+      "requested": "Requested",
+      "approved": "Approved, waiting for the goods",
+      "rejected": "Rejected",
+      "received": "Goods received",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "reasons": {
+      "wrong_fitment": "Doesn't fit my motorcycle",
+      "defective": "Defective",
+      "damaged_in_transit": "Damaged in delivery",
+      "wrong_item": "Wrong item sent",
+      "not_as_described": "Not as described",
+      "changed_mind": "Changed my mind",
+      "other": "Other"
+    },
+    "methods": {
+      "bank_transfer": "Bank transfer",
+      "cash": "Cash",
+      "gateway": "Payment gateway"
+    },
+    "help": {
+      "requested": "Check the request, then approve it so the customer sends the goods, or reject it with a reason the customer will see.",
+      "approved": "When the goods arrive, mark which units can be sold again and where they go.",
+      "rejected": "This request was rejected.",
+      "received": "The goods are here. Refund the customer, or close the return if no money is due (for example an exchange).",
+      "completed": "This return is finished.",
+      "cancelled": "This return was cancelled."
+    },
+    "adminNote": "Note: {note}",
+    "items": "Items",
+    "units": "{count, plural, one {# unit} other {# units}}",
+    "receive": "Goods received",
+    "receiveHelp": "Untick items that can't be sold again. Ticked items go back on the chosen shelf.",
+    "restock": "Back on sale",
+    "location": "Shelf",
+    "condition": "Condition (optional)",
+    "restocked": "Back on sale",
+    "notRestocked": "Not resold",
+    "decideTitle": "Decide",
+    "approve": "Approve",
+    "reject": "Reject",
+    "rejectNote": "Why (the customer sees this)",
+    "refundTitle": "Refund the customer",
+    "refundHelp": "Pay the money back by bank transfer or in cash first, then record it here. Up to {remaining} can still be refunded.",
+    "orderRefundHelp": "Pay the money back by bank transfer or in cash first, then record it here, for example when a paid order can't be sent. Up to {remaining} can still be refunded. A full refund closes the order and releases its stock.",
+    "amount": "Amount ({unit})",
+    "unit": {
+      "toman": "Toman",
+      "rial": "Rial"
+    },
+    "suggested": "Value of the returned goods: {amount}",
+    "method": "Paid back by",
+    "reason": "Reason",
+    "defaultReason": "Return {number}",
+    "refund": "Record refund",
+    "closeTitle": "Close without a refund",
+    "closeHelp": "Use this when no money is due, for example when the customer got a replacement.",
+    "close": "Close return",
+    "refunds": "Refunds",
+    "orderTitle": "Returns and refunds",
+    "refunded": "Refunded {amount}",
+    "errors": {
+      "note_required": "Write why the request is rejected.",
+      "invalid_text": "That text is too long.",
+      "invalid_location": "Choose an active shelf for each item going back on sale.",
+      "wrong_status": "This was already changed by someone else. Reload the page.",
+      "not_found": "Not found.",
+      "invalid_amount": "Enter an amount greater than zero.",
+      "invalid_method": "Choose how the money was paid back.",
+      "reason_required": "Write a reason (at least 3 characters).",
+      "too_much": "That is more than is left to refund on this order.",
+      "invalid": "Something is not right. Reload the page and try again.",
+      "unit_changed": "The store's price unit changed while this form was open. Reload the page and enter the amount again."
+    },
+    "messages": {
+      "approve": "Approved.",
+      "reject": "Rejected.",
+      "close": "Return closed.",
+      "received": "Received. Stock is updated.",
+      "refunded": "Refund recorded."
+    }
   }
 }
