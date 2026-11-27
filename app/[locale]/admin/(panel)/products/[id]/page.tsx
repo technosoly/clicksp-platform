@@ -27,6 +27,8 @@ import { listProductImagesForAdmin } from "@/modules/catalog/service/product-ima
 import { getProductForAdmin } from "@/modules/catalog/service/products";
 import { CatalogImage } from "@/components/media/catalog-image";
 import { FitmentCard } from "@/components/admin/fitment-card";
+import { StockCard } from "@/components/admin/stock-card";
+import { productStockForAdmin } from "@/modules/inventory/service/stock";
 import { fitmentForAdmin } from "@/modules/compatibility/service/fitment";
 import { motorcyclePicker } from "@/modules/vehicles/service/motorcycles";
 import { adminPage } from "@/modules/identity/api/admin-page";
@@ -55,6 +57,7 @@ export default async function AdminProductPage({
         detail,
         images: await listProductImagesForAdmin(actor, id),
         fitment,
+        stock: await productStockForAdmin(actor, id),
         picker: fitment?.can.manage ? await motorcyclePicker(actor) : [],
         categories: editable ? await categoryOptions(actor, "product.update") : [],
         brands: editable ? await brandOptions(actor) : [],
@@ -303,6 +306,8 @@ export default async function AdminProductPage({
           </ActionForm>
         ) : null}
       </Card>
+
+      {data.stock ? <StockCard productId={product.id} stock={data.stock} locale={loc} /> : null}
 
       {data.fitment ? <FitmentCard productId={product.id} fitment={data.fitment} picker={data.picker} locale={locale} /> : null}
 

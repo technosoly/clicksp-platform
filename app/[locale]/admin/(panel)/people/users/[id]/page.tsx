@@ -16,12 +16,14 @@ import {
   revokeAdminSessionsAction,
   setAdminStatusAction,
   setCategoryScopesAction,
+  setWarehouseScopesAction,
   updateAdminUserAction,
 } from "@/modules/identity/api/people-actions";
 import { categoryName } from "@/components/admin/catalog-fields";
 import { permissionLabel } from "@/components/admin/permission-label";
 import { categoryOptions } from "@/modules/catalog/service/categories";
-import { assignableRoles, getCategoryScopes, getManagedAdmin } from "@/modules/identity/service/admin-users";
+import { assignableRoles, getCategoryScopes, getManagedAdmin, getWarehouseScopes } from "@/modules/identity/service/admin-users";
+import { warehouseChoices } from "@/modules/inventory/service/stock";
 
 export default async function AdminUserPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
   const { locale, id } = await params;
@@ -30,10 +32,12 @@ export default async function AdminUserPage({ params }: { params: Promise<{ loca
     locale,
     async (actor) => {
       const detail = await getManagedAdmin(actor, id);
-      if (detail.status !== "ok") return { detail, roles: [], scopes: null, categories: [] };
+      if (detail.status !== "ok") return { detail, roles: [], scopes: null, categories: [], warehouseScopes: null, warehouses: [] };
       const scopes = await getCategoryScopes(actor, id);
       const categories = scopes && scopes.length > 0 && actor.permissions.has("product.view") ? await categoryOptions(actor, "product.view") : [];
-      return { detail, roles: await assignableRoles(actor), scopes, categories };
+      const warehouseScopes = await getWarehouseScopes(actor, id);
+      const warehouses = warehouseScopes && warehouseScopes.length > 0 ? await warehouseChoices(actor) : [];
+      return { detail, roles: await assignableRoles(actor), scopes, categories, warehouseScopes, warehouses };
     },
     `/admin/people/users/${id}`,
   );
@@ -112,6 +116,27 @@ export default async function AdminUserPage({ params }: { params: Promise<{ loca
                     <label key={c.id} className="flex items-center gap-2 text-sm" style={{ paddingInlineStart: `${c.depth * 0.75}rem` }}>
                       <input type="checkbox" name="category" value={c.id} defaultChecked={data.scopes!.some((s) => s.categoryIds.includes(c.id))} />
                       {categoryName(c, locale)}
+                    </label>
+                  ))}
+                </div>
+              </ActionForm>
+            )}
+          </Card>
+        ) : null}
+
+        {data.warehouseScopes && data.warehouseScopes.length > 0 ? (
+          <Card title={t("warehouseScopeTitle")} description={t("warehouseScopeHelp")} className="lg:col-span-2" testId="admin-user-warehouse-scopes">
+            {data.warehouses.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("warehouseScopeNone")}</p>
+            ) : (
+              <ActionForm action={setWarehouseScopesAction} submitLabel={t("saveScope")} testId="admin-user-warehouse-scope-form" namespace="AdminPeople">
+                {hidden}
+                <p className="text-xs text-muted-foreground">{t("scopeKeys", { keys: [...new Set(data.warehouseScopes.flatMap((s) => s.scopedKeys))].map((k) => permissionLabel(tPerm, k)).join(locale === "fa" ? "، " : ", ") })}</p>
+                <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {data.warehouses.map((w) => (
+                    <label key={w.id} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" name="warehouse" value={w.id} defaultChecked={data.warehouseScopes!.some((s) => s.ids.includes(w.id))} />
+                      <span dir="ltr">{w.code}</span> {w.name}
                     </label>
                   ))}
                 </div>

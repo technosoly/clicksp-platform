@@ -18,7 +18,7 @@ export async function q<T extends Record<string, unknown>>(text: string, params:
   return (await pool.query<T>(text, params)).rows;
 }
 
-export async function actorFor(level: Level, scopeCategoryIds: string[] = []): Promise<Actor & { userId: string }> {
+export async function actorFor(level: Level, scopeCategoryIds: string[] = [], scopeWarehouseIds: string[] = []): Promise<Actor & { userId: string }> {
   const client = await pool.connect();
   try {
     const user = await one<{ id: string }>(client, "INSERT INTO users (username, name) VALUES ($1, 'TEST ADMIN') RETURNING id", [`test-adm-${uid().toLowerCase()}`]);
@@ -30,6 +30,9 @@ export async function actorFor(level: Level, scopeCategoryIds: string[] = []): P
     );
     for (const categoryId of scopeCategoryIds) {
       await client.query("INSERT INTO user_role_scopes (user_role_id, scope_type, category_id) VALUES ($1, 'category', $2)", [ur.id, categoryId]);
+    }
+    for (const warehouseId of scopeWarehouseIds) {
+      await client.query("INSERT INTO user_role_scopes (user_role_id, scope_type, warehouse_id) VALUES ($1, 'warehouse', $2)", [ur.id, warehouseId]);
     }
     return { kind: "admin", userId: user.id, sessionId: null, level: LEVEL[level], permissions: await loadEffectivePermissions(user.id), mfaVerifiedAt: new Date(), meta: meta() };
   } finally {

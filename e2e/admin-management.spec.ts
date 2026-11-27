@@ -160,8 +160,10 @@ test.describe("managing accounts", () => {
     // Products open, but with no categories assigned yet the list is empty.
     await staffPage.goto("/en/admin/products");
     await expect(staffPage.getByTestId("admin-products-empty")).toBeVisible();
+    // Inventory opens too, but with no warehouses assigned it shows nothing.
     await staffPage.goto("/en/admin/inventory");
-    await expect(staffPage.getByTestId("admin-section-upcoming")).toBeVisible();
+    await expect(staffPage.getByTestId("admin-inventory-empty")).toBeVisible();
+    await expectForbidden(staffPage, "/en/admin/warehouses");
 
     // Back as Super Admin: the account shows up, can be disabled, and is then signed out.
     await page.goto("/en/admin/people/users");

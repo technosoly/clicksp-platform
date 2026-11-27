@@ -312,39 +312,59 @@ export async function revokeOtherSessions(client: DbClient, userId: string, keep
  * The account's role assignments whose role grants category-scoped
  * permissions, with those permission keys and the current category scope.
  */
-export async function listCategoryScopedAssignments(client: DbClient, userId: string) {
+export type ScopeKind = "category" | "warehouse";
+
+/** The account's role assignments holding permissions scoped by `kind`, with their current scope ids. */
+export async function listScopedAssignments(client: DbClient, userId: string, kind: ScopeKind) {
   const rows = await client.userRole.findMany({
-    where: { userId, role: { level: { gte: 1, lte: 3 }, permissions: { some: { isScoped: true, permission: { scopeType: "category" } } } } },
+    where: { userId, role: { level: { gte: 1, lte: 3 }, permissions: { some: { isScoped: true, permission: { scopeType: kind } } } } },
     select: {
       id: true,
       role: {
         select: {
           key: true,
           name: true,
-          permissions: { where: { isScoped: true, permission: { scopeType: "category" } }, select: { permission: { select: { key: true } } } },
+          permissions: { where: { isScoped: true, permission: { scopeType: kind } }, select: { permission: { select: { key: true } } } },
         },
       },
-      scopes: { where: { scopeType: "category" }, select: { categoryId: true } },
+      scopes: { where: { scopeType: kind }, select: { categoryId: true, warehouseId: true } },
     },
   });
   return rows.map((r) => ({
     userRoleId: r.id,
     role: { key: r.role.key, name: r.role.name },
     scopedKeys: r.role.permissions.map((p) => p.permission.key),
-    categoryIds: r.scopes.map((s) => s.categoryId).filter((v): v is string => v !== null),
+    ids: r.scopes.map((s) => (kind === "category" ? s.categoryId : s.warehouseId)).filter((v): v is string => v !== null),
   }));
 }
 
-/** Replaces the category scope of one role assignment. */
-export async function replaceCategoryScopes(client: DbClient, userRoleId: string, categoryIds: string[]): Promise<void> {
-  await client.userRoleScope.deleteMany({ where: { userRoleId, scopeType: "category", categoryId: { notIn: categoryIds } } });
+export async function listCategoryScopedAssignments(client: DbClient, userId: string) {
+  return (await listScopedAssignments(client, userId, "category")).map(({ ids, ...rest }) => ({ ...rest, categoryIds: ids }));
+}
+
+/** Replaces the category or warehouse scope of one role assignment. */
+export async function replaceScopes(client: DbClient, userRoleId: string, kind: ScopeKind, ids: string[]): Promise<void> {
+  const column = kind === "category" ? "categoryId" : "warehouseId";
+  await client.userRoleScope.deleteMany({ where: { userRoleId, scopeType: kind, [column]: { notIn: ids } } });
   const existing = new Set(
-    (await client.userRoleScope.findMany({ where: { userRoleId, scopeType: "category" }, select: { categoryId: true } })).map((s) => s.categoryId),
+    (await client.userRoleScope.findMany({ where: { userRoleId, scopeType: kind }, select: { categoryId: true, warehouseId: true } })).map((s) =>
+      kind === "category" ? s.categoryId : s.warehouseId,
+    ),
   );
-  const missing = categoryIds.filter((id) => !existing.has(id));
+  const missing = ids.filter((id) => !existing.has(id));
   if (missing.length > 0) {
-    await client.userRoleScope.createMany({ data: missing.map((categoryId) => ({ userRoleId, scopeType: "category" as const, categoryId })) });
+    await client.userRoleScope.createMany({ data: missing.map((id) => ({ userRoleId, scopeType: kind, [column]: id })) });
   }
+}
+
+export async function replaceCategoryScopes(client: DbClient, userRoleId: string, categoryIds: string[]): Promise<void> {
+  await replaceScopes(client, userRoleId, "category", categoryIds);
+}
+
+export async function existingWarehouseIds(client: DbClient, ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await client.warehouse.findMany({ where: { id: { in: ids } }, select: { id: true } });
+  return rows.map((r) => r.id);
 }
 
 export async function existingCategoryIds(client: DbClient, ids: string[]): Promise<string[]> {
