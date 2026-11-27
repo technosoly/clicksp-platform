@@ -46,7 +46,15 @@ export async function orderForAdmin(actor: Actor, orderNumber: string) {
     return null;
   }
   const warehouseIds = [...new Set(order.reservations.map((r) => r.balance.warehouseId))];
-  await authorize(actor, "order.view", { type: "order", id: order.id, warehouseIds });
+  try {
+    await authorize(actor, "order.view", { type: "order", id: order.id, warehouseIds });
+  } catch (error) {
+    // Staff outside the order's warehouses get "not found", not "forbidden",
+    // so order numbers don't reveal other warehouses' orders (the denial is
+    // still recorded as a security event by authorize).
+    if (error instanceof AuthzError && actor.permissions.has("order.view")) return null;
+    throw error;
+  }
   return { order, canCancel: actor.permissions.has("order.cancel") && order.status === "pending_payment" };
 }
 

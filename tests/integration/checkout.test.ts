@@ -185,6 +185,7 @@ describe("checkout", () => {
     expect(await q("SELECT status FROM stock_reservations WHERE order_id = $1", [order.id])).toEqual([{ status: "expired" }]);
     const [history] = await q<{ reason: string }>("SELECT reason FROM order_status_history WHERE order_id = $1 AND to_status = 'cancelled'", [order.id]);
     expect(history!.reason).toBe("payment_window_expired");
+    expect(await q("SELECT topic FROM outbox_events WHERE aggregate_id = $1 ORDER BY seq", [order.id])).toEqual([{ topic: "order.placed" }, { topic: "order.expired" }]);
     // The unit can be bought again.
     const next = await customer();
     ok(await addToCart(next, { variantId: p.variantId, quantity: "1" }));
@@ -228,7 +229,8 @@ describe("orders in the admin", () => {
 
     const elsewhere = await actorFor("store_staff", [], [(await q<{ id: string }>("INSERT INTO warehouses (code, name) VALUES ($1, 'TEST') RETURNING id", [`X-${uid()}`.toUpperCase().slice(0, 30)]))[0]!.id]);
     expect((await ordersForAdmin(elsewhere, null)).rows.some((o) => o.orderNumber === placed.orderNumber)).toBe(false);
-    await expect(orderForAdmin(elsewhere, number)).rejects.toBeInstanceOf(AuthzError);
+    // Outside their warehouses an order looks like it doesn't exist.
+    expect(await orderForAdmin(elsewhere, number)).toBeNull();
     await expect(ordersForAdmin({ ...ba, kind: "customer" }, null)).rejects.toBeInstanceOf(AuthzError);
 
     expect(await cancelOrderByAdmin(ba, number, "x")).toEqual({ status: "invalid", field: "reason_required" });
@@ -239,5 +241,25 @@ describe("orders in the admin", () => {
     expect(detail.order.reservations.map((r) => r.status)).toEqual(["released"]);
     expect(detail.order.statusHistory.at(-1)).toMatchObject({ toStatus: "cancelled", reason: "TEST customer asked" });
     expect(await q("SELECT action FROM audit_logs WHERE entity_id = $1", [detail.order.id])).toEqual([{ action: "order.cancelled" }]);
+  });
+
+  it("shows Store Staff an order split across warehouses only if they cover all of them", async () => {
+    const { ba, methodId, locationId } = await setup();
+    const p = await part(1);
+    const second = ok(await createWarehouse(ba, { code: `K2-${uid()}`.toUpperCase().slice(0, 30), name: "TEST", city: "", address: "", phone: "", priority: "500", isActive: true }));
+    const secondLocation = (await getWarehouseForAdmin(ba, second.id))!.locations[0]!.id;
+    ok(await recordMovement(ba, p.productId, { kind: "receive", variantId: p.variantId, locationId: secondLocation, quantity: "1", reference: "", reason: "", adjustmentReason: "" }));
+    const c = await customer();
+    ok(await addToCart(c, { variantId: p.variantId, quantity: "2" }));
+    const placed = ok(await placeOrder(c, address(methodId), "fa"));
+    const number = placed.orderNumber.toString();
+    const [{ warehouse_id: firstWarehouse }] = (await q<{ warehouse_id: string }>("SELECT warehouse_id FROM warehouse_locations WHERE id = $1", [locationId])) as [{ warehouse_id: string }];
+
+    const one = await actorFor("store_staff", [], [firstWarehouse]);
+    expect((await ordersForAdmin(one, null)).rows.some((o) => o.orderNumber === placed.orderNumber)).toBe(false);
+    expect(await orderForAdmin(one, number)).toBeNull();
+    const both = await actorFor("store_staff", [], [firstWarehouse, second.id]);
+    expect((await ordersForAdmin(both, null)).rows.some((o) => o.orderNumber === placed.orderNumber)).toBe(true);
+    expect((await orderForAdmin(both, number))?.order.reservations).toHaveLength(2);
   });
 });

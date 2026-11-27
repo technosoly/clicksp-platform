@@ -323,5 +323,12 @@ export async function reserveVariantForOrder(tx: Tx, input: { orderId: string; v
 
 /** Ends an order's active stock holds (released or expired); the trigger gives the stock back. */
 export async function closeOrderHolds(tx: Tx, orderId: string, status: "released" | "expired"): Promise<void> {
+  // Lock the balances in the same order checkout does (variant, then location) so they can't deadlock.
+  await tx.$queryRaw`
+    SELECT 1 FROM inventory_balances b
+      JOIN stock_reservations r ON r.variant_id = b.variant_id AND r.location_id = b.location_id
+     WHERE r.order_id = ${orderId}::uuid AND r.status = 'active'
+     ORDER BY b.variant_id, b.location_id
+       FOR UPDATE OF b`;
   await tx.stockReservation.updateMany({ where: { orderId, status: "active" }, data: { status } });
 }

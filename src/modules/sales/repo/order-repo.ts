@@ -187,16 +187,19 @@ export async function customerOrders(client: DbClient, userId: string, take: num
 
 // Admin ----------------------------------------------------------------------------
 
-/** Orders with stock held or taken in these warehouses (null = every order). */
+/** Orders whose stock is held or taken only in these warehouses (null = every order). */
 const inWarehouses = (warehouseIds: readonly string[] | null): Prisma.OrderWhereInput =>
-  warehouseIds === null ? {} : { reservations: { some: { balance: { warehouseId: { in: [...warehouseIds] } } } } };
+  warehouseIds === null
+    ? {}
+    : // Every hold in their warehouses, and at least one: the same rule as the order screen.
+      { AND: [{ reservations: { some: { balance: { warehouseId: { in: [...warehouseIds] } } } } }, { reservations: { none: { balance: { warehouseId: { notIn: [...warehouseIds] } } } } }] };
 
 export async function adminOrderList(client: DbClient, warehouseIds: readonly string[] | null, status: OrderStatus | null, take: number) {
   return client.order.findMany({
     where: { ...inWarehouses(warehouseIds), ...(status ? { status } : {}) },
     orderBy: [{ placedAt: "desc" }, { id: "desc" }],
     take,
-    select: { id: true, orderNumber: true, status: true, grandTotal: true, placedAt: true, customerName: true, customerPhone: true, _count: { select: { items: true } } },
+    select: { id: true, orderNumber: true, status: true, grandTotal: true, placedAt: true, customerName: true, _count: { select: { items: true } } },
   });
 }
 

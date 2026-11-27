@@ -1,5 +1,6 @@
 import "server-only";
 import { db, transaction } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import { multiply, type Rial } from "@/lib/money";
 import { lockVariantPrices, type ShopLocale } from "@/modules/catalog/service/storefront";
 import type { CurrentCustomer } from "@/modules/identity/service/current-customer";
@@ -45,14 +46,24 @@ function cartWeight(cart: CartView): number {
  */
 export async function expireUnpaidOrders(now = new Date(), batch = 20): Promise<number> {
   let done = 0;
-  for (const orderId of await expiredUnpaidOrders(db(), now, batch)) {
-    const cancelled = await transaction(async (tx) => {
-      if (!(await lockUnpaidOrder(tx, orderId))) return false;
-      await releaseOrderHolds(tx, orderId, "expired");
-      await cancelUnpaidOrder(tx, orderId, "payment_window_expired");
-      return true;
-    });
-    if (cancelled) done += 1;
+  try {
+    for (const orderId of await expiredUnpaidOrders(db(), now, batch)) {
+      try {
+        const cancelled = await transaction(async (tx) => {
+          if (!(await lockUnpaidOrder(tx, orderId))) return false;
+          await releaseOrderHolds(tx, orderId, "expired");
+          await cancelUnpaidOrder(tx, orderId, "payment_window_expired");
+          await insertOutboxEvent(tx, { topic: "order.expired", aggregateType: "order", aggregateId: orderId, payload: { reason: "payment_window_expired" }, dedupeKey: `order.expired:${orderId}` });
+          return true;
+        });
+        if (cancelled) done += 1;
+      } catch (error) {
+        // Housekeeping never blocks a checkout; the next run tries again.
+        logger.error("Expiring an unpaid order failed", { orderId, error: String(error) });
+      }
+    }
+  } catch (error) {
+    logger.error("Finding expired unpaid orders failed", { error: String(error) });
   }
   return done;
 }
