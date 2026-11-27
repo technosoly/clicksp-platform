@@ -109,6 +109,26 @@ export async function usableLocation(client: DbClient, locationId: string) {
   return row && row.isActive && row.warehouse.isActive ? { id: row.id, warehouseId: row.warehouseId } : null;
 }
 
+/**
+ * Inside the movement's transaction: locks the location and its warehouse
+ * (FOR SHARE) and confirms both are still active, so a location switched
+ * off at the same moment can't receive the movement.
+ */
+export async function lockUsableLocation(tx: Tx, locationId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<{ ok: boolean }[]>`
+    SELECT (l.is_active AND w.is_active) AS ok
+      FROM warehouse_locations l JOIN warehouses w ON w.id = l.warehouse_id
+     WHERE l.id = ${locationId}::uuid
+       FOR SHARE OF l, w`;
+  return rows[0]?.ok === true;
+}
+
+/** Whether a location (or every location of a warehouse) still holds stock or reservations. */
+export async function holdsStock(client: DbClient, where: { locationId: string } | { warehouseId: string }): Promise<boolean> {
+  const count = await client.inventoryBalance.count({ where: { ...where, OR: [{ onHand: { gt: 0 } }, { reserved: { gt: 0 } }] } });
+  return count > 0;
+}
+
 // Products and stock -----------------------------------------------------------
 
 export async function variantOfProduct(client: DbClient, variantId: string) {
@@ -154,7 +174,7 @@ export async function movementsFor(client: DbClient, variantIds: readonly string
       occurredAt: true,
       warehouse: { select: { code: true } },
       balance: { select: { location: { select: { code: true } } } },
-      actor: { select: { name: true, username: true } },
+      actor: { select: { name: true } },
     },
   });
 }
@@ -219,11 +239,25 @@ export async function insertAppliedAdjustment(
 // Overview ---------------------------------------------------------------------
 
 /** Stock per variant and warehouse, most recently changed first, optionally filtered by SKU. */
-export async function stockOverview(client: DbClient, warehouseIds: readonly string[] | null, skuNormalized: string | null, take: number) {
+export async function stockOverview(
+  client: DbClient,
+  warehouseIds: readonly string[] | null,
+  categoryIds: readonly string[] | null,
+  skuNormalized: string | null,
+  take: number,
+) {
+  // A product is in a category scope only when all its categories are (and it has one).
+  const inCategories =
+    categoryIds === null
+      ? {}
+      : {
+          primaryCategoryId: { in: [...categoryIds] },
+          categories: { every: { categoryId: { in: [...categoryIds] } } },
+        };
   return client.inventoryBalance.findMany({
     where: {
       ...inWarehouses(warehouseIds),
-      variant: { deletedAt: null, ...(skuNormalized ? { skuNormalized: { contains: skuNormalized } } : {}) },
+      variant: { deletedAt: null, ...(skuNormalized ? { skuNormalized: { contains: skuNormalized } } : {}), product: { deletedAt: null, ...inCategories } },
     },
     orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
     take,

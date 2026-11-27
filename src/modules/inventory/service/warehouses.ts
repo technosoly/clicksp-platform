@@ -8,6 +8,7 @@ import {
   databaseMessage,
   getLocation,
   getWarehouse,
+  holdsStock,
   insertLocation,
   insertWarehouse,
   isUniqueViolation,
@@ -77,6 +78,7 @@ export async function updateWarehouse(actor: Actor, id: string, input: Warehouse
   if (!parsed.success) return { status: "invalid", field: first(parsed.error.issues) };
   const before = await getWarehouse(db(), id);
   if (!before) return { status: "not_found" };
+  if (before.isActive && !parsed.data.isActive && (await holdsStock(db(), { warehouseId: id }))) return { status: "invalid", field: "holds_stock" };
   const beforeRow = { code: before.code, name: before.name, city: before.city, address: before.address, phone: before.phone, priority: before.priority, isActive: before.isActive };
   return write(actor, userId, "warehouse.updated", "warehouse", async (tx) => {
     await updateWarehouseRow(tx, id, parsed.data);
@@ -100,6 +102,7 @@ export async function updateLocation(actor: Actor, warehouseId: string, id: stri
   if (!parsed.success) return { status: "invalid", field: first(parsed.error.issues) };
   // The default location can be replaced by making another one default, not switched off.
   if (before.isDefault && !parsed.data.isDefault) return { status: "invalid", field: "default_location_required" };
+  if (before.isActive && !parsed.data.isActive && (await holdsStock(db(), { locationId: id }))) return { status: "invalid", field: "holds_stock" };
   return write(actor, userId, "warehouse.location_updated", "warehouse_location", async (tx) => {
     await updateLocationRow(tx, id, warehouseId, parsed.data);
     return { id, before };

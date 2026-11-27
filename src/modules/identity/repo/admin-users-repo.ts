@@ -361,12 +361,6 @@ export async function replaceCategoryScopes(client: DbClient, userRoleId: string
   await replaceScopes(client, userRoleId, "category", categoryIds);
 }
 
-export async function existingWarehouseIds(client: DbClient, ids: string[]): Promise<string[]> {
-  if (ids.length === 0) return [];
-  const rows = await client.warehouse.findMany({ where: { id: { in: ids } }, select: { id: true } });
-  return rows.map((r) => r.id);
-}
-
 export async function existingCategoryIds(client: DbClient, ids: string[]): Promise<string[]> {
   if (ids.length === 0) return [];
   const rows = await client.category.findMany({ where: { id: { in: ids }, deletedAt: null }, select: { id: true } });

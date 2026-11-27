@@ -9,7 +9,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - **Warehouses a Store Staff member works in**, ticked on their account screen. Staff see and move stock only there.
 - **Stock** on the product screen: on hand, reserved and available per warehouse and location; receive goods (with an optional document number), issue goods (with a note), and for Super and Business Admins adjust up or down with a reason; the last 30 movements with who and when. Stock can never go below zero or below what open orders hold, even when two people record at once.
 - **Inventory** (`/admin/inventory`): stock across your warehouses, searchable by SKU.
-- Tests: unit (180 in total), integration on PostgreSQL (174 in total), E2E (50 in total, desktop and mobile).
+- Security review fixes: recording a movement also checks the product's categories, the inventory list shows only products in your categories, history shows names but not sign-in usernames, stocked locations and warehouses can't be switched off, and a location switched off mid-entry is refused.
+- Tests: unit (180 in total), integration on PostgreSQL (177 in total), E2E (50 in total, desktop and mobile).
 
 ### Added (Phase 6, part 2b: motorcycles and fitment)
 - **Motorcycles** (`/admin/motorcycles`): makers, brands, models (with type), model years (generations) and engine versions (cc, engine, cooling, fuel system, market). Model years can be typed as solar years (1398) or Gregorian (2019); they are stored Gregorian.

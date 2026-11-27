@@ -1100,7 +1100,8 @@
       "adjustment_reason_required": "Choose a reason for the adjustment.",
       "invalid_adjustment_reason": "Choose a reason from the list.",
       "insufficient_stock": "Not enough stock there. Stock can't go below zero or below what open orders hold.",
-      "not_found": "Not found."
+      "not_found": "Not found.",
+      "holds_stock": "It still holds stock or reservations. Move or issue the stock first."
     }
   }
 }

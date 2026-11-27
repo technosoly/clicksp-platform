@@ -5,15 +5,17 @@ import { recordAudit } from "@/modules/audit/service/audit";
 import { productCategoriesForAuthorization } from "@/modules/catalog/service/products";
 import type { Actor } from "@/modules/rbac/domain/actor";
 import { decide } from "@/modules/rbac/domain/authorize";
-import { authorize, AuthzError } from "@/modules/rbac/service/authorize";
+import { authorize, authorizeAny, AuthzError } from "@/modules/rbac/service/authorize";
 import { MOVEMENT_KINDS, MOVEMENT_PERMISSION, movementInputSchema, type MovementInput, type MovementKind } from "../domain/inventory-input";
 import {
   balancesFor,
   listWarehouses,
   databaseMessage,
+  existingWarehouseIds,
   insertAppliedAdjustment,
   insertMovement,
   locationsIn,
+  lockUsableLocation,
   movementsFor,
   productVariantIds,
   stockOverview,
@@ -80,8 +82,13 @@ export async function productStockForAdmin(actor: Actor, productId: string) {
   return { variants, balances, movements, locations: recordable, kinds };
 }
 
+class LocationClosed extends Error {}
+
 function failure(error: unknown): MovementResult {
+  if (error instanceof LocationClosed) return { status: "invalid", field: "invalid_location" };
   const message = databaseMessage(error);
+  // Balances are whole numbers in PostgreSQL integer range.
+  if (message.includes("out of range for type integer") || message.includes("22003")) return { status: "invalid", field: "invalid_quantity" };
   if (message.includes("inventory_balances_on_hand_non_negative") || message.includes("inventory_balances_reserved_le_on_hand")) {
     return { status: "insufficient_stock" };
   }
@@ -99,11 +106,16 @@ export async function recordMovement(actor: Actor, productId: string, input: Mov
   if (!location) return { status: "invalid", field: "invalid_location" };
   const permission = MOVEMENT_PERMISSION[data.kind];
   await authorize(actor, permission, { type: "warehouse", id: location.warehouseId, warehouseIds: [location.warehouseId] });
-  const variant = UUID.test(productId) ? await variantOfProduct(db(), data.variantId) : null;
+  // The product must also be in the actor's categories, as on the stock card.
+  const categoryIds = UUID.test(productId) ? await productCategoriesForAuthorization(productId) : null;
+  if (!categoryIds) return { status: "not_found" };
+  await authorize(actor, "product.view", { type: "product", id: productId, categoryIds }, { stepUp: false });
+  const variant = await variantOfProduct(db(), data.variantId);
   if (!variant || variant.productId !== productId) return { status: "not_found" };
 
   try {
     return await transaction(async (tx) => {
+      if (!(await lockUsableLocation(tx, location.id))) throw new LocationClosed();
       const common = { variantId: data.variantId, locationId: location.id, warehouseId: location.warehouseId, actorUserId: userId };
       let id: string;
       let onHandAfter: number;
@@ -145,10 +157,13 @@ export async function recordMovement(actor: Actor, productId: string, input: Mov
 /** Stock across the warehouses the actor may view, optionally filtered by SKU. */
 export async function inventoryOverview(actor: Actor, skuInput = "") {
   adminId(actor, "inventory.view");
-  const scope = warehouseScope(actor, "inventory.view");
-  if (scope === undefined) await authorize(actor, "inventory.view", { type: "warehouse" }, { stepUp: false });
+  await authorizeAny(actor, ["inventory.view"], "inventory");
+  const scope = warehouseScope(actor, "inventory.view") ?? null;
+  // Products are listed only where the actor may see them (product.view, by category).
+  const productGrant = actor.permissions.get("product.view");
+  const categoryIds = !productGrant ? [] : productGrant.unscoped ? null : [...productGrant.categoryIds];
   const sku = normalizeIdentifier(normalizeForStorage(toEnDigits(skuInput))).slice(0, 64);
-  const rows = await stockOverview(db(), scope ?? null, sku || null, OVERVIEW);
+  const rows = await stockOverview(db(), scope, categoryIds, sku || null, OVERVIEW);
   return { rows, sku: skuInput.slice(0, 64), limited: rows.length === OVERVIEW };
 }
 
@@ -159,7 +174,16 @@ export async function inventoryOverview(actor: Actor, skuInput = "") {
 export async function warehouseChoices(actor: Actor) {
   const scope = warehouseScope(actor, "inventory.view");
   if (scope === undefined) return [];
+  await authorizeAny(actor, ["inventory.view"], "inventory");
   return listWarehouses(db(), scope);
+}
+
+/**
+ * Which of these ids are warehouses. For other modules' input checks (the
+ * staff scope screen); the caller authorizes its own action.
+ */
+export async function existingWarehouses(ids: readonly string[]): Promise<string[]> {
+  return existingWarehouseIds(db(), ids);
 }
 
 export type { MovementKind };

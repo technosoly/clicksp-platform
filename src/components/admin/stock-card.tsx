@@ -142,7 +142,7 @@ export async function StockCard({ productId, stock, locale }: { productId: strin
                 {m.referenceCode ? <span dir="ltr">{m.referenceCode}</span> : null}
                 {m.reason ? <span>{m.reason}</span> : null}
                 <span className="ms-auto text-xs text-muted-foreground">
-                  {[m.actor?.name || m.actor?.username, formatDate(m.occurredAt, locale, { dateStyle: "medium", timeStyle: "short" })].filter(Boolean).join(" · ")}
+                  {[m.actor?.name, formatDate(m.occurredAt, locale, { dateStyle: "medium", timeStyle: "short" })].filter(Boolean).join(" · ")}
                 </span>
               </li>
             ))}

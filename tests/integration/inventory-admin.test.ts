@@ -233,3 +233,65 @@ describe("stock movements", () => {
     expect(await recordMovement(ba, a.productId, move("receive", a.variantId, w.locationId, 1))).toEqual({ status: "invalid", field: "invalid_location" });
   });
 });
+
+describe("inventory follows category scopes too", () => {
+  it("staff can't record or see stock of products outside their categories", async () => {
+    const ba = await actorFor("business_admin");
+    const w = await warehouse(ba);
+    const theirs = await product(ba);
+    const foreign = await product(ba);
+    ok(await recordMovement(ba, foreign.productId, move("receive", foreign.variantId, w.locationId, 5)));
+    ok(await recordMovement(ba, theirs.productId, move("receive", theirs.variantId, w.locationId, 2)));
+    const staff = await actorFor("store_staff", [theirs.categoryId], [w.warehouseId]);
+
+    await expect(recordMovement(staff, foreign.productId, move("issue", foreign.variantId, w.locationId, 5, { reason: "TEST" }))).rejects.toBeInstanceOf(AuthzError);
+    await expect(productStockForAdmin(staff, foreign.productId)).rejects.toBeInstanceOf(AuthzError);
+    const [balance] = await q<{ on_hand: number }>("SELECT on_hand FROM inventory_balances WHERE variant_id = $1", [foreign.variantId]);
+    expect(balance?.on_hand).toBe(5);
+    const denied = await q("SELECT 1 FROM security_events WHERE user_id = $1 AND type = 'authz.denied' AND details->>'permission' = 'product.view'", [staff.userId]);
+    expect(denied.length).toBeGreaterThan(0);
+
+    const ids = (await inventoryOverview(staff, "")).rows.map((r) => r.variant.product.id);
+    expect(ids).toContain(theirs.productId);
+    expect(ids).not.toContain(foreign.productId);
+    // History names people by their name only, never their sign-in username.
+    const stock = await productStockForAdmin(staff, theirs.productId);
+    expect(Object.keys(stock!.movements[0]!.actor!)).toEqual(["name"]);
+  });
+
+  it("issues can't take reserved stock; stocked locations can't be switched off; Super Admins can do everything", async () => {
+    const sa = await actorFor("super_admin");
+    const w = await warehouse(sa);
+    const { productId, variantId } = await product(sa);
+    ok(await recordMovement(sa, productId, move("receive", variantId, w.locationId, 3)));
+    const [cart] = await q<{ id: string }>("INSERT INTO carts (guest_token_hash) VALUES (encode(sha256(gen_random_uuid()::text::bytea), 'hex')) RETURNING id");
+    await q("INSERT INTO stock_reservations (variant_id, location_id, cart_id, quantity, expires_at) VALUES ($1, $2, $3, 2, now() + interval '20 minutes')", [variantId, w.locationId, cart!.id]);
+    expect(await recordMovement(sa, productId, move("issue", variantId, w.locationId, 2, { reason: "TEST" }))).toEqual({ status: "insufficient_stock" });
+    ok(await recordMovement(sa, productId, move("issue", variantId, w.locationId, 1, { reason: "TEST" })));
+    ok(await recordMovement(sa, productId, move("adjust_plus", variantId, w.locationId, 4, { adjustmentReason: "found" })));
+
+    const detail = await getWarehouseForAdmin(sa, w.warehouseId);
+    const shelf = ok(await createLocation(sa, w.warehouseId, { code: "B-1", description: "", isDefault: false, isActive: true }));
+    // An empty location can be switched off and on again.
+    ok(await updateLocation(sa, w.warehouseId, shelf.id, { code: "B-1", description: "", isDefault: false, isActive: false }));
+    ok(await updateLocation(sa, w.warehouseId, shelf.id, { code: "B-1", description: "", isDefault: false, isActive: true }));
+    ok(await recordMovement(sa, productId, move("receive", variantId, shelf.id, 1)));
+    expect(await updateLocation(sa, w.warehouseId, shelf.id, { code: "B-1", description: "", isDefault: false, isActive: false })).toEqual({ status: "invalid", field: "holds_stock" });
+    expect(await updateWarehouse(sa, w.warehouseId, warehouseInput({ code: detail!.code, isActive: false }))).toEqual({ status: "invalid", field: "holds_stock" });
+  });
+
+  it("Store Staff can't open a warehouse or edit its locations", async () => {
+    const ba = await actorFor("business_admin");
+    const w = await warehouse(ba);
+    const staff = await actorFor("store_staff", [], [w.warehouseId]);
+    await expect(getWarehouseForAdmin(staff, w.warehouseId)).rejects.toBeInstanceOf(AuthzError);
+    await expect(updateLocation(staff, w.warehouseId, w.locationId, { code: "MAIN", description: "", isDefault: true, isActive: true })).rejects.toBeInstanceOf(AuthzError);
+    // A Business Admin can't scope another Business Admin's account.
+    const otherBa = await actorFor("business_admin");
+    await expect(setWarehouseScopes(ba, otherBa.userId, [w.warehouseId])).rejects.toBeInstanceOf(AuthzError);
+    // Clearing a staff member's warehouses leaves them with none.
+    ok(await setWarehouseScopes(ba, staff.userId, []));
+    const rows = await q("SELECT 1 FROM user_role_scopes s JOIN user_roles ur ON ur.id = s.user_role_id WHERE ur.user_id = $1 AND s.scope_type = 'warehouse'", [staff.userId]);
+    expect(rows).toHaveLength(0);
+  });
+});

@@ -1,4 +1,5 @@
 import "server-only";
+import { existingWarehouses } from "@/modules/inventory/service/stock";
 import { db, transaction } from "@/lib/db";
 import { randomToken, sha256Hex } from "@/lib/security/tokens";
 import { recordAudit, recordSecurityEvent } from "@/modules/audit/service/audit";
@@ -31,7 +32,6 @@ import {
   listRoleGrants,
   replaceScopes,
   listScopedAssignments,
-  existingWarehouseIds,
   type ScopeKind,
   listUserAdminGrants,
   replaceAdminRole,
@@ -414,7 +414,7 @@ async function setScopes(actor: Actor, userId: string, kind: ScopeKind, idsInput
   if (userId === actor.userId) return { status: "self" };
   const requested = [...new Set(idsInput.filter((id) => IS_UUID.test(id)))];
   if (requested.length !== idsInput.length || requested.length > 200) return { status: "invalid", field: invalid };
-  const ids = kind === "category" ? await existingCategoryIds(db(), requested) : await existingWarehouseIds(db(), requested);
+  const ids = kind === "category" ? await existingCategoryIds(db(), requested) : await existingWarehouses(requested);
   if (ids.length !== requested.length) return { status: "invalid", field: invalid };
   const assignments = await listScopedAssignments(db(), userId, kind);
   if (assignments.length === 0) return { status: "invalid", field: "no_scoped_role" };
