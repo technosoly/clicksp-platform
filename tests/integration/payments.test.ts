@@ -34,7 +34,7 @@ async function startAndReturn(c: Awaited<ReturnType<typeof customer>>, number: s
   return { started, back: () => handleGatewayCallback("fake", new Request(started.redirectUrl), meta()) };
 }
 
-const topics = async (...ids: string[]) => (await q<{ topic: string }>("SELECT topic FROM outbox_events WHERE aggregate_id = ANY($1::uuid[]) ORDER BY id", [ids])).map((r) => r.topic);
+const topics = async (...ids: string[]) => (await q<{ topic: string }>("SELECT topic FROM outbox_events WHERE aggregate_id = ANY($1::uuid[]) ORDER BY seq", [ids])).map((r) => r.topic);
 
 describe("payment settings", () => {
   it("only a Super Admin switches gateways; Business Admins see them; Store Staff are refused", async () => {

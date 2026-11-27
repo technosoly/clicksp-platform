@@ -20,6 +20,17 @@ Upload limits and caching to set at the reverse proxy (Phase 10):
 - Server Actions accept bodies up to 11 MB (`next.config.ts`) so admins can upload photos; Next.js applies that limit to every Server Action. Cap request bodies at the proxy at 1 MB everywhere except `/fa/admin/*` and `/en/admin/*` (nginx `client_max_body_size`), so anonymous requests can't send large bodies.
 - `/media/*` responses are `immutable` for a year. A removed image stops being served by the app at once, but copies already in browsers or a proxy cache stay until they expire; purge the proxy cache when an image must disappear immediately.
 
+## Background jobs and search
+
+- **Jobs** run inside every app process (`instrumentation.ts`), with pg-boss 12.40 (https://pgboss.io) keeping its queue in the same PostgreSQL database, schema `pgboss` (created on first start; include it in backups, as `pg_dump` of the whole database does). pg-boss sends each scheduled job once however many app processes run. Times are Tehran time:
+  - `outbox-dispatch`, every minute: hands outbox events to the module that handles their topic. Events no module handles yet wait in `outbox_events`. A failing event is retried with a growing delay (30 s doubling, at most an hour) and after 10 attempts is left as `failed` with its last error, for a person to look at.
+  - `orders-expire`, every 5 minutes: releases the stock of unpaid orders whose payment window has passed.
+  - `search-rebuild`, 03:30 every night, and once on the first start with a search engine: rebuilds the product index.
+  - `JOBS_ENABLED=false` turns the runner off (for example in a one-off maintenance container).
+  - If the database isn't reachable when the app starts, the runner keeps retrying (1 minute, doubling to 10 minutes) while the site serves. `/api/health` shows its state in `jobs` (`running`, `starting`, `retrying` or `off`); alert when it isn't `running`.
+  - The database role needs permission to create the `pgboss` schema on the first start (see ADR 0003).
+- **Search**: set `MEILISEARCH_HOST` and `MEILISEARCH_API_KEY` (server-only) to use Meilisearch v1.58. A database trigger writes a `search.product_changed` outbox event whenever a product, its texts, variants or part numbers change, so the index follows within about a minute. Without Meilisearch, or when it doesn't answer within 1.5 seconds, the storefront searches the database instead, so search never goes down with it. Give the app a scoped key instead of the master key: create it once with the master key (`POST /keys` with `actions` `["search", "documents.add", "documents.delete", "indexes.create", "indexes.get", "indexes.delete", "indexes.swap", "settings.update", "tasks.get"]` and `indexes` `["products", "products_rebuild"]`) and set it as `MEILISEARCH_APP_KEY` for Compose. Run Meilisearch with `MEILI_ENV=production` on a server. Brand names are part of the index; a renamed brand shows its new name in search after the nightly rebuild.
+
 ## Authentication settings
 
 - `AUTH_SECRET` (required in production, at least 32 characters): encrypts TOTP secrets and keys SMS-code hashes. Keep it in the server's secret store, back it up with the database, and do not rotate it casually: a new value makes existing two-factor enrolments unreadable (admins must enrol again).

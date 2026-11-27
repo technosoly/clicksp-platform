@@ -22,6 +22,8 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  // The job runner (instrumentation.ts) loads pg-boss from node_modules at run time.
+  serverExternalPackages: ["pg-boss"],
   reactStrictMode: true,
   // forbidden() and forbidden.tsx: admin pages answer 403 to a typed URL the
   // admin has no permission for (Next.js 16, still marked experimental).

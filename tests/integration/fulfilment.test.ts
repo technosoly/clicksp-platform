@@ -70,7 +70,7 @@ describe("packing and shipping paid orders", () => {
     const history = await q<{ to_status: string; actor_user_id: string }>("SELECT to_status, actor_user_id FROM order_status_history WHERE order_id = $1 ORDER BY created_at, id", [order.id]);
     expect(history.map((h) => h.to_status)).toEqual(["pending_payment", "paid", "processing", "shipped", "delivered"]);
     expect(history.slice(2).every((h) => h.actor_user_id === staff.userId)).toBe(true);
-    expect((await q<{ topic: string }>("SELECT topic FROM outbox_events WHERE aggregate_id = $1 ORDER BY id", [order.id])).map((r) => r.topic)).toEqual(["order.placed", "order.shipped", "order.delivered"]);
+    expect((await q<{ topic: string }>("SELECT topic FROM outbox_events WHERE aggregate_id = $1 ORDER BY seq", [order.id])).map((r) => r.topic)).toEqual(["order.placed", "order.shipped", "order.delivered"]);
     expect((await q<{ action: string }>("SELECT action FROM audit_logs WHERE entity_id = $1 ORDER BY id", [order.id])).map((r) => r.action)).toEqual(["order.processing", "order.shipped", "order.delivered"]);
   });
 

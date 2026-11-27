@@ -10,3 +10,11 @@ process.env.SMS_PROVIDER = "none";
 process.env.PAYMENT_PROVIDERS = "fake";
 // Uploaded images go to a throwaway folder.
 process.env.MEDIA_STORAGE_DIR = `${process.env.TMPDIR ?? "/tmp"}/clicksp-test-media`;
+// Search engine tests run when a Meilisearch for tests is given (CI runs one); otherwise the database search answers.
+if (process.env.TEST_MEILISEARCH_HOST) {
+  process.env.MEILISEARCH_HOST = process.env.TEST_MEILISEARCH_HOST;
+  process.env.MEILISEARCH_API_KEY = process.env.TEST_MEILISEARCH_API_KEY ?? "";
+} else {
+  delete process.env.MEILISEARCH_HOST;
+  delete process.env.MEILISEARCH_API_KEY;
+}

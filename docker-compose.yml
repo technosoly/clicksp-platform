@@ -85,7 +85,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-clicksp}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-clicksp}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       MEILISEARCH_HOST: http://meilisearch:7700
-      MEILISEARCH_API_KEY: ${MEILI_MASTER_KEY}
+      # A scoped key (see docs/DEPLOYMENT.md); falls back to the master key for local runs.
+      MEILISEARCH_API_KEY: ${MEILISEARCH_APP_KEY:-${MEILI_MASTER_KEY}}
       MEDIA_STORAGE_DIR: /app/.data/media
     volumes:
       - media-data:/app/.data/media

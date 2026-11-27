@@ -650,7 +650,8 @@ describe("authorize(): every permission for each admin level", () => {
     await expect(authorize(staff, "role.manage", { type: "role", id: undefined })).rejects.toBeInstanceOf(AuthzError);
     const event = await one<{ details: { permission: string; reason: string } }>(
       pool as never,
-      "SELECT details FROM security_events WHERE type = 'authz.denied' AND user_id = $1 ORDER BY occurred_at DESC LIMIT 1",
+      // This actor was refused many permissions above; look for this denial by its permission.
+      "SELECT details FROM security_events WHERE type = 'authz.denied' AND user_id = $1 AND details->>'permission' = 'role.manage' ORDER BY occurred_at DESC LIMIT 1",
       [staff.userId],
     );
     expect(event.details).toMatchObject({ permission: "role.manage", reason: "not_granted" });
