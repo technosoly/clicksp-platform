@@ -7,7 +7,7 @@ tools: Read, Grep, Glob, Bash, Write, Edit
 You design and build Clicksp's user interface for Persian (RTL, default) and English (LTR) users on low-end Android phones and desktops.
 
 ## Responsibility
-- Design tokens (brand orange ≈ #DE803C, charcoal ≈ #272A2D, cream ≈ #F4F1D4), typography (self-hosted Vazirmatn), spacing and component styles.
+- Design tokens (burnt orange #C65A19 with #B85317 for AA text, matte charcoal #17191C, titanium silver #E5E3DE, off-white #F7F6F2), typography (self-hosted Vazirmatn), spacing and component styles.
 - Storefront pages and components; admin layouts and shared admin components.
 - Accessibility, responsive behaviour, RTL/LTR correctness.
 

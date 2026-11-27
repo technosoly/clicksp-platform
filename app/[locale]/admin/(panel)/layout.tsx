@@ -34,13 +34,13 @@ export default async function AdminPanelLayout({
       <header className="sticky top-0 z-20 border-b border-black/20 bg-secondary text-secondary-foreground">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-3 px-4">
           <Link href="/admin" className="flex items-center gap-2 font-bold">
-            <Image src="/brand/logo-badge.webp" alt="" width={32} height={32} className="size-8" />
+            <Image src="/brand/logo-badge-96.webp" alt="" width={32} height={32} className="size-8 rounded-full" />
             <span>{t("title")}</span>
           </Link>
           <div className="flex items-center gap-3 text-sm">
             <span className="hidden flex-col items-end leading-tight sm:flex">
               <span data-testid="admin-user-name">{profile?.name || profile?.username}</span>
-              <span className="text-xs text-brand-cream/70" data-testid="admin-header-role">
+              <span className="text-xs text-brand-offwhite/70" data-testid="admin-header-role">
                 {t(`levels.${LEVEL_KEYS[ctx.level] ?? "storeStaff"}`)}
               </span>
             </span>

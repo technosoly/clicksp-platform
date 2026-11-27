@@ -48,7 +48,7 @@ const SHOW: Record<string, string> = {
 const showClass = (v: Visibility) => SHOW[(["mobile", "tablet", "desktop"] as const).map((b) => (v.breakpoints.includes(b) ? "1" : "0")).join("")] ?? "";
 
 const TONE = {
-  charcoal: "bg-brand-charcoal text-brand-cream",
+  charcoal: "bg-brand-charcoal text-brand-offwhite",
   orange: "bg-brand-orange-strong text-white",
   light: "bg-accent text-accent-foreground",
 } as const;

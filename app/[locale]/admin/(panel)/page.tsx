@@ -26,11 +26,11 @@ export default async function AdminDashboardPage({ params }: { params: Promise<{
     <>
       <section className="overflow-hidden rounded-xl border bg-secondary text-secondary-foreground">
         <div className="flex flex-col gap-1 p-5 sm:p-6">
-          <p className="text-sm text-brand-cream/70">{t(`levels.${levelKey}`)}</p>
+          <p className="text-sm text-brand-offwhite/70">{t(`levels.${levelKey}`)}</p>
           <h1 className="text-2xl font-bold" data-testid="admin-dashboard-heading">
             {t("welcome", { name: profile?.name || profile?.username || "" })}
           </h1>
-          <p className="text-brand-cream/80">{t(`levelIntro.${levelKey}`)}</p>
+          <p className="text-brand-offwhite/80">{t(`levelIntro.${levelKey}`)}</p>
         </div>
         <div className="h-1 bg-brand-orange" />
       </section>
