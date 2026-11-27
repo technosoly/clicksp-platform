@@ -4,7 +4,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { shopLocale } from "@/components/store/shop-locale";
 import { formatCount } from "@/lib/i18n/numbers";
 import { Link, redirect } from "@/lib/i18n/navigation";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, subtract } from "@/lib/money";
 import { currentCustomer } from "@/modules/identity/service/current-customer";
 import { myOrder } from "@/modules/sales/service/checkout";
 import { getDisplayUnit } from "@/modules/settings/service/catalog-settings";
@@ -69,7 +69,7 @@ export default async function OrderPage({ params }: Props) {
       </ul>
       <dl className="grid grid-cols-[1fr_auto] gap-y-1 rounded-lg border p-4 text-sm">
         <dt>{t("goods")}</dt>
-        <dd>{money(order.subtotal - order.discountTotal)}</dd>
+        <dd>{money(subtract(order.subtotal, order.discountTotal))}</dd>
         <dt>{method ? t("shippingVia", { method: method.name }) : t("shipping")}</dt>
         <dd>{order.shippingTotal === 0n ? t("free") : money(order.shippingTotal)}</dd>
         {order.taxTotal > 0n ? (
@@ -87,7 +87,7 @@ export default async function OrderPage({ params }: Props) {
         <section className="space-y-1 rounded-lg border p-4 text-sm" data-testid="order-address">
           <h2 className="font-semibold">{t("deliverTo")}</h2>
           <p>{address.recipientName}</p>
-          <p>{[address.provinceCode ? provinceName(address.provinceCode, locale) : address.province, address.city, address.addressLine].join("، ")}</p>
+          <p>{[address.provinceCode ? provinceName(address.provinceCode, locale) : address.province, address.city, address.addressLine].join(t("addressSeparator"))}</p>
           <p dir="ltr" className="text-start">
             {address.postalCode} · {address.phone}
           </p>

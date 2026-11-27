@@ -8,6 +8,7 @@ import { decide } from "@/modules/rbac/domain/authorize";
 import { authorize, authorizeAny, AuthzError } from "@/modules/rbac/service/authorize";
 import { MOVEMENT_KINDS, MOVEMENT_PERMISSION, movementInputSchema, type MovementInput, type MovementKind } from "../domain/inventory-input";
 import {
+  closeOrderHolds,
   reserveVariantForOrder,
   availableByVariant,
   balancesFor,
@@ -226,4 +227,9 @@ export async function reserveForOrder(tx: Parameters<typeof reserveVariantForOrd
     if (!(await reserveVariantForOrder(tx, { orderId, variantId: line.variantId, quantity: line.quantity, expiresAt }))) return false;
   }
   return true;
+}
+
+/** Gives back the stock held for an order (inside the caller's transaction). */
+export async function releaseOrderHolds(tx: Parameters<typeof closeOrderHolds>[0], orderId: string, reason: "released" | "expired"): Promise<void> {
+  await closeOrderHolds(tx, orderId, reason);
 }

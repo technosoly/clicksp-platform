@@ -60,7 +60,7 @@ export default async function AdminShippingPage({ params }: { params: Promise<{ 
                   {name(z.translations)} <span dir="ltr" className="text-xs text-muted-foreground">{z.code}</span>
                 </Link>
                 {z.isActive ? null : <Badge tone="danger">{t("inactive")}</Badge>}
-                <p className="text-xs text-muted-foreground">{z.regions.map((r) => provinceName(r.provinceCode, locale)).join("، ")}</p>
+                <p className="text-xs text-muted-foreground">{z.regions.map((r) => provinceName(r.provinceCode, locale)).join(locale === "fa" ? "، " : ", ")}</p>
               </li>
             ))}
           </ul>

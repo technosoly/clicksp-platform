@@ -195,3 +195,20 @@ export async function purchasableVariants(client: DbClient, ids: readonly string
     },
   });
 }
+
+/**
+ * Inside an order's transaction: the current price and limits of variants
+ * that can still be bought, with the variant and product rows share-locked
+ * so a price change or unpublish waits until the order is committed.
+ */
+export async function lockPurchasableVariants(tx: Prisma.TransactionClient, ids: readonly string[]) {
+  if (ids.length === 0) return [];
+  return tx.$queryRaw<{ id: string; price: bigint; min_order_qty: number; max_order_qty: number | null }[]>`
+    SELECT v.id, v.price, v.min_order_qty, v.max_order_qty
+      FROM product_variants v JOIN products p ON p.id = v.product_id
+     WHERE v.id = ANY(${[...ids]}::uuid[]) AND v.is_active AND v.deleted_at IS NULL AND v.price > 0
+       AND p.status = 'active' AND p.deleted_at IS NULL
+       AND EXISTS (SELECT 1 FROM product_variants d WHERE d.product_id = p.id AND d.is_default AND d.is_active AND d.deleted_at IS NULL AND d.price > 0)
+     ORDER BY v.id
+       FOR SHARE OF v, p`;
+}

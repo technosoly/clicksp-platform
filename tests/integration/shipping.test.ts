@@ -29,6 +29,18 @@ describe("shipping settings", () => {
     await expect(shippingOverview(staff)).rejects.toBeInstanceOf(AuthzError);
     await expect(createMethod(staff, method())).rejects.toBeInstanceOf(AuthzError);
     await expect(createZone(staff, { code: code(), faName: "x", enName: "", provinces: ["IR-23"], isActive: true })).rejects.toBeInstanceOf(AuthzError);
+    const ba = await actorFor("business_admin");
+    const zone = ok(await createZone(ba, { code: code(), faName: "TEST منطقه", enName: "", provinces: ["IR-23"], isActive: true }));
+    const m = ok(await createMethod(ba, method()));
+    const rate = ok(await addRate(ba, m.id, { zoneId: zone.id, baseAmount: "1000", perKgAmount: "", freeAbove: "", minWeightGrams: "", maxWeightGrams: "" }));
+    await expect(updateZone(staff, zone.id, { code: code(), faName: "x", enName: "", provinces: ["IR-23"], isActive: true })).rejects.toBeInstanceOf(AuthzError);
+    await expect(updateMethod(staff, m.id, method())).rejects.toBeInstanceOf(AuthzError);
+    await expect(addRate(staff, m.id, { zoneId: zone.id, baseAmount: "1", perKgAmount: "", freeAbove: "", minWeightGrams: "", maxWeightGrams: "" })).rejects.toBeInstanceOf(AuthzError);
+    await expect(removeRate(staff, m.id, rate.id)).rejects.toBeInstanceOf(AuthzError);
+    // A customer session is never an admin, whatever it holds.
+    const customerActor = { ...ba, kind: "customer" as const };
+    await expect(shippingOverview(customerActor)).rejects.toBeInstanceOf(AuthzError);
+    await expect(removeRate(customerActor, m.id, rate.id)).rejects.toBeInstanceOf(AuthzError);
   });
 
   it("validates input and records each change in the audit log", async () => {

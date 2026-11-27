@@ -6,7 +6,7 @@ import { createWarehouse, getWarehouseForAdmin } from "@/modules/inventory/servi
 import { recordMovement } from "@/modules/inventory/service/stock";
 import type { Actor } from "@/modules/rbac/domain/actor";
 import { addToCart, viewCart } from "@/modules/sales/service/cart";
-import { checkoutShipping, myOrder, myOrders, placeOrder } from "@/modules/sales/service/checkout";
+import { checkoutShipping, expireUnpaidOrders, myOrder, myOrders, placeOrder } from "@/modules/sales/service/checkout";
 import { addRate, createMethod, createZone } from "@/modules/shipping/service/shipping-admin";
 import { actorFor, q, testNames } from "./admin-actors";
 import { uid } from "./helpers";
@@ -152,6 +152,41 @@ describe("checkout", () => {
     expect(["out_of_stock", "cart_changed"]).toContain(results.find((r) => r.status !== "ok")!.status);
     const [held] = await q<{ qty: number }>("SELECT coalesce(sum(quantity), 0)::int AS qty FROM stock_reservations WHERE variant_id = $1 AND status = 'active'", [p.variantId]);
     expect(held!.qty).toBe(2);
+  });
+
+  it("places one order for a double submit, and at most two unpaid orders per customer", async () => {
+    const { methodId } = await setup();
+    const p = await part(10);
+    const c = await customer();
+    ok(await addToCart(c, { variantId: p.variantId, quantity: "1" }));
+    const both = await Promise.all([placeOrder(c, address(methodId), "fa"), placeOrder(c, address(methodId), "fa")]);
+    expect(both.filter((r) => r.status === "ok")).toHaveLength(1);
+    ok(await addToCart(c, { variantId: p.variantId, quantity: "1" }));
+    ok(await placeOrder(c, address(methodId), "fa"));
+    ok(await addToCart(c, { variantId: p.variantId, quantity: "1" }));
+    expect(await placeOrder(c, address(methodId), "fa")).toEqual({ status: "too_many_open_orders" });
+    expect(await q("SELECT 1 FROM orders WHERE user_id = $1", [c.userId])).toHaveLength(2);
+    // The same address ticked "remember" three times is saved once.
+    expect(await q("SELECT 1 FROM delivery_addresses WHERE user_id = $1 AND deleted_at IS NULL", [c.userId])).toHaveLength(1);
+  });
+
+  it("cancels an unpaid order when its hold runs out and gives the stock back", async () => {
+    const { methodId } = await setup();
+    const p = await part(1);
+    const c = await customer();
+    ok(await addToCart(c, { variantId: p.variantId, quantity: "1" }));
+    const placed = ok(await placeOrder(c, address(methodId), "fa"));
+    const order = (await myOrder(c, placed.orderNumber.toString()))!;
+    const later = new Date(Date.now() + 25 * 3_600_000);
+    expect(await expireUnpaidOrders(later)).toBeGreaterThanOrEqual(1);
+    expect((await myOrder(c, placed.orderNumber.toString()))!.status).toBe("cancelled");
+    expect(await q("SELECT status FROM stock_reservations WHERE order_id = $1", [order.id])).toEqual([{ status: "expired" }]);
+    const [history] = await q<{ reason: string }>("SELECT reason FROM order_status_history WHERE order_id = $1 AND to_status = 'cancelled'", [order.id]);
+    expect(history!.reason).toBe("payment_window_expired");
+    // The unit can be bought again.
+    const next = await customer();
+    ok(await addToCart(next, { variantId: p.variantId, quantity: "1" }));
+    ok(await placeOrder(next, address(methodId), "fa"));
   });
 
   it("checks what the customer typed and the delivery choice", async () => {

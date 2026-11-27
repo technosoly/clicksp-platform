@@ -320,3 +320,8 @@ export async function reserveVariantForOrder(tx: Tx, input: { orderId: string; v
   });
   return true;
 }
+
+/** Ends an order's active stock holds (released or expired); the trigger gives the stock back. */
+export async function closeOrderHolds(tx: Tx, orderId: string, status: "released" | "expired"): Promise<void> {
+  await tx.stockReservation.updateMany({ where: { orderId, status: "active" }, data: { status } });
+}

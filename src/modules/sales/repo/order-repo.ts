@@ -103,10 +103,54 @@ export async function savedAddresses(client: DbClient, userId: string) {
   });
 }
 
-/** Saves the address as the customer's default (one default each, by a partial unique index). */
+/** Most addresses a customer keeps; older ones are retired when a new one is saved. */
+const MAX_ADDRESSES = 10;
+
+/**
+ * Makes the address the customer's default: an identical saved address is
+ * reused, otherwise a new one is added and the oldest beyond the limit are
+ * retired (soft-deleted).
+ */
 export async function saveDefaultAddress(tx: Tx, userId: string, address: NewOrder["address"]): Promise<void> {
   await tx.deliveryAddress.updateMany({ where: { userId, isDefault: true, deletedAt: null }, data: { isDefault: false } });
+  const same = await tx.deliveryAddress.findFirst({ where: { userId, deletedAt: null, ...address }, select: { id: true } });
+  if (same) {
+    await tx.deliveryAddress.update({ where: { id: same.id }, data: { isDefault: true } });
+    return;
+  }
   await tx.deliveryAddress.create({ data: { userId, ...address, isDefault: true } });
+  const extra = await tx.deliveryAddress.findMany({ where: { userId, deletedAt: null }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], skip: MAX_ADDRESSES, select: { id: true } });
+  if (extra.length) await tx.deliveryAddress.updateMany({ where: { id: { in: extra.map((a) => a.id) } }, data: { deletedAt: new Date() } });
+}
+
+// Unpaid orders --------------------------------------------------------------------
+
+/** The customer's orders still awaiting payment. */
+export async function openOrderCount(tx: Tx, userId: string): Promise<number> {
+  return tx.order.count({ where: { userId, status: "pending_payment" } });
+}
+
+/** Unpaid orders whose stock hold has run out (oldest first, a few at a time). */
+export async function expiredUnpaidOrders(client: DbClient, now: Date, take: number): Promise<string[]> {
+  const rows = await client.order.findMany({
+    where: { status: "pending_payment", reservations: { some: { status: "active", expiresAt: { lt: now } } } },
+    orderBy: { placedAt: "asc" },
+    take,
+    select: { id: true },
+  });
+  return rows.map((r) => r.id);
+}
+
+/** Locks an order that still awaits payment; false if it was paid or cancelled meanwhile. */
+export async function lockUnpaidOrder(tx: Tx, orderId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM orders WHERE id = ${orderId}::uuid AND status = 'pending_payment' FOR UPDATE`;
+  return rows.length > 0;
+}
+
+/** Cancels an unpaid order; the reason lands in its status history. */
+export async function cancelUnpaidOrder(tx: Tx, orderId: string, reason: string): Promise<void> {
+  await tx.$executeRaw`SELECT set_config('app.status_reason', ${reason}, true)`;
+  await tx.order.update({ where: { id: orderId }, data: { status: "cancelled" } });
 }
 
 // Reading orders -------------------------------------------------------------------

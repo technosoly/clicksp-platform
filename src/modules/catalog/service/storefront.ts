@@ -11,6 +11,7 @@ import {
   productCards,
   productForShop,
   productIdBySlug,
+  lockPurchasableVariants,
   purchasableVariants,
   searchWhere,
   servableRenditions,
@@ -237,4 +238,10 @@ export async function shopVariants(locale: ShopLocale, ids: readonly string[]): 
     });
   }
   return out;
+}
+
+/** Current prices and limits of still-purchasable variants, locked for the caller's order transaction. */
+export async function lockVariantPrices(tx: Parameters<typeof lockPurchasableVariants>[0], ids: readonly string[]) {
+  const rows = await lockPurchasableVariants(tx, ids);
+  return new Map(rows.map((r) => [r.id, { price: r.price, minQty: Math.max(1, r.min_order_qty), maxQty: r.max_order_qty }]));
 }

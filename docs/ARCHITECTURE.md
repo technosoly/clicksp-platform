@@ -30,7 +30,7 @@ Implemented so far:
 | `src/modules/catalog` | Categories, brands, products, variants, prices, part numbers and price approvals (Phase 6): input rules in `domain/`, Prisma in `repo/`, authorization and audit in `service/`, Server Actions in `api/` |
 | `app/[locale]/(store)` | Storefront (Phase 6b): home, category (`/c/<slug>`), product (`/p/<slug>`), search, motorcycles and the parts that fit a model, all reading the public services in `catalog/service/storefront.ts`, `vehicles/service/shop.ts` and `compatibility/service/shop-fitment.ts` |
 | `src/modules/sales` | Cart (Phase 6b part 2) and checkout (part 3): rules in `domain/`, Prisma in `repo/cart-repo.ts` and `repo/order-repo.ts`, services in `service/cart.ts` and `service/checkout.ts`, cookie and Server Action glue in `api/` |
-| `src/modules/shipping` | Provinces (ISO 3166-2:IR), shipping zones, methods and rates (admin service, `shipping.configure`) and the public quote used at checkout |
+| `src/modules/shipping` | Provinces (ISO 3166-2:IR), shipping zones, methods and rates (admin service, `shipping.configure`) and the public quote used at checkout (when several of a method's rates fit a parcel, the one with the lowest starting weight is used) |
 | `src/modules/settings/service/catalog-settings.ts` | Store display unit (Toman or Rial) and approval lifetime, validated with safe defaults |
 | `src/modules/audit` | Audit log and security event writers (secrets redacted) |
 | `src/lib/security` | Random tokens, Argon2id, TOTP, AES-256-GCM |

@@ -1,20 +1,24 @@
 import "server-only";
 import { db, transaction } from "@/lib/db";
 import { multiply, type Rial } from "@/lib/money";
-import type { ShopLocale } from "@/modules/catalog/service/storefront";
+import { lockVariantPrices, type ShopLocale } from "@/modules/catalog/service/storefront";
 import type { CurrentCustomer } from "@/modules/identity/service/current-customer";
-import { reserveForOrder } from "@/modules/inventory/service/stock";
+import { releaseOrderHolds, reserveForOrder } from "@/modules/inventory/service/stock";
 import { provinceName } from "@/modules/shipping/service/provinces";
 import { shippingQuoteFor, shippingQuotes, type ShippingQuote } from "@/modules/shipping/service/shipping-quote";
-import { checkoutInputSchema, PAYMENT_WINDOW_HOURS, type CheckoutInput } from "../domain/checkout-input";
+import { checkoutInputSchema, MAX_OPEN_ORDERS, PAYMENT_WINDOW_HOURS, type CheckoutInput } from "../domain/checkout-input";
 import { computeOrderTotals } from "../domain/totals";
 import {
+  cancelUnpaidOrder,
   customerOrder,
   customerOrders,
+  expiredUnpaidOrders,
   insertOrder,
   insertOutboxEvent,
   lockCustomerCart,
+  lockUnpaidOrder,
   markCartConverted,
+  openOrderCount,
   saveDefaultAddress,
   savedAddresses,
   setActingUser,
@@ -34,7 +38,27 @@ function cartWeight(cart: CartView): number {
   return cart.lines.reduce((sum, l) => sum + (l.item?.weightGrams ?? 0) * l.quantity, 0);
 }
 
+/**
+ * Cancels unpaid orders whose stock hold ran out and gives the stock back.
+ * Runs a few at a time on every checkout until the background jobs take it
+ * over; safe to run concurrently (each order is locked and re-checked).
+ */
+export async function expireUnpaidOrders(now = new Date(), batch = 20): Promise<number> {
+  let done = 0;
+  for (const orderId of await expiredUnpaidOrders(db(), now, batch)) {
+    const cancelled = await transaction(async (tx) => {
+      if (!(await lockUnpaidOrder(tx, orderId))) return false;
+      await releaseOrderHolds(tx, orderId, "expired");
+      await cancelUnpaidOrder(tx, orderId, "payment_window_expired");
+      return true;
+    });
+    if (cancelled) done += 1;
+  }
+  return done;
+}
+
 export async function checkoutPage(customer: CurrentCustomer, locale: ShopLocale) {
+  await expireUnpaidOrders();
   const [cart, addresses] = await Promise.all([viewCart({ userId: customer.userId }, locale), savedAddresses(db(), customer.userId)]);
   return { cart, addresses, weightGrams: cartWeight(cart) };
 }
@@ -49,16 +73,18 @@ export async function checkoutShipping(customer: CurrentCustomer, locale: ShopLo
 export type PlaceOrderResult =
   | { status: "ok"; orderNumber: bigint }
   | { status: "invalid"; field: string }
-  | { status: "cart_empty" | "cart_changed" | "out_of_stock" | "shipping_unavailable" };
+  | { status: "cart_empty" | "cart_changed" | "out_of_stock" | "shipping_unavailable" | "too_many_open_orders" };
 
 class OutOfStock extends Error {}
 class CartChanged extends Error {}
+class TooManyOpenOrders extends Error {}
 
 export async function placeOrder(customer: CurrentCustomer, input: CheckoutInput, locale: ShopLocale, now = new Date()): Promise<PlaceOrderResult> {
   const parsed = checkoutInputSchema.safeParse(input);
   if (!parsed.success) return { status: "invalid", field: parsed.error.issues[0]?.message ?? "invalid" };
   const data = parsed.data;
 
+  await expireUnpaidOrders(now);
   // Price the cart as the customer saw it; the transaction below checks it is unchanged.
   const cart = await viewCart({ userId: customer.userId }, locale, now);
   if (cart.lines.length === 0) return { status: "cart_empty" };
@@ -93,6 +119,18 @@ export async function placeOrder(customer: CurrentCustomer, input: CheckoutInput
       const same =
         locked.items.length === lines.length && locked.items.every((i, n) => i.variantId === lines[n]!.variantId && i.quantity === lines[n]!.quantity);
       if (!same) throw new CartChanged();
+      // Prices and limits again, now with the variants share-locked: a price
+      // change or unpublish that committed meanwhile sends the customer back.
+      const current = await lockVariantPrices(tx, lines.map((l) => l.variantId));
+      const unchanged = lines.every((l) => {
+        const fresh = current.get(l.variantId);
+        return fresh !== undefined && fresh.price === l.item.price && l.quantity >= fresh.minQty && (fresh.maxQty === null || l.quantity <= fresh.maxQty);
+      });
+      if (!unchanged) throw new CartChanged();
+      const requote = await shippingQuoteFor(data.shippingMethodId, data.provinceCode, cartWeight(cart), cart.subtotal);
+      if (!requote || requote.cost !== quote.cost) throw new CartChanged();
+      // The cart lock serializes this customer's checkouts, so the count can't race.
+      if ((await openOrderCount(tx, customer.userId)) >= MAX_OPEN_ORDERS) throw new TooManyOpenOrders();
 
       await setActingUser(tx, customer.userId);
       const created = await insertOrder(tx, {
@@ -141,6 +179,7 @@ export async function placeOrder(customer: CurrentCustomer, input: CheckoutInput
   } catch (error) {
     if (error instanceof OutOfStock) return { status: "out_of_stock" };
     if (error instanceof CartChanged) return { status: "cart_changed" };
+    if (error instanceof TooManyOpenOrders) return { status: "too_many_open_orders" };
     throw error;
   }
 }

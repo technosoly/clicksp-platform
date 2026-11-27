@@ -34,3 +34,6 @@ export type CheckoutData = z.output<typeof checkoutInputSchema>;
 
 /** How long a new order holds its stock while it awaits payment. */
 export const PAYMENT_WINDOW_HOURS = 24;
+
+/** Orders one customer may have awaiting payment at once (stock is held for each). */
+export const MAX_OPEN_ORDERS = 2;

@@ -1322,7 +1322,8 @@
       "cart_changed": "Your cart changed (a price or stock changed). Check it and try again.",
       "out_of_stock": "Some parts just sold out. Check your cart and try again.",
       "shipping_unavailable": "This delivery method isn't available for your address.",
-      "unexpected": "Something went wrong. Please try again."
+      "unexpected": "Something went wrong. Please try again.",
+      "too_many_open_orders": "You already have two orders awaiting payment. Pay or wait for one of them before ordering again."
     }
   },
   "Orders": {
@@ -1348,6 +1349,7 @@
     "tax": "Tax",
     "total": "Total",
     "deliverTo": "Deliver to",
-    "allOrders": "All your orders"
+    "allOrders": "All your orders",
+    "addressSeparator": ", "
   }
 }

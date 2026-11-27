@@ -8,10 +8,11 @@ All notable changes to this project are documented here. The format follows [Kee
 - **Shipping** in the admin (`/admin/shipping`, Super and Business Admin): your own delivery methods (post, courier, freight or pickup, with names in both languages and delivery days), zones made of provinces, and each method's price per zone: a base price plus an amount per started kilogram, optionally free above an order amount, optionally for a weight band. Nothing is pre-filled. Every change is audited.
 - **Checkout** (`/checkout`) for signed-in customers (a guest is sent to sign in and comes back): delivery address with all 31 provinces, delivery options priced for the province and the parcel's weight, a note, and "remember this address". Placing the order prices everything again on the server, holds the stock for 24 hours (from the highest-priority warehouses first), empties the cart and records the order as awaiting payment. Two customers can never be sold the same last unit, and a double click places one order.
 - **Order page** (`/account/orders/<number>`) with the parts, delivery, total and address, and **your orders** on the account page. Customers see only their own orders.
-- Payment is not connected yet: the order page says the store will be in touch about paying. Stock held for an unpaid order is not yet released automatically (next part).
+- Payment is not connected yet: the order page says the store will be in touch about paying. An unpaid order is cancelled and its stock given back when its 24-hour hold runs out (checked on every checkout until background jobs arrive), and a customer can have at most two unpaid orders at once.
+- Security review fixes: prices, order limits and the delivery price are checked again inside the order's transaction with the parts locked, so a price change at the same moment can't slip through; a remembered address is saved once, at most 10 per customer.
 - After signing in, a customer returns to the cart or checkout they came from (only these pages are allowed as return addresses).
 - The checkout page gets the per-request nonce Content-Security-Policy.
-- Tests: unit (186 in total), integration on PostgreSQL (198 in total), E2E (58 in total, desktop and mobile).
+- Tests: unit (186 in total), integration on PostgreSQL (200 in total), E2E (58 in total, desktop and mobile).
 
 ### Added (Phase 6b, part 2: cart)
 - **Add to cart** on the product page (quantity within the part's order limits; parts out of stock can't be added) and a **cart page** (`/cart`) to change quantities or remove parts, with the parts total. Prices, limits and stock are read fresh every time, so a price change or a part going out of stock shows at once and is marked on its line. The header shows how many parts are in the cart.
