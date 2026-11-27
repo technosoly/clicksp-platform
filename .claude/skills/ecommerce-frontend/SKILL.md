@@ -13,11 +13,12 @@ description: Clicksp storefront UI — design tokens from the brand logo, shadcn
 A fast, trustworthy, specialist parts store: customers find the right part for their bike quickly, even on a weak 3G/4G connection.
 
 ## Brand and design tokens
-From the uploaded logo (verify exact values from the vector file when available):
-- `--brand-orange` ≈ `#DE803C` (primary action, highlights)
-- `--brand-charcoal` ≈ `#272A2D` (text, header, footer)
-- `--brand-cream` ≈ `#F4F1D4` (soft surfaces, badges)
-- White background, neutral grays derived from charcoal.
+The owner's brand palette (logo: `public/brand/logo-badge*.webp`, a round badge):
+- `--brand-orange` `#C65A19` Burnt Orange (main brand colour: highlights, focus ring, brand surfaces)
+- `--brand-orange-strong` `#B85317` (the same orange a shade deeper: orange text on light backgrounds, white text on orange buttons; meets 4.5:1)
+- `--brand-charcoal` `#17191C` Matte Charcoal (text, dark sections)
+- `--brand-silver` `#E5E3DE` Titanium Silver (secondary surfaces, hover, badges)
+- `--brand-offwhite` `#F7F6F2` Off-White (page background; cards are white)
 Define as CSS variables in `app/globals.css` mapped to Tailwind theme tokens; shadcn/ui components consume tokens only. Check contrast: orange on white for large text/buttons only if ≥ 3:1; body text uses charcoal.
 
 ## Page inventory (storefront)
