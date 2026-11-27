@@ -87,9 +87,37 @@ describe("articles", () => {
     await expect(deleteArticle(staff, draft.id)).rejects.toBeInstanceOf(AuthzError);
     await expect(setArticleCover(staff, draft.id, null)).rejects.toBeInstanceOf(AuthzError);
 
+    expect(await q("SELECT 1 FROM audit_logs WHERE entity_id = $1 AND action = 'article.updated' AND actor_user_id = $2", [draft.id, staff.userId])).toHaveLength(1);
+
+    // A draft isn't on the store, in either language.
+    expect(await shopArticle("fa", `test-مقاله-${id}`)).toBeNull();
+    expect(await shopArticle("en", `test-مقاله-${id}`)).toBeNull();
+
     expect((await saveArticle(ba, draft.id, article(id, { status: "published" }))).status).toBe("ok");
     expect((await articleForAdmin(staff, draft.id))?.canEdit).toBe(false);
     await expect(saveArticle(staff, draft.id, article(id))).rejects.toBeInstanceOf(AuthzError);
+    await expect(deleteArticle(staff, draft.id)).rejects.toBeInstanceOf(AuthzError);
+    expect((await saveArticle(ba, draft.id, article(id, { status: "archived" }))).status).toBe("ok");
+    await expect(saveArticle(staff, draft.id, article(id))).rejects.toBeInstanceOf(AuthzError);
+
+    // A publication date in the future keeps the article off the store until then.
+    expect((await saveArticle(ba, draft.id, article(id, { status: "published" }))).status).toBe("ok");
+    await q("UPDATE articles SET published_at = now() + interval '1 day' WHERE id = $1", [draft.id]);
+    expect(await shopArticle("fa", `test-مقاله-${id}`)).toBeNull();
+
+    // A staff grant naming no category can't even write drafts.
+    const unscopedStaff = await actorFor("store_staff");
+    await expect(createArticle(unscopedStaff, article(uid()))).rejects.toBeInstanceOf(AuthzError);
+  });
+
+  it("a Super Admin manages articles, menus and banners too", async () => {
+    const sa = await actorFor("super_admin");
+    const created = await createArticle(sa, article(uid().toLowerCase(), { status: "published" }));
+    expect(created.status).toBe("ok");
+    expect(await saveMenu(sa, "footer", [{ fa: "TEST پیوند", en: "", href: "/blog" }])).toEqual({ status: "ok" });
+    const banner = await createBanner(sa, "home_hero", { faTitle: "TEST", faSubtitle: "", faCta: "", faAlt: "", enTitle: "", enSubtitle: "", enCta: "", enAlt: "", href: "", sortOrder: "", isActive: false, startsOn: "", endsOn: "" }, await png());
+    expect(banner.status).toBe("ok");
+    if (banner.status === "ok") expect((await deleteBanner(sa, banner.id)).status).toBe("ok");
   });
 
   it("refuses staff without the permission and customers", async () => {
@@ -175,6 +203,12 @@ describe("banners", () => {
     const staff = await actorFor("store_staff");
     await expect(bannersForAdmin(staff)).rejects.toBeInstanceOf(AuthzError);
     await expect(createBanner(staff, "home_hero", text(), await png())).rejects.toBeInstanceOf(AuthzError);
+    const ba = await actorFor("business_admin");
+    const created = await createBanner(ba, "home_hero", text({ isActive: false }), await png());
+    if (created.status !== "ok") throw new Error(JSON.stringify(created));
+    await expect(saveBanner(staff, created.id, text())).rejects.toBeInstanceOf(AuthzError);
+    await expect(setBannerImage(staff, created.id, "mobile", null)).rejects.toBeInstanceOf(AuthzError);
+    await expect(deleteBanner(staff, created.id)).rejects.toBeInstanceOf(AuthzError);
     const sa = await actorFor("super_admin");
     await expect(bannersForAdmin({ ...sa, kind: "customer" as const })).rejects.toBeInstanceOf(AuthzError);
   });

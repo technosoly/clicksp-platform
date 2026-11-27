@@ -101,16 +101,6 @@ export async function publishedArticleBySlug(client: DbClient, locale: "fa" | "e
   });
 }
 
-/** Published articles for the sitemap. */
-export async function publishedArticleSlugs(client: DbClient, now: Date, take: number) {
-  return client.article.findMany({
-    where: published(now),
-    orderBy: { publishedAt: "desc" },
-    take,
-    select: { updatedAt: true, translations: { select: { locale: true, slug: true } } },
-  });
-}
-
 /** The article that uses an address in a language, if any. */
 export async function slugOwner(client: DbClient, locale: "fa" | "en", slug: string): Promise<string | null> {
   return (await client.articleTranslation.findUnique({ where: { locale_slug: { locale, slug } }, select: { articleId: true } }))?.articleId ?? null;

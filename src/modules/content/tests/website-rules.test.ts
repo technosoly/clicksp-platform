@@ -13,13 +13,17 @@ describe("links typed into menus and banners", () => {
   });
 
   it("refuses anything that could leave the store unexpectedly or run code", () => {
-    for (const bad of ["javascript:alert(1)", "//evil.example", "/\\evil.example", "http://example.ir", "https://user:pw@example.ir", "data:text/html,x", "c/brakes", "/a b", "/a\u0000", "https://localhost", ""]) {
+    for (const bad of ["/fa//evil.example", "/en/\\evil.example", "/..//evil.example", "/a/../b", "/%2e%2e/x", "/.", "javascript:alert(1)", "//evil.example", "/\\evil.example", "http://example.ir", "https://user:pw@example.ir", "data:text/html,x", "c/brakes", "/a b", "/a\u0000", "https://localhost", ""]) {
       expect(parseHref(bad)).toBeNull();
     }
   });
 });
 
 describe("menus", () => {
+  it("refuses the home page as a banner link (the database takes /x paths only)", () => {
+    expect(parseHref("/")).toEqual({ kind: "internal", path: "/" });
+  });
+
   it("keeps filled rows, skips empty ones and names the problem", () => {
     const empty = { fa: "", en: "", href: "" };
     expect(parseMenu("header", [{ fa: "لنت", en: "Pads", href: "/c/pads" }, empty, { fa: "راهنما", en: "", href: "https://example.ir" }])).toEqual({
@@ -49,6 +53,7 @@ describe("banners", () => {
     expect(parseBanner({ ...base, faCta: "خرید" })).toEqual({ field: "cta_needs_link" });
     expect(parseBanner({ ...base, href: "//evil" })).toEqual({ field: "invalid_link" });
     expect(parseBanner({ ...base, sortOrder: "1.5" })).toEqual({ field: "invalid_order" });
+    expect(parseBanner({ ...base, href: "/fa" })).toEqual({ field: "invalid_link" });
   });
 
   it("shows a banner from the first day to the end of the last day, Tehran time", () => {

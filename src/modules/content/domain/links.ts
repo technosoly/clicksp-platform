@@ -13,9 +13,13 @@ export const HREF_MAX = 500;
 export function parseHref(input: string): SafeHref | null {
   const value = input.trim();
   if (!value || value.length > HREF_MAX || CONTROL.test(value) || /\s/.test(value)) return null;
-  if (/^\/(?![/\\])/.test(value)) {
+  if (value.startsWith("/")) {
     // A locale prefix is added by the link itself; "/fa/..." or "/en/..." would double it.
     const path = value.replace(/^\/(fa|en)(?=\/|$)/, "") || "/";
+    // Checked after the prefix is gone: "/fa//evil.example" must not become "//evil.example".
+    if (!/^\/(?![/\\])/.test(path)) return null;
+    // No "." or ".." segments (raw or percent-encoded), so the path can't climb out of the store.
+    if (path.split(/[/?#]/).some((segment) => /^(\.|%2e){1,2}$/i.test(segment))) return null;
     return { kind: "internal", path };
   }
   if (/^https:\/\/[^/\\]/.test(value)) {

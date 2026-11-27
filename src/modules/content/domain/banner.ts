@@ -68,7 +68,8 @@ export function parseBanner(input: BannerTextInput): BannerParsed | { field: str
   let href: string | null = null;
   if (input.href.trim()) {
     const parsed = parseHref(input.href);
-    if (!parsed) return { field: "invalid_link" };
+    // The database takes "/x" paths only, so the home page itself ("/") isn't a banner link.
+    if (!parsed || (parsed.kind === "internal" && parsed.path === "/")) return { field: "invalid_link" };
     href = hrefText(parsed);
   }
   if ((fa.ctaLabel || en?.ctaLabel) && !href) return { field: "cta_needs_link" };

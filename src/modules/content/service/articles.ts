@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { db, transaction } from "@/lib/db";
 import { recordAudit } from "@/modules/audit/service/audit";
 import { imageRenditions, releaseImage, storeImage, type UploadedFile } from "@/modules/media/service/images";
@@ -13,7 +14,6 @@ import {
   lockArticle,
   publishedArticleBySlug,
   publishedArticles,
-  publishedArticleSlugs,
   setArticleCoverRow,
   slugOwner,
   softDeleteArticle,
@@ -36,11 +36,23 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE = 30;
 const SHOP_PAGE = 12;
 
-/** Anyone holding article.manage in any scope may work on drafts; `full` is the unscoped grant. */
+/**
+ * Who may work on articles. An unscoped grant (Super and Business Admins)
+ * goes through authorize() like every other check. A per-category grant
+ * (Store Staff) allows drafts when it names at least one category: articles
+ * have no category, so the rule is "staff with any article scope write
+ * drafts" (docs/RBAC.md); a grant with no category rows is refused.
+ */
 async function access(actor: Actor): Promise<{ userId: string; full: boolean }> {
   if (actor.kind !== "admin" || !actor.userId) throw new AuthzError("article.manage", "not_admin");
+  const grant = actor.permissions.get("article.manage");
+  if (grant?.unscoped) {
+    await authorize(actor, "article.manage");
+    return { userId: actor.userId, full: true };
+  }
+  if (!grant || grant.categoryIds.size === 0) await authorize(actor, "article.manage"); // records the denial and throws
   await authorizeAny(actor, ["article.manage"], "articles");
-  return { userId: actor.userId, full: actor.permissions.get("article.manage")?.unscoped === true };
+  return { userId: actor.userId, full: false };
 }
 
 /** Publishing, hiding, deleting and covers: the unscoped grant (recorded as a denial otherwise). */
@@ -72,7 +84,14 @@ async function slugClash(parsed: ArticleParsed, selfId: string | null): Promise<
   return null;
 }
 
-const summary = (w: ArticleWrite) => ({ status: w.status, titles: Object.fromEntries(w.translations.map((t) => [t.locale, t.title])), slugs: Object.fromEntries(w.translations.map((t) => [t.locale, t.slug])) });
+const bodyHash = (body: unknown) => createHash("sha256").update(JSON.stringify(body)).digest("hex").slice(0, 16);
+/** What the audit keeps: status, titles, addresses and a fingerprint of each text, so text changes show up. */
+const summary = (w: { status: string; translations: readonly { locale: string; title: string; slug: string; body: unknown }[] }) => ({
+  status: w.status,
+  titles: Object.fromEntries(w.translations.map((t) => [t.locale, t.title])),
+  slugs: Object.fromEntries(w.translations.map((t) => [t.locale, t.slug])),
+  textHashes: Object.fromEntries(w.translations.map((t) => [t.locale, bodyHash(t.body)])),
+});
 
 export async function articlesForAdmin(actor: Actor, page = 1) {
   const { full } = await access(actor);
@@ -173,7 +192,7 @@ export async function saveArticle(actor: Actor, id: string, input: ArticleInput,
         action: "article.updated",
         entityType: "article",
         entityId: id,
-        before: before ? { status: before.status, titles: Object.fromEntries(before.translations.map((t) => [t.locale, t.title])), slugs: Object.fromEntries(before.translations.map((t) => [t.locale, t.slug])) } : undefined,
+        before: before ? summary(before) : undefined,
         after: summary(row),
       });
       return { status: "ok", id } as const;
@@ -282,8 +301,4 @@ export async function shopArticle(locale: "fa" | "en", slug: string, now = new D
     author: row.author.name,
     cover: row.coverMediaId ? await imageRenditions(row.coverMediaId) : [],
   };
-}
-
-export async function articleSitemapEntries(now = new Date()) {
-  return publishedArticleSlugs(db(), now, 5_000);
 }
