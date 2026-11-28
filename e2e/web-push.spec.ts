@@ -58,6 +58,20 @@ test.describe("Kavenegar web push", () => {
     expect(requested).toEqual([]);
   });
 
+  test("clicking from the storefront to cart or account loads a fresh page without the SDK", async ({ page }) => {
+    await page.route("https://cdn.kavenegar.com/**", (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: "window.__kvnLoaded = true;" }));
+    await page.goto("/fa", { waitUntil: "load" });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __kvnLoaded?: boolean }).__kvnLoaded)).toBe(true);
+    for (const [id, path] of [["header-cart", /\/fa\/cart$/], ["header-account", /\/fa\/(account|login)/]] as const) {
+      await page.goto("/fa", { waitUntil: "load" });
+      await page.getByTestId(id).first().click();
+      await expect(page).toHaveURL(path);
+      await page.waitForLoadState("load");
+      await expect(page.locator("script#kvn-web-push, script#kvn-web-push-loader")).toHaveCount(0);
+      expect(await page.evaluate(() => (window as unknown as { __kvnLoaded?: boolean }).__kvnLoaded)).toBeUndefined();
+    }
+  });
+
   test("a browser cannot ask for the storefront loader on a strict page", async ({ page }) => {
     await page.setExtraHTTPHeaders({ "x-clicksp-csp": "static" });
     await page.goto("/fa/cart", { waitUntil: "load" });

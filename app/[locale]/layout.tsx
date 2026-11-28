@@ -7,6 +7,8 @@ import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
 import { localeDirection, type Locale } from "@/lib/i18n/config";
+import { StrictPageGuard } from "@/components/layout/strict-page-guard";
+import { env } from "@/lib/env";
 import { routing } from "@/lib/i18n/routing";
 import { CSP_KIND_HEADER } from "@/lib/security/csp";
 import { kavenegarLoaderScript, kavenegarWebPushAppId } from "@/lib/web-push/kavenegar";
@@ -61,7 +63,7 @@ export default async function LocaleLayout({
   // Kavenegar web push: storefront pages with the static policy only (never
   // admin, sign-in, account, cart or checkout), loaded after the page's load
   // event so a slow or blocked CDN cannot delay anything (see the module).
-  const pushAppId = (await headers()).get(CSP_KIND_HEADER) === "static" ? kavenegarWebPushAppId(process.env.KAVENEGAR_WEBPUSH_APP_ID) : null;
+  const pushAppId = (await headers()).get(CSP_KIND_HEADER) === "static" ? kavenegarWebPushAppId(env().KAVENEGAR_WEBPUSH_APP_ID) : null;
 
   return (
     <html lang={locale === "fa" ? "fa-IR" : "en"} dir={localeDirection[locale as Locale]}>
@@ -73,6 +75,7 @@ export default async function LocaleLayout({
         >
           {t("skipToContent")}
         </a>
+        {pushAppId ? <StrictPageGuard /> : null}
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>
     </html>
