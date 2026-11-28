@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { shopLocale } from "@/components/store/shop-locale";
 import { RichBlocks } from "@/components/store/rich-blocks";
@@ -26,6 +26,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function InfoPage({ params }: Props) {
   const { locale: raw, key } = await params;
   setRequestLocale(raw);
+  // About and Contact are designed pages of their own.
+  if (key === "about" || key === "contact") permanentRedirect(`/${shopLocale(raw)}/${key}`);
   const page = await shopInfoPage(shopLocale(raw), key);
   if (!page) notFound();
   const t = await getTranslations("Shop");

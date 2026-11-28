@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (website: Contact and About pages)
+- **Contact us** (`/fa/contact`, `/en/contact`): store address, phone numbers (tap to call), opening hours, email and a map card with buttons for Google Maps, Neshan and Balad. The map is a drawn picture, so the page never waits on a foreign service; an optional Google embedded map loads only when the visitor presses "Show Google map". `Store` structured data, canonical and hreflang.
+- **Contact details editor** (Admin > Website > Content > Contact details, `settings.store`): saved as the `store.contact` store setting (not seeded: empty until the owner fills it in, and the page then says the details are coming). Phone numbers are normalized to digits; map links are accepted only over https from each provider's own hosts, and the embed only from `www.google.com/maps/embed`. Each save is audited (`settings.store.contact_updated`).
+- **About us** (`/fa/about`, `/en/about`): hero, four reasons to buy, the store's story, what the store sells and a contact call to action. The story is sample text from the translation messages until the owner writes the About page in Admin > Content, which then replaces it.
+- The Contact page's CSP alone allows frames from `https://www.google.com/maps/embed`; Google links must be `maps.app.goo.gl` or a `/maps` page on google.com.
+- About and Contact are linked in the header (wider screens) and footer and listed in the sitemap; `/pages/about` and `/pages/contact` redirect to them permanently.
+- Tests: unit (contact details parsing, phone normalization, map link and embed checks, CSP), integration (save, show, audit, invalid input, denied for Store Staff, admins without `settings.store` and customers), E2E (admin sets details and the visitor sees them; Google map loads only on request; About page and links).
+
 ### Changed (home page slider)
 - **The home page header slider always shows.** Before, it rendered nothing while no banner was live (a new store has none), so the home page had no slider. Now three built-in slides in the brand colours (parts search, choose your motorcycle, articles) show until the first banner from `/admin/banners` goes live; they need no picture download, and their text is in the translation messages.
 - **Slider redesign** in the style of large retail banner carousels: arrows on tablets and desktops (they wrap around from the last slide to the first), swipe on phones, dots whose active one fills while the slide shows, and a pause/play button. Autoplay stops while the visitor points at, focuses or touches the slider and never runs with reduced motion. Every slide keeps the same box (4:3 on phones, 21:9 on tablets, 3:1 on desktops), so nothing shifts while pictures load; RTL and LTR both scroll the right way.
