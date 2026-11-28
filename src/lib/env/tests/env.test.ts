@@ -49,6 +49,18 @@ describe("parseServerEnv", () => {
     expect(parseServerEnv({ ...base, PAYMENT_PROVIDERS: "fake" }).PAYMENT_PROVIDERS).toBe("fake");
   });
 
+  it("accepts the Kavenegar provider with its key and template", () => {
+    const env = parseServerEnv({
+      ...base,
+      SMS_PROVIDER: "kavenegar",
+      KAVENEGAR_API_KEY: "test-only-key",
+      KAVENEGAR_OTP_TEMPLATE: "clicksp-login",
+    });
+    expect(env.SMS_PROVIDER).toBe("kavenegar");
+    expect(env.KAVENEGAR_OTP_TEMPLATE).toBe("clicksp-login");
+    expect(() => parseServerEnv({ ...base, SMS_PROVIDER: "smsir" })).toThrow(/SMS_PROVIDER/);
+  });
+
   it("refuses the console SMS provider in production", () => {
     expect(() =>
       parseServerEnv({ ...base, APP_ENV: "production", AUTH_SECRET: SECRET, SMS_PROVIDER: "console" }),

@@ -66,7 +66,11 @@ export const serverEnvSchema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().optional(),
 
   // Pluggable providers, chosen later by the owner. "none" keeps them disabled.
-  SMS_PROVIDER: z.enum(["none", "console"]).default("none"),
+  SMS_PROVIDER: z.enum(["none", "console", "kavenegar"]).default("none"),
+  // Kavenegar (SMS_PROVIDER=kavenegar): API key from the panel, and the name
+  // of the approved Verify template whose text contains %token.
+  KAVENEGAR_API_KEY: z.string().optional(),
+  KAVENEGAR_OTP_TEMPLATE: z.string().optional(),
   // Gateway adapters this server may use, comma separated ("fake" only outside production).
   PAYMENT_PROVIDERS: z.string().default(""),
 });

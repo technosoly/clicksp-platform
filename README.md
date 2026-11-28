@@ -54,7 +54,7 @@ It prints a one-time link (30 minutes) to set a new password; `--reset-mfa` also
 
 ### Customer sign-in
 
-Customers sign in at `/fa/login` with their mobile number and an SMS code. Until an SMS provider is connected the page says phone sign-in is not available yet. For local development only, `SMS_PROVIDER=console` with `pnpm dev` prints the code in the terminal instead of sending it (refused in production builds).
+Customers sign in at `/fa/login` with their mobile number and an SMS code. Codes are sent through Kavenegar when `SMS_PROVIDER=kavenegar`, `KAVENEGAR_API_KEY` and `KAVENEGAR_OTP_TEMPLATE` are set (see docs/DEPLOYMENT.md); without a provider the page says phone sign-in is not available yet. For local development only, `SMS_PROVIDER=console` with `pnpm dev` prints the code in the terminal instead of sending it (refused in production builds).
 
 Run the whole stack in Docker instead: `docker compose --profile app up -d --build`, then create the first Super Admin inside the migrate image:
 

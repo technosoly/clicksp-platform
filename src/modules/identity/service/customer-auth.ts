@@ -36,9 +36,16 @@ let sender: SmsSender | undefined;
 export function smsSender(): SmsSender {
   if (!sender) {
     try {
-      sender = createSmsSender({ provider: env().SMS_PROVIDER, nodeEnv: process.env.NODE_ENV, appEnv: env().APP_ENV });
+      const config = env();
+      sender = createSmsSender({
+        provider: config.SMS_PROVIDER,
+        nodeEnv: process.env.NODE_ENV,
+        appEnv: config.APP_ENV,
+        kavenegar: { apiKey: config.KAVENEGAR_API_KEY, otpTemplate: config.KAVENEGAR_OTP_TEMPLATE },
+      });
     } catch (error) {
-      // e.g. SMS_PROVIDER=console on a production build: phone sign-in stays off.
+      // e.g. SMS_PROVIDER=console on a production build, or kavenegar without
+      // its key or template: phone sign-in stays off and the store keeps running.
       logger.error("SMS provider refused; phone sign-in is disabled", { error: String(error) });
       sender = disabledSmsSender;
     }
@@ -125,7 +132,7 @@ export async function requestPhoneOtp(
   await recordSecurityEvent(meta, { type: "otp.requested", severity: "info", details: { phone: maskPhone(phone) } });
 
   try {
-    const result = await sms.send({ to: phone, text: input.renderText(code), purpose: "otp" });
+    const result = await sms.send({ to: phone, text: input.renderText(code), purpose: "otp", code });
     if (!result.ok) throw new Error(result.error ?? "provider refused");
   } catch (error) {
     logger.error("OTP SMS not sent", { provider: sms.name, to: maskPhone(phone), error: String(error) });

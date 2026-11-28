@@ -19,7 +19,7 @@ Each phase ends with a report (what was implemented, files, tests run and result
 ## Open decisions (owner)
 
 - Hosting provider and domain (Iranian VPS recommended). Pluggable; not needed until Phase 10.
-- SMS provider for customer OTP login. The adapter interface exists (Phase 4); phone sign-in shows "not available yet" until a provider is implemented from its official docs with the owner's account.
+- SMS provider for customer OTP login: the Kavenegar adapter exists; phone sign-in turns on once the owner sets `SMS_PROVIDER=kavenegar`, the API key and an approved template on the server, and a real code has been received.
 - Payment gateway (Zarinpal, Zibal, ...) and merchant account. Real adapters only with real sandbox credentials.
 - Default storefront price unit. Seeded as the `store.display_currency_unit` setting = `toman`; storage is always Rial. Business Admin can change it.
 - Guest checkout: seeded off (`checkout.guest_checkout_enabled`).
