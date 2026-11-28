@@ -14,7 +14,7 @@ describe("admin navigation per level (default bundles)", () => {
 
   it("Business Admin: no roles, page builder or technical area", () => {
     const hrefs = hrefsFor("business_admin");
-    expect(hrefs).toEqual(expect.arrayContaining(["/admin/people/users", "/admin/accounting", "/admin/reports", "/admin/audit", "/admin/settings"]));
+    expect(hrefs).toEqual(expect.arrayContaining(["/admin/people/users", "/admin/accounting", "/admin/reports", "/admin/audit", "/admin/settings", "/admin/content", "/admin/banners", "/admin/menus"]));
     for (const hidden of ["/admin/people/roles", "/admin/page-builder", "/admin/system"]) expect(hrefs).not.toContain(hidden);
   });
 

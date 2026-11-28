@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { siteWording } from "@/components/layout/site-wording";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Breadcrumbs } from "@/components/store/breadcrumbs";
 import { Icon, type IconName } from "@/components/store/info/icons";
@@ -45,7 +46,7 @@ export default async function ContactPage({ params }: Props) {
   const { locale: raw } = await params;
   setRequestLocale(raw);
   const locale = shopLocale(raw);
-  const [c, extra, t, meta] = await Promise.all([shopContactInfo(), shopInfoPage(locale, "contact"), getTranslations("Contact"), getTranslations("Metadata")]);
+  const [c, extra, t, meta] = await Promise.all([shopContactInfo(), shopInfoPage(locale, "contact"), getTranslations("Contact"), siteWording(locale)]);
   const digits = (s: string) => (locale === "fa" ? toFaDigits(s) : s);
   // The English address and hours fall back to the Persian text, marked with lang.
   const address = locale === "en" && c.address.en ? { text: c.address.en, lang: "en" } : { text: c.address.fa, lang: "fa" };
@@ -55,7 +56,7 @@ export default async function ContactPage({ params }: Props) {
     ? {
         "@context": "https://schema.org",
         "@type": "Store",
-        name: meta("siteName"),
+        name: meta.name,
         ...(address.text ? { address: address.text } : {}),
         ...(c.phones.length > 0 ? { telephone: c.phones[0] } : {}),
         ...(c.email ? { email: c.email } : {}),

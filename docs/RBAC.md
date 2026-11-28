@@ -129,7 +129,7 @@ Scopes (which categories or warehouses a Store Staff member covers) are stored p
 | pagebuilder.edit, pagebuilder.publish, theme.manage | ✓ | – | – | 1 | |
 | user.manage_staff | ✓ | ✓ | – | 2 | ✓ |
 | user.manage_admins, role.manage | ✓ | – | – | 1 | ✓ |
-| settings.store | ✓ | ✓ | – | 2 | |
+| settings.store | ✓ | ✓ | – | 2 | Site appearance (`/admin/settings`), contact details |
 | settings.system, settings.security, integration.manage | ✓ | – | – | 1 | ✓ |
 | backup.view, deployment.view, monitoring.view, audit.view_all | ✓ | – | – | 1 | |
 | backup.run, deployment.request | ✓ | – | – | 1 | ✓ |

@@ -52,7 +52,18 @@
     "blog": "Articles",
     "moreLabel": "More links",
     "about": "About us",
-    "contact": "Contact us"
+    "contact": "Contact us",
+    "socialLabel": "Social networks",
+    "social": {
+      "instagram": "Instagram",
+      "telegram": "Telegram",
+      "whatsapp": "WhatsApp",
+      "eitaa": "Eitaa",
+      "bale": "Bale",
+      "rubika": "Rubika",
+      "aparat": "Aparat",
+      "youtube": "YouTube"
+    }
   },
   "NotFound": {
     "title": "Page not found",
@@ -99,7 +110,8 @@
       "returns": "Returns",
       "articles": "Articles",
       "banners": "Banners",
-      "menus": "Menus"
+      "menus": "Menus",
+      "siteSettings": "Site appearance"
     },
     "welcome": "Welcome, {name}",
     "yourRole": "Your role",
@@ -1767,7 +1779,39 @@
     },
     "contactTitle": "Contact details",
     "contactHelp": "Address, phone, opening hours and map for the Contact us page.",
-    "contactEdit": "Edit contact details"
+    "contactEdit": "Edit contact details",
+    "mapTitle": "Where do I edit each part of the site?",
+    "mapHelp": "Pick a part to open its editor.",
+    "parts": {
+      "home": {
+        "title": "Home page",
+        "help": "Section order, the top text, text sections and call-outs, with preview"
+      },
+      "slider": {
+        "title": "Slider and banners",
+        "help": "Pictures and text of the home page slider"
+      },
+      "menus": {
+        "title": "Menus",
+        "help": "Links in the header and footer menus"
+      },
+      "site": {
+        "title": "Site appearance",
+        "help": "Name, tagline, announcement bar, footer text, social links and Google text"
+      },
+      "contact": {
+        "title": "Contact details",
+        "help": "Address, phone, email, opening hours and maps"
+      },
+      "pages": {
+        "title": "Information pages",
+        "help": "About, terms, privacy, shipping and returns"
+      },
+      "articles": {
+        "title": "Articles",
+        "help": "Write and publish blog articles"
+      }
+    }
   },
   "AdminImports": {
     "title": "Product import",
@@ -2628,6 +2672,84 @@
     },
     "messages": {
       "saved": "Saved."
+    }
+  },
+  "AdminSite": {
+    "title": "Site appearance",
+    "intro": "The site name and tagline, the announcement bar, the footer text and social links, and the text search engines show. An empty field keeps the site's current wording (shown faded in the field).",
+    "view": "View site",
+    "back": "All parts of the site",
+    "save": "Save and publish",
+    "persian": "Persian",
+    "english": "English",
+    "identityTitle": "Name and tagline",
+    "identityHelp": "The name shows in the header of every page, the browser tab and the footer. The tagline shows in the footer.",
+    "announcementTitle": "Announcement bar",
+    "announcementHelp": "One short line above every page, for example a free-shipping offer. Untick to remove it.",
+    "footerTitle": "Footer text",
+    "footerHelp": "One or two short sentences about the shop at the bottom of every page. Phone numbers and email come from Contact details.",
+    "socialTitle": "Social networks",
+    "socialHelp": "Paste the full address of the shop's page. Only filled networks show in the footer.",
+    "seoTitle": "Google and search engines",
+    "seoHelp": "The home page's title and description in Google results. Keep the title under about 60 characters and the description under 160. Google may take a few days to update.",
+    "fields": {
+      "name": "Site name",
+      "tagline": "Tagline",
+      "seoTitle": "Home page title",
+      "seoDescription": "Home page description",
+      "footerNote": "Footer text",
+      "announcementEnabled": "Show the announcement bar",
+      "announcement": "Bar text",
+      "announcementHref": "Link (optional)",
+      "hrefHint": "A path on the site such as /c/brakes, or a full https:// address",
+      "tone": "Colour"
+    },
+    "tones": {
+      "orange": "Orange",
+      "charcoal": "Black",
+      "light": "Light"
+    },
+    "social": {
+      "instagram": "Instagram",
+      "telegram": "Telegram",
+      "whatsapp": "WhatsApp",
+      "eitaa": "Eitaa",
+      "bale": "Bale",
+      "rubika": "Rubika",
+      "aparat": "Aparat",
+      "youtube": "YouTube"
+    },
+    "socialExample": {
+      "instagram": "https://instagram.com/…",
+      "telegram": "https://t.me/…",
+      "whatsapp": "https://wa.me/98912…",
+      "eitaa": "https://eitaa.com/…",
+      "bale": "https://ble.ir/…",
+      "rubika": "https://rubika.ir/…",
+      "aparat": "https://aparat.com/…",
+      "youtube": "https://youtube.com/@…"
+    },
+    "errors": {
+      "name_too_long": "The name can be up to 60 characters.",
+      "tagline_too_long": "The tagline can be up to 120 characters.",
+      "seoTitle_too_long": "The title can be up to 70 characters.",
+      "seoDescription_too_long": "The description can be up to 200 characters.",
+      "footerNote_too_long": "The footer text can be up to 400 characters.",
+      "announcement_too_long": "The bar text can be up to 200 characters.",
+      "announcement_fa_required": "Write the Persian text to show the bar.",
+      "announcement_link_invalid": "The bar link must be a path on the site (like /c/brakes) or a full https:// address.",
+      "invalid": "Check the values.",
+      "social_instagram_invalid": "The Instagram link isn't valid. Enter the full address with https://, like https://instagram.com/…",
+      "social_telegram_invalid": "The Telegram link isn't valid. Enter the full address with https://, like https://t.me/…",
+      "social_whatsapp_invalid": "The WhatsApp link isn't valid. Enter the full address with https://, like https://wa.me/98912…",
+      "social_eitaa_invalid": "The Eitaa link isn't valid. Enter the full address with https://, like https://eitaa.com/…",
+      "social_bale_invalid": "The Bale link isn't valid. Enter the full address with https://, like https://ble.ir/…",
+      "social_rubika_invalid": "The Rubika link isn't valid. Enter the full address with https://, like https://rubika.ir/…",
+      "social_aparat_invalid": "The Aparat link isn't valid. Enter the full address with https://, like https://aparat.com/…",
+      "social_youtube_invalid": "The YouTube link isn't valid. Enter the full address with https://, like https://youtube.com/@…"
+    },
+    "messages": {
+      "saved": "Saved and published on the site."
     }
   }
 }
