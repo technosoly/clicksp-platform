@@ -4,6 +4,9 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Kavenegar web-push service worker file)
+- `public/kvn-push-sw.js` is served at `/kvn-push-sw.js` (the file Kavenegar's panel asks for to set up web push). It only imports `https://cdn.kavenegar.com/sdk/sw.js`; no page registers it, so it runs only if web push is set up later. The locale proxy skips it (files with an extension are not matched), tested in `src/lib/security/tests/public-root-files.test.ts`.
+
 ### Added (website: site appearance settings)
 - **Site appearance** (Admin > Website > Site appearance, `/admin/settings`, `settings.store`): the owner edits the site name and tagline (Persian and English), a one-line announcement bar above every page (text, optional store path or https link, orange / black / light), a short footer note, links to Instagram, Telegram, WhatsApp, Eitaa, Bale, Rubika, Aparat and YouTube, and the home page's search-engine title and description. Saved as the `store.site` store setting (not seeded). Every field is optional: an empty field keeps the built-in wording from the translation messages, which the form shows as the field's placeholder. Each save is audited (`settings.store.site_updated`).
 - Social links are accepted only over https on each network's own hosts; the announcement link follows the menu and banner link rules. Text is plain (control and bidi characters removed) and rendered as text.
