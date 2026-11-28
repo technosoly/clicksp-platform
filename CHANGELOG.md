@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (sign-in during internet cuts)
+- **New backup codes from My account**: admins with two-factor sign-in see how many unused backup codes they have and can make a new set of 10 with a current code from their authenticator app (a backup code is not accepted for this). The old codes stop working; the new ones are shown once with a print button. Audited, and counted against the same 5-wrong-codes lock.
+- **Clock-drift record**: a refused authenticator code that would be right about 1 to 10 minutes away records a `mfa.clock_drift` security event with the offset in seconds, so the owner sees in the Audit log that the server's clock needs fixing. The code is still refused like any wrong code and the browser is not told the offset.
+- `docs/DEPLOYMENT.md`: what keeps working during an international internet cut, and setting a domestic time server (NTP) so admin codes keep working when `ntp.ubuntu.com` is unreachable.
+- Tests: unit (drift found 3 and 5 minutes off, not inside the normal window, not beyond 10 minutes, not for a replayed code), integration (drift refused as a plain wrong code and recorded, a replayed code not counted as drift; renewal shares the 5-wrong-codes lock; new backup codes need a current app code, retire the old ones, are audited, and are refused without two-factor, for customers and for admins without an enrolment).
+
 ### Added (website: Contact and About pages)
 - **Contact us** (`/fa/contact`, `/en/contact`): store address, phone numbers (tap to call), opening hours, email and a map card with buttons for Google Maps, Neshan and Balad. The map is a drawn picture, so the page never waits on a foreign service; an optional Google embedded map loads only when the visitor presses "Show Google map". `Store` structured data, canonical and hreflang.
 - **Contact details editor** (Admin > Website > Content > Contact details, `settings.store`): saved as the `store.contact` store setting (not seeded: empty until the owner fills it in, and the page then says the details are coming). Phone numbers are normalized to digits; map links are accepted only over https from each provider's own hosts, and the embed only from `www.google.com/maps/embed`. Each save is audited (`settings.store.contact_updated`).

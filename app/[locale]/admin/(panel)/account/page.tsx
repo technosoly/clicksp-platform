@@ -1,5 +1,6 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { ActionForm } from "@/components/admin/action-form";
+import { BackupCodesForm } from "@/components/admin/backup-codes-form";
 import { Badge, Card, Field, PageHeader } from "@/components/admin/admin-ui";
 import { LEVEL_KEYS } from "@/components/admin/role-label";
 import { SessionList } from "@/components/admin/session-list";
@@ -18,7 +19,7 @@ export default async function AdminAccountPage({ params }: { params: Promise<{ l
   const tAdmin = await getTranslations("Admin");
   const tPeople = await getTranslations("AdminPeople");
   const loc = isLocale(locale) ? locale : "fa";
-  const { user, sessions } = data;
+  const { user, sessions, backupCodesLeft } = data;
   const others = sessions.filter((s) => !s.current).length;
 
   return (
@@ -55,6 +56,11 @@ export default async function AdminAccountPage({ params }: { params: Promise<{ l
             </Field>
           </ActionForm>
         </Card>
+        {backupCodesLeft !== null ? (
+          <Card title={t("backupCodesTitle")} description={t("backupCodesHelp")}>
+            <BackupCodesForm left={backupCodesLeft} />
+          </Card>
+        ) : null}
         <Card title={t("sessionsTitle")} description={t("sessionsHelp")} className="lg:col-span-2">
           <SessionList
             sessions={sessions}

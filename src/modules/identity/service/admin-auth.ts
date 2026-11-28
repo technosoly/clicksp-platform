@@ -7,7 +7,7 @@ import { decryptString, deriveKey, encryptString } from "@/lib/security/encrypti
 import { verifyPassword, verifyPasswordAgainstDummy } from "@/lib/security/password";
 import { randomBytes } from "node:crypto";
 import { sha256Hex } from "@/lib/security/tokens";
-import { generateTotpSecret, totpStep, totpUri, TOTP_STEP_SECONDS, verifyTotp } from "@/lib/security/totp";
+import { findTotpDrift, generateTotpSecret, totpStep, totpUri, TOTP_STEP_SECONDS, verifyTotp } from "@/lib/security/totp";
 import { recordAudit, recordSecurityEvent } from "@/modules/audit/service/audit";
 import type { Actor } from "@/modules/rbac/domain/actor";
 import type { EffectivePermissions } from "@/modules/rbac/domain/authorize";
@@ -27,6 +27,7 @@ import {
   lockMfa,
   reserveMfaAttempt,
   recordMfaSuccess,
+  replaceBackupCodes,
   revokeSession,
   savePendingMfa,
   setLastLogin,
@@ -245,15 +246,31 @@ function normalizeBackupCode(code: string): string {
   return toEnDigits(code).toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+type MfaRow = NonNullable<Awaited<ReturnType<typeof getMfa>>>;
+type CodeCheck =
+  | { status: "ok"; method: "totp" | "backup_code" }
+  | { status: "invalid" }
+  | { status: "locked" };
+
 /**
- * Checks a TOTP (or backup) code for the signed-in admin. A pending session
- * is replaced by a new full session (session id rotates after MFA); a full
- * session just gets a fresh mfa_verified_at (step-up).
+ * Checks a second-factor code with the shared attempt limit (5 wrong codes
+ * lock for 15 minutes) and replay protection. `allowBackupCode: false` for
+ * actions that must prove the authenticator itself (new backup codes).
+ * A TOTP code that only matches a time step outside the accepted window is
+ * still a plain failure for the person signing in; it is recorded as a
+ * `mfa.clock_drift` security event so the owner can fix the server's time
+ * (for example when its time servers are unreachable). The browser is never
+ * told: an offset would let someone with the password wait for a guessed
+ * future code to become valid.
  */
-export async function verifyAdminMfa(ctx: AdminContext, code: string, meta: RequestMeta, now = new Date()): Promise<MfaResult> {
-  const userId = ctx.session.userId;
-  const mfa = await getMfa(db(), userId);
-  if (!mfa || !mfa.isVerified) return { status: "not_allowed" };
+async function checkSecondFactor(
+  userId: string,
+  mfa: MfaRow,
+  code: string,
+  meta: RequestMeta,
+  now: Date,
+  allowBackupCode: boolean,
+): Promise<CodeCheck> {
   // Reserve the attempt first (atomic), so parallel guesses can't exceed the limit.
   const attempt = await reserveMfaAttempt(db(), userId, MFA.maxFailures, now);
   if (attempt === null) {
@@ -264,28 +281,52 @@ export async function verifyAdminMfa(ctx: AdminContext, code: string, meta: Requ
   const clean = toEnDigits(code).replace(/\s/g, "");
   let ok = false;
   let method: "totp" | "backup_code" = "totp";
+  let driftSteps: number | null = null;
   if (/^\d{6}$/.test(clean)) {
     const secret = decryptString(totpKey(), mfa.secretEncrypted, userId);
     const lastStep = mfa.lastUsedAt ? totpStep(mfa.lastUsedAt.getTime()) : null;
     const step = verifyTotp(secret, clean, now.getTime(), lastStep);
     // Store the matched step's start time, so the same code can never be reused.
     ok = step !== null && (await recordMfaSuccess(db(), userId, new Date(step * TOTP_STEP_SECONDS * 1000), mfa.lastUsedAt));
-  } else {
+    if (step === null) driftSteps = findTotpDrift(secret, clean, now.getTime(), lastStep);
+  } else if (allowBackupCode) {
     method = "backup_code";
     const normalized = normalizeBackupCode(code);
     ok = normalized.length === 8 && (await consumeBackupCode(db(), userId, sha256Hex(normalized), now));
   }
 
-  if (!ok) {
-    const locked = attempt >= MFA.maxFailures;
-    if (locked) await lockMfa(db(), userId, new Date(now.getTime() + MFA.lockMinutes * 60_000));
+  if (ok) return { status: "ok", method };
+  const locked = attempt >= MFA.maxFailures;
+  if (locked) await lockMfa(db(), userId, new Date(now.getTime() + MFA.lockMinutes * 60_000));
+  await recordSecurityEvent(meta, {
+    type: locked ? "mfa.locked" : "mfa.failed",
+    severity: locked ? "critical" : "warning",
+    userId,
+  });
+  if (locked) return { status: "locked" };
+  if (driftSteps !== null) {
     await recordSecurityEvent(meta, {
-      type: locked ? "mfa.locked" : "mfa.failed",
-      severity: locked ? "critical" : "warning",
+      type: "mfa.clock_drift",
+      severity: "warning",
       userId,
+      details: { clockDriftSeconds: driftSteps * TOTP_STEP_SECONDS },
     });
-    return { status: locked ? "locked" : "invalid" };
   }
+  return { status: "invalid" };
+}
+
+/**
+ * Checks a TOTP (or backup) code for the signed-in admin. A pending session
+ * is replaced by a new full session (session id rotates after MFA); a full
+ * session just gets a fresh mfa_verified_at (step-up).
+ */
+export async function verifyAdminMfa(ctx: AdminContext, code: string, meta: RequestMeta, now = new Date()): Promise<MfaResult> {
+  const userId = ctx.session.userId;
+  const mfa = await getMfa(db(), userId);
+  if (!mfa || !mfa.isVerified) return { status: "not_allowed" };
+  const check = await checkSecondFactor(userId, mfa, code, meta, now, true);
+  if (check.status !== "ok") return check;
+  const method = check.method;
 
   if (ctx.session.mfaVerifiedAt !== null || ctx.mfa === "ok") {
     // Step-up on a full session.
@@ -366,7 +407,7 @@ export async function confirmMfaEnrolment(
     return { status: "invalid" };
   }
   // 8 characters from a 32-letter alphabet (40 bits); 50 bits would need longer codes.
-  const backupCodes = Array.from({ length: MFA.backupCodeCount }, newBackupCode);
+  const backupCodes = newBackupCodes();
   const session = await transaction(async (tx) => {
     const completed = await completeMfaEnrolment(tx, userId, backupCodes.map((c) => sha256Hex(c)), new Date(step * TOTP_STEP_SECONDS * 1000));
     if (!completed) return null;
@@ -378,11 +419,53 @@ export async function confirmMfaEnrolment(
     return issued;
   });
   if (!session) return { status: "not_allowed" };
-  return {
-    status: "ok",
-    session,
-    backupCodes: backupCodes.map((c) => `${c.slice(0, 4)}-${c.slice(4)}`),
-  };
+  return { status: "ok", session, backupCodes: backupCodes.map(formatBackupCode) };
+}
+
+function newBackupCodes(): string[] {
+  return Array.from({ length: MFA.backupCodeCount }, newBackupCode);
+}
+
+function formatBackupCode(code: string): string {
+  return `${code.slice(0, 4)}-${code.slice(4)}`;
+}
+
+export type NewBackupCodesResult =
+  | { status: "ok"; backupCodes: string[] }
+  | { status: "invalid" }
+  | { status: "locked" }
+  | { status: "not_allowed" };
+
+/**
+ * New backup codes for the signed-in admin, replacing the old ones (used up,
+ * lost or seen by someone else). Backup codes are the way in when the phone
+ * is lost, so this needs a current code from the authenticator app itself
+ * (not a backup code) on a fully signed-in session. Self-service: it only
+ * touches the actor's own enrolment, found from the session, so like the
+ * other own-account actions it needs no permission key (docs/RBAC.md).
+ */
+export async function regenerateOwnBackupCodes(actor: Actor, code: string, meta: RequestMeta, now = new Date()): Promise<NewBackupCodesResult> {
+  if (actor.kind !== "admin" || !actor.userId || !actor.sessionId || actor.mfaVerifiedAt === null) return { status: "not_allowed" };
+  const userId = actor.userId;
+  const mfa = await getMfa(db(), userId);
+  if (!mfa || !mfa.isVerified) return { status: "not_allowed" };
+  const check = await checkSecondFactor(userId, mfa, code, meta, now, false);
+  if (check.status !== "ok") return check;
+  const backupCodes = newBackupCodes();
+  const replaced = await transaction(async (tx) => {
+    if (!(await replaceBackupCodes(tx, userId, backupCodes.map((c) => sha256Hex(c)), now))) return false;
+    await recordAudit(tx, meta, {
+      actorUserId: userId,
+      action: "auth.mfa_backup_codes_regenerated",
+      entityType: "user",
+      entityId: userId,
+      after: { count: backupCodes.length },
+    });
+    return true;
+  });
+  if (!replaced) return { status: "not_allowed" };
+  await recordSecurityEvent(meta, { type: "mfa.backup_codes_regenerated", severity: "info", userId });
+  return { status: "ok", backupCodes: backupCodes.map(formatBackupCode) };
 }
 
 /** Admin logout writes an audit row; the session is revoked by the caller via endSession. */

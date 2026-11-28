@@ -561,13 +561,24 @@
       "too_long": "The new password is too long (128 characters at most).",
       "same_as_identifier": "The password can't be your username, email or name.",
       "same_as_current": "Choose a password different from the current one.",
-      "not_found": "That device is already signed out."
+      "not_found": "That device is already signed out.",
+      "invalid_code": "That code is not correct. Enter the current 6-digit code from your authenticator app.",
+      "mfa_locked": "Too many wrong codes. Two-factor codes are locked for 15 minutes.",
+      "forbidden": "Two-factor sign-in is not set up for this account.",
+      "unexpected": "Something went wrong. Please try again."
     },
     "messages": {
       "passwordChanged": "Password changed. Your other devices are signed out.",
       "sessionRevoked": "Device signed out.",
       "otherSessionsRevoked": "All other devices are signed out."
-    }
+    },
+    "backupCodesTitle": "Backup codes",
+    "backupCodesHelp": "Backup codes let you sign in without your phone. Each works once. Keep a printed copy somewhere safe, away from your phone.",
+    "backupCodesLeft": "{count, plural, =0 {You have no unused backup codes left.} one {You have # unused backup code.} other {You have # unused backup codes.}}",
+    "backupCodesAppCode": "Code from your authenticator app",
+    "backupCodesGenerate": "Make new backup codes",
+    "backupCodesNew": "Your new backup codes. The old ones no longer work. They are shown only now: print or write them down.",
+    "backupCodesPrint": "Print"
   },
   "AdminCatalog": {
     "persian": "Persian",
