@@ -75,8 +75,7 @@ export default async function LocaleLayout({
         >
           {t("skipToContent")}
         </a>
-        {pushAppId ? <StrictPageGuard /> : null}
-        <NextIntlClientProvider>{children}</NextIntlClientProvider>
+        <NextIntlClientProvider>{pushAppId ? <StrictPageGuard>{children}</StrictPageGuard> : children}</NextIntlClientProvider>
       </body>
     </html>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { needsStrictCsp } from "@/lib/security/csp";
 
 /**
@@ -11,10 +11,10 @@ import { needsStrictCsp } from "@/lib/security/csp";
  * (and its scripts and CSP) alive. So:
  * - a click on a link to such a page skips client-side navigation and lets
  *   the browser load it fresh (it gets the strict policy and no SDK);
- * - any other way of arriving there (router.push, a server redirect) reloads
- *   the page as a fallback.
+ * - any other way of arriving there (router.push, a server redirect) shows
+ *   nothing of that page in this document and reloads it.
  */
-export function StrictPageGuard() {
+export function StrictPageGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
@@ -35,5 +35,5 @@ export function StrictPageGuard() {
     if (needsStrictCsp(pathname)) window.location.reload();
   }, [pathname]);
 
-  return null;
+  return needsStrictCsp(pathname) ? null : children;
 }

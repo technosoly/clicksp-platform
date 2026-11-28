@@ -72,6 +72,19 @@ test.describe("Kavenegar web push", () => {
     }
   });
 
+  test("a client-side arrival on a strict page (router redirect) still ends on a fresh page without the SDK", async ({ page }) => {
+    await page.route("https://cdn.kavenegar.com/**", (route) => route.fulfill({ status: 200, contentType: "text/javascript", body: "window.__kvnLoaded = true;" }));
+    await page.goto("/fa", { waitUntil: "load" });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __kvnLoaded?: boolean }).__kvnLoaded)).toBe(true);
+    // Client-side navigation without a link click (as router.push or a redirect does).
+    const reloaded = page.waitForEvent("load");
+    await page.evaluate(() => (window as unknown as { next: { router: { push(href: string): void } } }).next.router.push("/fa/cart"));
+    await reloaded;
+    await expect(page).toHaveURL(/\/fa\/cart$/);
+    expect(await page.evaluate(() => (window as unknown as { __kvnLoaded?: boolean }).__kvnLoaded)).toBeUndefined();
+    await expect(page.locator("script#kvn-web-push, script#kvn-web-push-loader")).toHaveCount(0);
+  });
+
   test("a browser cannot ask for the storefront loader on a strict page", async ({ page }) => {
     await page.setExtraHTTPHeaders({ "x-clicksp-csp": "static" });
     await page.goto("/fa/cart", { waitUntil: "load" });
