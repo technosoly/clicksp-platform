@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (SMS)
+- **Kavenegar SMS for customer sign-in codes**: `SMS_PROVIDER=kavenegar` sends the code with Kavenegar's Verify Lookup API and an approved template (`KAVENEGAR_API_KEY`, `KAVENEGAR_OTP_TEMPLATE`, server environment only, passed through Docker Compose). The key never appears in logs or errors; requests time out after 10 seconds without retrying; a missing key or template leaves phone sign-in off instead of stopping the store. Setup steps in `docs/DEPLOYMENT.md`.
+- Tests: unit (request format, number conversion, success and error answers, timeout, refused numbers and codes, no key in errors, configuration checks, environment parsing).
+
 ### Fixed (deployment)
 - The image build no longer pulls the `docker/dockerfile` frontend from Docker Hub (the `# syntax=` line is removed; BuildKit's built-in frontend handles the secret mounts), so it works where Docker Hub is blocked.
 - `admin:reset-link` run through the `migrate` service now gets `APP_URL`, so its one-time link points at the real domain instead of `localhost`.

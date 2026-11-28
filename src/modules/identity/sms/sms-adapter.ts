@@ -1,22 +1,25 @@
 /**
- * SMS sending is pluggable (iranian-ecommerce skill, adapter-contracts.md).
- * No real provider is implemented yet: one will be added from the provider's
- * official documentation once the owner has an account and sandbox
- * credentials. Until then:
+ * SMS sending is pluggable (iranian-ecommerce skill, adapter-contracts.md):
  * - "none" (default): sending is refused, so phone sign-in shows a clear
  *   "not available yet" message;
  * - "console": development only, writes the message to the server log;
- *   refused when NODE_ENV or APP_ENV is production.
+ *   refused when NODE_ENV or APP_ENV is production;
+ * - "kavenegar": Kavenegar Verify Lookup with an approved template
+ *   (KAVENEGAR_API_KEY, KAVENEGAR_OTP_TEMPLATE; see kavenegar.ts).
  */
 import { logger } from "@/lib/logger";
 import { maskPhone } from "../domain/phone";
+import { createKavenegarSmsSender } from "./kavenegar";
 
 export interface SmsMessage {
   /** E.164 phone number. */
   to: string;
+  /** Full text, for providers that send free text (and the console provider). */
   text: string;
   /** Kind of message, for logs and provider templates. */
   purpose: "otp";
+  /** The one-time code, for template providers that fill it in themselves. */
+  code: string;
 }
 
 export interface SmsSendResult {
@@ -68,13 +71,20 @@ export function createConsoleSmsSender(environment: { nodeEnv: string | undefine
 }
 
 export function createSmsSender(config: {
-  provider: "none" | "console";
+  provider: "none" | "console" | "kavenegar";
   nodeEnv: string | undefined;
   appEnv: string;
+  kavenegar?: { apiKey: string | undefined; otpTemplate: string | undefined };
 }): SmsSender {
   switch (config.provider) {
     case "console":
       return createConsoleSmsSender({ nodeEnv: config.nodeEnv, appEnv: config.appEnv });
+    case "kavenegar":
+      // Throws (names the variable, never its value) when either is missing.
+      return createKavenegarSmsSender({
+        apiKey: config.kavenegar?.apiKey ?? "",
+        otpTemplate: config.kavenegar?.otpTemplate ?? "",
+      });
     case "none":
       return disabledSmsSender;
   }

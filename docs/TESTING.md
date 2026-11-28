@@ -13,7 +13,7 @@
 | `src/modules/rbac/tests` | Permission catalogue: key format, level ceilings, Staff and Business Admin defaults and restrictions, scoped grants; `decide()` deny-by-default, scopes, merged roles, every permission × each admin level |
 | `src/lib/security/tests` | Tokens, RFC 4226/6238 TOTP vectors, drift window, replay refusal, base32, AES-GCM tamper/key/context checks, Argon2id hashing and password policy |
 | `src/lib/http/tests` | Client IP and request id parsing, rejection of invalid values |
-| `src/modules/identity/tests` | Iranian mobile normalization (Persian/Arabic digits, +98/0098/0 forms), MFA requirement rules, session idle/absolute lifetimes, SMS adapters (console refused in production) |
+| `src/modules/identity/tests` | Iranian mobile normalization (Persian/Arabic digits, +98/0098/0 forms), MFA requirement rules, session idle/absolute lifetimes, SMS adapters (console refused in production; Kavenegar request format, receptor conversion, success and error answers, timeout, bad numbers and codes refused before any request, API key never in errors, missing key or template refused) |
 | `src/modules/audit/tests` | Secret redaction in audit rows |
 | `src/modules/rbac/tests/escalation.test.ts` | Who may manage which admin level, role-level editing, granting only held permissions (`.propose` covered by its base key), assigning only roles whose grants the actor holds, grant diffs |
 | `src/modules/identity/tests/admin-account.test.ts` | Account form validation (username normalization, digits), password-link lifetimes and paths, audit action names, safe return paths after two-factor |

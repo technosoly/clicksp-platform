@@ -93,7 +93,7 @@ describe("session lifetimes", () => {
 describe("SMS adapters", () => {
   it("refuses to send without a provider", async () => {
     expect(disabledSmsSender.enabled).toBe(false);
-    await expect(disabledSmsSender.send({ to: "+989121234567", text: "x", purpose: "otp" })).rejects.toBeInstanceOf(
+    await expect(disabledSmsSender.send({ to: "+989121234567", text: "x", purpose: "otp", code: "123456" })).rejects.toBeInstanceOf(
       SmsNotConfiguredError,
     );
   });
