@@ -16,6 +16,7 @@ import {
   adminPasswordLogin,
   confirmMfaEnrolment,
   getAdminContext,
+  regenerateOwnBackupCodes,
   startMfaEnrolment,
   verifyAdminMfa,
   type AdminContext,
@@ -108,6 +109,51 @@ async function enrolledAdmin(roleKey: string, now = new Date()) {
 
 afterAll(async () => {
   await prisma().$disconnect();
+});
+
+describe("new backup codes (My account)", () => {
+  it("needs a current authenticator code, replaces the old codes and is audited", async () => {
+    const now = new Date();
+    const admin = await enrolledAdmin("business_admin", now);
+    const actor = adminActor(await context(admin.token, now), admin.meta);
+    const later = new Date(now.getTime() + 60_000);
+
+    // A backup code or a wrong code cannot make new backup codes.
+    expect((await regenerateOwnBackupCodes(actor, admin.backupCodes[0]!, admin.meta, later)).status).toBe("invalid");
+    expect((await regenerateOwnBackupCodes(actor, "123456", admin.meta, later)).status).toBe("invalid");
+
+    const result = await regenerateOwnBackupCodes(actor, totp(admin.secret, later.getTime()), admin.meta, later);
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.backupCodes).toHaveLength(10);
+    expect(result.backupCodes[0]).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    await one(pool as never, "SELECT 1 FROM audit_logs WHERE action = 'auth.mfa_backup_codes_regenerated' AND entity_id = $1", [admin.userId]);
+
+    const signIn = async () => {
+      const login = await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, freshMeta(), later);
+      if (login.status !== "ok") throw new Error("login failed");
+      return context(login.session.token, later);
+    };
+    // Old codes stop working; the new ones work once.
+    expect((await verifyAdminMfa(await signIn(), admin.backupCodes[1]!, admin.meta, later)).status).toBe("invalid");
+    expect((await verifyAdminMfa(await signIn(), result.backupCodes[0]!, admin.meta, later)).status).toBe("ok");
+  });
+
+  it("refuses a session without a two-factor check, a customer, and an admin without two-factor", async () => {
+    const now = new Date();
+    const admin = await enrolledAdmin("business_admin", now);
+    const actor = adminActor(await context(admin.token, now), admin.meta);
+    const code = totp(admin.secret, now.getTime() + 60_000);
+    const later = new Date(now.getTime() + 60_000);
+    expect((await regenerateOwnBackupCodes({ ...actor, mfaVerifiedAt: null }, code, admin.meta, later)).status).toBe("not_allowed");
+    expect((await regenerateOwnBackupCodes({ ...actor, kind: "customer" }, code, admin.meta, later)).status).toBe("not_allowed");
+
+    const plain = await createAdmin(await viewerRoleKey());
+    const login = await adminPasswordLogin({ identifier: plain.username, password: PASSWORD }, freshMeta(), now);
+    if (login.status !== "ok") throw new Error("login failed");
+    const plainActor = adminActor(await context(login.session.token, now), freshMeta());
+    expect((await regenerateOwnBackupCodes({ ...plainActor, mfaVerifiedAt: now }, "123456", freshMeta(), now)).status).toBe("not_allowed");
+  });
 });
 
 describe("first Super Admin (CLI)", () => {
@@ -302,6 +348,27 @@ describe("two-factor sign-in (TOTP)", () => {
     expect((await verifyAdminMfa(await signIn(), code.toLowerCase(), admin.meta)).status).toBe("ok");
     expect((await verifyAdminMfa(await signIn(), code, admin.meta)).status).toBe("invalid");
     await one(pool as never, "SELECT 1 FROM security_events WHERE type = 'mfa.backup_code_used' AND user_id = $1", [admin.userId]);
+  });
+
+  it("refuses a code from a clock 5 minutes off, and says the clock is the problem", async () => {
+    const now = new Date();
+    const admin = await enrolledAdmin("business_admin", now);
+    const later = new Date(now.getTime() + 60_000);
+    const login = await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, freshMeta(), later);
+    if (login.status !== "ok") throw new Error("login failed");
+    const pending = await context(login.session.token, later);
+    const phoneAhead = totp(admin.secret, later.getTime() + 5 * 60_000);
+    expect(await verifyAdminMfa(pending, phoneAhead, admin.meta, later)).toEqual({ status: "clock_drift", driftMinutes: 5 });
+    // Still a failed attempt, and the session stays pending.
+    expect((await context(login.session.token, later)).mfa).toBe("challenge");
+    const drift = await one<{ details: { clockDriftSeconds: number } }>(
+      pool as never,
+      "SELECT details FROM security_events WHERE type = 'mfa.clock_drift' AND user_id = $1",
+      [admin.userId],
+    );
+    expect(drift.details.clockDriftSeconds).toBe(300);
+    await one(pool as never, "SELECT 1 FROM security_events WHERE type = 'mfa.failed' AND user_id = $1", [admin.userId]);
+    expect((await verifyAdminMfa(pending, totp(admin.secret, later.getTime()), admin.meta, later)).status).toBe("ok");
   });
 
   it("locks TOTP for 15 minutes after 5 wrong codes", async () => {

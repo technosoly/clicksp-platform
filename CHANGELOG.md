@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (sign-in during internet cuts)
+- **New backup codes from My account**: admins with two-factor sign-in see how many unused backup codes they have and can make a new set of 10 with a current code from their authenticator app (a backup code is not accepted for this). The old codes stop working; the new ones are shown once with a print button. Audited, and counted against the same 5-wrong-codes lock.
+- **Clock-drift warning**: a refused authenticator code that would be right 1 to 10 minutes away now tells the admin that a clock is off and by about how many minutes, and records a `mfa.clock_drift` security event with the offset. The code is still refused and counts as a wrong attempt.
+- `docs/DEPLOYMENT.md`: what keeps working during an international internet cut, and setting a domestic time server (NTP) so admin codes keep working when `ntp.ubuntu.com` is unreachable.
+- Tests: unit (drift found 3 and 5 minutes off, not inside the normal window, not beyond 10 minutes, not for a replayed code), integration (drift refused and recorded; new backup codes need a current app code, retire the old ones, are audited, and are refused without two-factor, for customers and for admins without an enrolment).
+
 ### Added (SMS)
 - **Kavenegar SMS for customer sign-in codes**: `SMS_PROVIDER=kavenegar` sends the code with Kavenegar's Verify Lookup API and an approved template (`KAVENEGAR_API_KEY`, `KAVENEGAR_OTP_TEMPLATE`, server environment only, passed through Docker Compose). The key never appears in logs or errors; requests time out after 8 seconds without retrying and never follow redirects; a missing key or template leaves phone sign-in off instead of stopping the store. Setup steps in `docs/DEPLOYMENT.md`.
 - Tests: unit (request format, number conversion, success and error answers, timeout, refused numbers and codes, no key in errors, configuration checks, environment parsing).

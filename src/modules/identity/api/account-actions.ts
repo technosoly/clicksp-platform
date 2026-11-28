@@ -4,6 +4,7 @@ import { z } from "zod";
 import { currentRequestMeta } from "@/lib/http/server";
 import { logger } from "@/lib/logger";
 import { changeOwnPassword, revokeOwnOtherSessions, revokeOwnSession, completePasswordLink } from "../service/account";
+import { regenerateOwnBackupCodes } from "../service/admin-auth";
 import { localeOf, runAdminAction, text, type ActionState } from "./admin-action";
 
 export async function changeOwnPasswordAction(_prev: ActionState, form: FormData): Promise<ActionState> {
@@ -28,6 +29,19 @@ export async function revokeOwnOtherSessionsAction(_prev: ActionState, form: For
   return runAdminAction(form, async (actor) => {
     await revokeOwnOtherSessions(actor);
     return { ok: true, message: "otherSessionsRevoked" };
+  });
+}
+
+/** New backup codes; needs a current code from the authenticator app. */
+export async function regenerateBackupCodesAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  return runAdminAction(form, async (actor) => {
+    const code = text(form, "code").slice(0, 20);
+    const result = await regenerateOwnBackupCodes(actor, code, await currentRequestMeta());
+    if (result.status === "ok") return { ok: true, backupCodes: result.backupCodes };
+    if (result.status === "clock_drift") return { error: "mfa_clock_drift", values: { minutes: result.driftMinutes } };
+    if (result.status === "locked") return { error: "mfa_locked" };
+    if (result.status === "invalid") return { error: "invalid_code" };
+    return { error: "forbidden" };
   });
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decryptString, deriveKey, encryptString } from "../encryption";
 import { checkPasswordPolicy, hashPassword, verifyPassword, verifyPasswordAgainstDummy } from "../password";
-import { base32Decode, base32Encode, generateTotpSecret, hotp, totp, totpUri, verifyTotp } from "../totp";
+import { base32Decode, base32Encode, findTotpDrift, generateTotpSecret, hotp, totp, totpUri, verifyTotp } from "../totp";
 import { randomNumericCode, randomToken, safeEqual, sha256Hex } from "../tokens";
 
 // RFC 6238 Appendix B secret (ASCII "12345678901234567890").
@@ -68,6 +68,26 @@ describe("TOTP (RFC 6238 / RFC 4226)", () => {
     expect(step).not.toBeNull();
     expect(verifyTotp(secret, totp(secret, now), now, step)).toBeNull();
     expect(verifyTotp(secret, totp(secret, now - 30_000), now, step)).toBeNull();
+  });
+
+  it("finds clock drift outside the accepted window without accepting the code", () => {
+    const secret = generateTotpSecret();
+    const now = 1_800_000_000_000;
+    // Phone 5 minutes ahead of the server: refused, drift = +10 steps.
+    const ahead = totp(secret, now + 5 * 60_000);
+    expect(verifyTotp(secret, ahead, now)).toBeNull();
+    expect(findTotpDrift(secret, ahead, now)).toBe(10);
+    // Phone 3 minutes behind.
+    expect(findTotpDrift(secret, totp(secret, now - 3 * 60_000), now)).toBe(-6);
+    // Codes inside the normal window are not drift.
+    expect(findTotpDrift(secret, totp(secret, now), now)).toBeNull();
+    expect(findTotpDrift(secret, totp(secret, now + 30_000), now)).toBeNull();
+    // Further than 10 minutes, or not a code at all.
+    expect(findTotpDrift(secret, totp(secret, now + 30 * 60_000), now)).toBeNull();
+    expect(findTotpDrift(secret, "abcdef", now)).toBeNull();
+    // An already used (replayed) code is not drift.
+    const used = verifyTotp(secret, totp(secret, now), now)!;
+    expect(findTotpDrift(secret, totp(secret, now - 3 * 60_000), now, used)).toBeNull();
   });
 
   it("builds an otpauth URI", () => {

@@ -17,7 +17,7 @@ import {
   setPasswordHash,
   strongestAdminLevel,
 } from "../repo/admin-users-repo";
-import { getUserSummary, revokeUserSessions } from "../repo/identity-repo";
+import { getMfa, getUserSummary, revokeUserSessions } from "../repo/identity-repo";
 import { UnauthenticatedError } from "./errors";
 
 /**
@@ -34,9 +34,18 @@ function self(actor: Actor): { userId: string; sessionId: string } {
 
 export async function getOwnAccount(actor: Actor, now = new Date()) {
   const { userId, sessionId } = self(actor);
-  const [user, sessions] = await Promise.all([getUserSummary(db(), userId), listActiveSessions(db(), userId, "admin", now)]);
+  const [user, sessions, mfa] = await Promise.all([
+    getUserSummary(db(), userId),
+    listActiveSessions(db(), userId, "admin", now),
+    getMfa(db(), userId),
+  ]);
   if (!user) throw new UnauthenticatedError();
-  return { user, sessions: sessions.map((s) => ({ ...s, current: s.id === sessionId })) };
+  return {
+    user,
+    sessions: sessions.map((s) => ({ ...s, current: s.id === sessionId })),
+    /** Unused backup codes; null when two-factor sign-in is not set up. */
+    backupCodesLeft: mfa?.isVerified ? mfa.backupCodeHashes.length : null,
+  };
 }
 
 /** Wrong current passwords per account in the window, before changes are refused. */

@@ -92,6 +92,40 @@ export function verifyTotp(
   return matched;
 }
 
+/** How far (in steps) findTotpDrift looks either side: 20 steps = 10 minutes. */
+export const TOTP_DRIFT_SEARCH_STEPS = 20;
+
+/**
+ * Diagnosis only, never a sign-in: after verifyTotp refused a code, checks
+ * whether it belongs to a time step further away (up to `maxSteps` either
+ * side, outside the normal one-step window). A match means the server's or
+ * the phone's clock is off, for example when the server cannot reach its
+ * time servers during an internet cut. Returns the offset in steps
+ * (positive: the phone is ahead of the server), or null. Steps at or before
+ * `lastUsedStep` are ignored: a replayed code is not a clock problem.
+ */
+export function findTotpDrift(
+  secretBase32: string,
+  code: string,
+  timeMs: number,
+  lastUsedStep: number | null = null,
+  maxSteps = TOTP_DRIFT_SEARCH_STEPS,
+): number | null {
+  const clean = code.replace(/\s/g, "");
+  if (!/^\d{6}$/.test(clean)) return null;
+  const key = base32Decode(secretBase32);
+  const current = totpStep(timeMs);
+  let best: number | null = null;
+  for (let offset = -maxSteps; offset <= maxSteps; offset += 1) {
+    if (Math.abs(offset) <= 1) continue;
+    const step = current + offset;
+    // Check every candidate so timing does not depend on which one matched.
+    const matches = safeEqual(hotp(key, step), clean);
+    if (matches && (lastUsedStep === null || step > lastUsedStep) && (best === null || Math.abs(offset) < Math.abs(best))) best = offset;
+  }
+  return best;
+}
+
 /** otpauth:// URI for authenticator apps (shown as a QR code). */
 export function totpUri(secretBase32: string, accountName: string, issuer: string): string {
   const label = encodeURIComponent(`${issuer}:${accountName}`);

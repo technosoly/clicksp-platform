@@ -17,7 +17,7 @@ export function MfaCodeForm({ next }: { next?: string }) {
     <form action={action} className="space-y-4" noValidate>
       <input type="hidden" name="locale" value={locale} />
       {next ? <input type="hidden" name="next" value={next} /> : null}
-      <FormError message={state?.error ? t(`errors.${state.error}`) : undefined} />
+      <FormError message={state?.error ? t(`errors.${state.error}`, state.values) : undefined} />
       <div className="space-y-2">
         <Label htmlFor="code">{t("mfaCode")}</Label>
         <Input

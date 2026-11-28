@@ -293,6 +293,18 @@ export async function consumeBackupCode(client: DbClient, userId: string, codeHa
   return count === 1;
 }
 
+/**
+ * Replaces every backup code of a verified enrolment (old codes stop
+ * working). False when the enrolment was removed meanwhile.
+ */
+export async function replaceBackupCodes(client: DbClient, userId: string, codeHashes: string[], at: Date): Promise<boolean> {
+  const result = await client.userMfa.updateMany({
+    where: { userId, isVerified: true },
+    data: { backupCodeHashes: codeHashes, updatedAt: at },
+  });
+  return result.count === 1;
+}
+
 // ---------- verification tokens (OTP) ----------
 
 export async function createVerificationToken(

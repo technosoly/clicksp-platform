@@ -73,9 +73,32 @@ docker build \
 | Payment gateway (Zarinpal, Zibal, ...) | online payment, once connected | Iranian gateways, reachable from Iranian hosting; the customer's browser goes to the bank page and back to `/api/webhooks/payments/<provider>` | none yet: orders stay awaiting payment. `PAYMENT_PROVIDERS` lists the adapters; credentials are `<PREFIX>_*` server variables. `fake` is for development and tests only and is refused in production |
 | Kavenegar SMS API (`api.kavenegar.com`, HTTPS) | customer phone sign-in, when `SMS_PROVIDER=kavenegar` | Iranian provider, reachable from Iranian hosting; the server must be allowed to make outbound HTTPS to it | `SMS_PROVIDER=none`: phone sign-in is off, the rest of the store works. Requests time out after 8 seconds and are not retried automatically. A timeout can still mean the SMS arrives; if the customer asks again, the new code replaces the old one |
 | Authenticator apps | admins' phones only | offline (TOTP needs no network) | any RFC 6238 app |
+| Time server (NTP) for the server clock | always (admin two-factor codes need the clock right to about 30 seconds) | Ubuntu's default `ntp.ubuntu.com` is abroad | the hosting provider's NTP server, see "If the international internet is cut" |
 | Google Fonts, CDNs, foreign SaaS | not used | n/a | n/a |
 
-The running app has **no** runtime dependency on foreign services.
+The running app has **no** runtime dependency on foreign services (the server's clock needs a reachable time server, see below).
+
+## If the international internet is cut
+
+During a shutdown of international traffic, the Iranian (domestic) network usually keeps working. The running store needs nothing from abroad, so it keeps working for visitors inside Iran **as long as the server, its DNS and its CDN are Iranian** (a server or CDN abroad becomes unreachable).
+
+| What | During an international cut |
+|---|---|
+| Store pages, cart, search | work (fonts, images and scripts are served by the app itself) |
+| Admin sign-in: password + authenticator app code | works: the app computes codes on the phone without internet, and the QR code is made on the server |
+| Admin sign-in with a backup code | works (each code once); new codes in **My account > Backup codes** with a current app code |
+| Admin lost phone and backup codes | a Super Admin removes their authenticator (People > Admins); the owner of the only Super Admin account runs `pnpm admin:reset-link --username <name> --reset-mfa` over SSH (SSH to an Iranian server works on the domestic network) |
+| Customer sign-in by SMS code | works while Kavenegar (an Iranian provider) is reachable from the server; signed-in customers stay signed in (14 days idle, 30 days absolute) |
+| Online payment | Iranian gateways, reachable on the domestic network |
+| Deploys from GitHub Actions, `git pull`, npm and Docker Hub | stop; the running site is not affected, deploy again when the connection is back |
+
+**Server clock.** Authenticator codes change every 30 seconds, and the server accepts the current code and one step either side, so the server's clock must be right to within about 30 seconds. Ubuntu sets its clock from `ntp.ubuntu.com`, which is abroad: during a long cut the clock slowly drifts and admin codes start failing. Set a domestic time server before going live:
+
+1. Ask the hosting provider for its NTP server address (most Iranian data centres run one).
+2. In `/etc/systemd/timesyncd.conf`, under `[Time]`: `NTP=<provider's NTP server>` and `FallbackNTP=ir.pool.ntp.org ntp.ubuntu.com` (`ir.pool.ntp.org` is the NTP Pool's Iran zone; its name may not resolve during a cut, which is why the provider's server comes first), then `sudo systemctl restart systemd-timesyncd`.
+3. Check with `timedatectl`: `System clock synchronized: yes`. `timedatectl timesync-status` names the server in use.
+
+When an admin enters a code that would be right a few minutes away (up to 10 minutes either side), the sign-in is still refused, the form says the clock is off and by about how many minutes, and a `mfa.clock_drift` security event records the offset in seconds (Audit log). If the admin's phone is set to automatic time, the server clock is the one to fix: with no time server reachable, set it by hand from a correct clock (in UTC), `sudo timedatectl set-ntp false && sudo date -u -s "YYYY-MM-DD HH:MM:SS" && sudo timedatectl set-ntp true`. Backup codes do not depend on the clock and keep working meanwhile.
 
 ## What the owner provides
 
