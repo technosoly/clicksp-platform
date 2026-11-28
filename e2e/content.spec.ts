@@ -82,6 +82,8 @@ test("a Business Admin sets the contact details and visitors see them on the Con
   await expect(page.getByTestId("admin-contact-heading")).toContainText("Contact details");
   await page.getByLabel("Address (Persian)").fill(`TEST نشانی ${id}`);
   await page.getByLabel("Phone 1").fill("021-0000 0000");
+  await page.getByLabel("Phone 2").fill("");
+  await page.getByLabel("Phone 3").fill("");
   await page.getByLabel("Opening hours (Persian)").fill("TEST شنبه تا پنجشنبه");
   await page.getByLabel("Neshan link (neshan.org or nshn.ir)").fill("https://evil.test/x");
   await page.getByTestId("admin-contact-form-submit").click();

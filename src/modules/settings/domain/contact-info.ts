@@ -20,9 +20,9 @@ export const CONTACT_LIMITS = { address: 500, hours: 300, phone: 20, phones: 3, 
 const UNSAFE = /[\u0000-\u0008\u000B-\u001F\u007F‪-‮⁦-⁩]/g;
 const clean = (s: string) => normalizeForStorage(s.replace(UNSAFE, ""));
 
-/** Hosts each map link may point at. Shortened share links (maps.app.goo.gl, nshn.ir) are allowed. */
+/** Hosts each map link may point at. Shortened share links (maps.app.goo.gl, nshn.ir) are allowed; on google.com only /maps pages. */
 const MAP_HOSTS = {
-  google: ["www.google.com", "google.com", "maps.google.com", "maps.app.goo.gl", "goo.gl"],
+  google: ["www.google.com", "google.com", "maps.google.com", "maps.app.goo.gl"],
   neshan: ["neshan.org", "www.neshan.org", "nshn.ir"],
   balad: ["balad.ir", "www.balad.ir"],
 } as const;
@@ -40,7 +40,9 @@ function httpsUrl(value: string): URL | null {
 
 export function isMapLink(provider: MapProvider, value: string): boolean {
   const url = httpsUrl(value);
-  return Boolean(url && (MAP_HOSTS[provider] as readonly string[]).includes(url.hostname));
+  if (!url || !(MAP_HOSTS[provider] as readonly string[]).includes(url.hostname)) return false;
+  // google.com also serves open redirects (/url?q=...): only its map pages are accepted.
+  return provider !== "google" || url.hostname === "maps.app.goo.gl" || url.pathname === "/maps" || url.pathname.startsWith("/maps/");
 }
 
 /** Only Google's own embed endpoint (the src of the iframe from "Share > Embed a map"). */

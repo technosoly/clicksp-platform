@@ -32,7 +32,11 @@ describe("contact details", () => {
   it("accepts map links only from each provider's own https hosts", () => {
     expect(isMapLink("google", "https://maps.app.goo.gl/abc")).toBe(true);
     expect(isMapLink("google", "https://www.google.com/maps/place/x")).toBe(true);
+    expect(isMapLink("google", "https://www.google.com/maps")).toBe(true);
     expect(isMapLink("google", "http://maps.app.goo.gl/abc")).toBe(false);
+    expect(isMapLink("google", "https://www.google.com/url?q=https://evil.test")).toBe(false);
+    expect(isMapLink("google", "https://www.google.com/mapsx")).toBe(false);
+    expect(isMapLink("google", "https://goo.gl/abc")).toBe(false);
     expect(isMapLink("google", "https://maps.app.goo.gl.evil.test/abc")).toBe(false);
     expect(isMapLink("google", "javascript:alert(1)")).toBe(false);
     expect(isMapLink("google", "https://user@maps.app.goo.gl/abc")).toBe(false);
