@@ -16,6 +16,8 @@ export interface ActionState {
   expiresAt?: string;
   /** Translation key of a success message. */
   message?: string;
+  /** New backup codes, shown once. */
+  backupCodes?: string[];
 }
 
 export function localeOf(form: FormData): "fa" | "en" {

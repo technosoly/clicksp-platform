@@ -209,8 +209,35 @@ test.describe("managing accounts", () => {
     await page.getByTestId("admin-change-password-submit").click();
     await expect(page.getByTestId("form-success")).toContainText("Password changed");
     await page.getByTestId("admin-logout").click();
+    // Wait for sign-out to finish, or the login page still sees the old session.
+    await expect(page).toHaveURL(/\/en\/admin\/login$/);
     await signIn(page, username, PASSWORD);
     await expect(page.getByTestId("form-error")).toHaveText("The username or password is incorrect.");
+  });
+
+  test("an admin makes new backup codes in My account and signs in with one", async ({ page }) => {
+    const username = await createAdmin("business_admin");
+    const enrolledAt = Date.now();
+    const secret = await signInAndEnrol(page, username);
+    await page.goto("/en/admin/account");
+    await expect(page.getByTestId("backup-codes-left")).toHaveText("You have 10 unused backup codes.");
+    await page.getByLabel("Code from your authenticator app").fill("123456");
+    await page.getByTestId("backup-codes-submit").click();
+    await expect(page.getByTestId("form-error")).toContainText("not correct");
+    await page.getByLabel("Code from your authenticator app").fill(await freshCode(secret, enrolledAt));
+    await page.getByTestId("backup-codes-submit").click();
+    const codes = page.getByTestId("new-backup-codes").locator("li");
+    await expect(codes).toHaveCount(10);
+    const fresh = (await codes.first().textContent())!.trim();
+    expect(fresh).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    await page.getByTestId("admin-logout").click();
+    // Wait for sign-out to finish, or the login page still sees the old session.
+    await expect(page).toHaveURL(/\/en\/admin\/login$/);
+    await signIn(page, username);
+    await expect(page).toHaveURL(/\/en\/admin\/mfa/);
+    await page.getByLabel("Code", { exact: true }).fill(fresh);
+    await page.getByTestId("admin-mfa-submit").click();
+    await expect(page).toHaveURL(/\/en\/admin$/);
   });
 
   test("an unknown password link is refused", async ({ page }) => {
