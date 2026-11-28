@@ -31,6 +31,7 @@ describe("Kavenegar SMS adapter", () => {
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(`https://api.kavenegar.com/v1/${API_KEY}/verify/lookup.json`);
     expect(init.method).toBe("POST");
+    expect(init.redirect).toBe("error");
     expect((init.headers as Record<string, string>)["Content-Type"]).toContain("application/x-www-form-urlencoded");
     const body = new URLSearchParams(String(init.body));
     expect(Object.fromEntries(body)).toEqual({ receptor: "09121234567", token: "123456", template: "clicksp-login" });

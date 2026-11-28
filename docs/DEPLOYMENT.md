@@ -71,7 +71,7 @@ docker build \
 | GitHub (source, Actions) | development and CI | can be restricted | keep a mirror of the repository |
 | Fonts | never at runtime | n/a | Vazirmatn is bundled in the build |
 | Payment gateway (Zarinpal, Zibal, ...) | online payment, once connected | Iranian gateways, reachable from Iranian hosting; the customer's browser goes to the bank page and back to `/api/webhooks/payments/<provider>` | none yet: orders stay awaiting payment. `PAYMENT_PROVIDERS` lists the adapters; credentials are `<PREFIX>_*` server variables. `fake` is for development and tests only and is refused in production |
-| Kavenegar SMS API (`api.kavenegar.com`, HTTPS) | customer phone sign-in, when `SMS_PROVIDER=kavenegar` | Iranian provider, reachable from Iranian hosting; the server must be allowed to make outbound HTTPS to it | `SMS_PROVIDER=none`: phone sign-in is off, the rest of the store works. Requests time out after 10 seconds and are not retried, so a slow answer never sends two codes |
+| Kavenegar SMS API (`api.kavenegar.com`, HTTPS) | customer phone sign-in, when `SMS_PROVIDER=kavenegar` | Iranian provider, reachable from Iranian hosting; the server must be allowed to make outbound HTTPS to it | `SMS_PROVIDER=none`: phone sign-in is off, the rest of the store works. Requests time out after 8 seconds and are not retried automatically. A timeout can still mean the SMS arrives; if the customer asks again, the new code replaces the old one |
 | Authenticator apps | admins' phones only | offline (TOTP needs no network) | any RFC 6238 app |
 | Google Fonts, CDNs, foreign SaaS | not used | n/a | n/a |
 

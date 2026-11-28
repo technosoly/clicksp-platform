@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ## [Unreleased]
 
 ### Added (SMS)
-- **Kavenegar SMS for customer sign-in codes**: `SMS_PROVIDER=kavenegar` sends the code with Kavenegar's Verify Lookup API and an approved template (`KAVENEGAR_API_KEY`, `KAVENEGAR_OTP_TEMPLATE`, server environment only, passed through Docker Compose). The key never appears in logs or errors; requests time out after 10 seconds without retrying; a missing key or template leaves phone sign-in off instead of stopping the store. Setup steps in `docs/DEPLOYMENT.md`.
+- **Kavenegar SMS for customer sign-in codes**: `SMS_PROVIDER=kavenegar` sends the code with Kavenegar's Verify Lookup API and an approved template (`KAVENEGAR_API_KEY`, `KAVENEGAR_OTP_TEMPLATE`, server environment only, passed through Docker Compose). The key never appears in logs or errors; requests time out after 8 seconds without retrying and never follow redirects; a missing key or template leaves phone sign-in off instead of stopping the store. Setup steps in `docs/DEPLOYMENT.md`.
 - Tests: unit (request format, number conversion, success and error answers, timeout, refused numbers and codes, no key in errors, configuration checks, environment parsing).
 
 ### Fixed (deployment)

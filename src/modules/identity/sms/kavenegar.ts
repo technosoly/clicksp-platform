@@ -17,7 +17,7 @@
 import type { SmsMessage, SmsSendResult, SmsSender } from "./sms-adapter";
 
 export const KAVENEGAR_API_BASE = "https://api.kavenegar.com/v1";
-const TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = 8_000;
 
 export interface KavenegarConfig {
   apiKey: string;
@@ -78,6 +78,8 @@ export function createKavenegarSmsSender(config: KavenegarConfig): SmsSender {
           body: body.toString(),
           signal: AbortSignal.timeout(config.timeoutMs ?? TIMEOUT_MS),
           cache: "no-store",
+          // The endpoint never redirects; refuse to follow one anywhere else.
+          redirect: "error",
         });
       } catch (error) {
         // Only the error's name (TimeoutError, TypeError, ...): a network
