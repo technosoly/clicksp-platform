@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { getTranslations } from "next-intl/server";
 import { CatalogImage } from "@/components/media/catalog-image";
+import { defaultHeroSlides } from "@/components/store/hero-defaults";
 import { HeroSlider, type HeroSlide } from "@/components/store/hero-slider";
 import { ProductGrid } from "@/components/store/product-grid";
 import { RichBlocks } from "@/components/store/rich-blocks";
@@ -69,10 +70,15 @@ async function loadData(sections: readonly BuilderSection[], locale: ShopLocale)
   const slides: HeroSlide[] = banners.flatMap((b) => {
     const main = pickRendition(b.desktop, 1280);
     if (!main) return [];
-    return [{ ...b, desktop: { src: mediaUrl(main.key), srcSet: srcSet(b.desktop), width: main.width, height: main.height }, mobile: b.mobile.length ? { srcSet: srcSet(b.mobile) } : null }];
+    return [{ ...b, kind: "image" as const, desktop: { src: mediaUrl(main.key), srcSet: srcSet(b.desktop), width: main.width, height: main.height }, mobile: b.mobile.length ? { srcSet: srcSet(b.mobile) } : null }];
   });
   const models = brands.flatMap((b) => b.models.map((m) => ({ id: m.id, slug: m.slug, name: `${b.name} ${m.name}` })));
-  return { home, models, unit, slides, articles: articles.items };
+  return { home, models, unit, slides: slides.length ? slides : await defaultSlides(locale), articles: articles.items };
+}
+
+/** The built-in brand slides shown while no banner is live, so the slider is never empty. */
+async function defaultSlides(locale: ShopLocale): Promise<HeroSlide[]> {
+  return defaultHeroSlides(await getTranslations({ locale, namespace: "Home.slider.defaults" }), locale);
 }
 
 type Data = Awaited<ReturnType<typeof loadData>>;
