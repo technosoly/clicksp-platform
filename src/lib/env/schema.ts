@@ -71,6 +71,9 @@ export const serverEnvSchema = z.object({
   // of the approved Verify template whose text contains %token.
   KAVENEGAR_API_KEY: z.string().optional(),
   KAVENEGAR_OTP_TEMPLATE: z.string().optional(),
+  // Kavenegar web push on storefront pages (src/lib/web-push/kavenegar.ts):
+  // unset = the owner's app id, empty or "off" = off. A public id, not a secret.
+  KAVENEGAR_WEBPUSH_APP_ID: z.string().optional(),
   // Gateway adapters this server may use, comma separated ("fake" only outside production).
   PAYMENT_PROVIDERS: z.string().default(""),
 });
