@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed (deployment)
+- The image build no longer pulls the `docker/dockerfile` frontend from Docker Hub (the `# syntax=` line is removed; BuildKit's built-in frontend handles the secret mounts), so it works where Docker Hub is blocked.
+- `admin:reset-link` run through the `migrate` service now gets `APP_URL`, so its one-time link points at the real domain instead of `localhost`.
+- `docs/DEPLOYMENT.md`: database and Redis passwords are generated as hex (base64's `/` and `+` broke the connection URLs), the Ubuntu package names for Docker, Compose and BuildKit, a swap file for the build on small servers, and getting the first certificate behind a CDN.
+
 ### Added (Phase 10: getting ready to go online)
 - **robots.txt and sitemap**: search engines are kept out until `SITE_INDEXING=true` (off by default and on staging). Then `robots.txt` allows the storefront, keeps out admin, preview, account, cart, checkout, sign-in, search and the API, and names `/sitemap.xml`, which lists home, motorcycles, articles, information pages, categories, products and motorcycle models in each language that has its own address (capped at 45,000 entries, categories only when their parents are shown too, rebuilt at most once an hour, empty while indexing is off). `SITE_INDEXING=true` is refused unless `APP_ENV=production`.
 - **Production setup**: `deploy/nginx/clicksp.conf` (HTTPS, www redirect, 1 MB request limit except 11 MB on admin pages, client address passed as `X-Real-IP`, rate limit, caching of built assets), `scripts/backup.sh` (database dump plus uploaded files with checksums, keeps 14) and `scripts/restore.sh`, and the going-live steps and owner checklist in `docs/DEPLOYMENT.md`. Docker Compose passes `SITE_INDEXING`, `TRUSTED_IP_HEADER` and `PAYMENT_PROVIDERS` to the app.
