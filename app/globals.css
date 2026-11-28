@@ -98,3 +98,13 @@
     }
   }
 }
+
+/* Home slider: the active dot fills while the slide is showing. */
+@keyframes hero-progress {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
