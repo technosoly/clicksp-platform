@@ -209,6 +209,8 @@ test.describe("managing accounts", () => {
     await page.getByTestId("admin-change-password-submit").click();
     await expect(page.getByTestId("form-success")).toContainText("Password changed");
     await page.getByTestId("admin-logout").click();
+    // Wait for sign-out to finish, or the login page still sees the old session.
+    await expect(page).toHaveURL(/\/en\/admin\/login$/);
     await signIn(page, username, PASSWORD);
     await expect(page.getByTestId("form-error")).toHaveText("The username or password is incorrect.");
   });
@@ -229,6 +231,8 @@ test.describe("managing accounts", () => {
     const fresh = (await codes.first().textContent())!.trim();
     expect(fresh).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
     await page.getByTestId("admin-logout").click();
+    // Wait for sign-out to finish, or the login page still sees the old session.
+    await expect(page).toHaveURL(/\/en\/admin\/login$/);
     await signIn(page, username);
     await expect(page).toHaveURL(/\/en\/admin\/mfa/);
     await page.getByLabel("Code", { exact: true }).fill(fresh);
