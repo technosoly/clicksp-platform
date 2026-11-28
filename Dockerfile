@@ -1,4 +1,6 @@
-# syntax=docker/dockerfile:1.7
+# Uses BuildKit's built-in Dockerfile frontend (no "# syntax=" line), so a
+# build doesn't pull docker/dockerfile from Docker Hub, which Iranian servers
+# often can't reach. RUN --mount=type=secret needs BuildKit (docker-buildx).
 # Multi-stage build for the Clicksp Next.js app (standalone output).
 # Images are built in CI and pushed to a registry the server can reach;
 # production servers never run `pnpm install` (see docs/DEPLOYMENT.md).
