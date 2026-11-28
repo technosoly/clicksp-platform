@@ -14,10 +14,20 @@
  * Every source is 'self': fonts are bundled and nothing is loaded from other
  * origins (CLAUDE.md, Iranian hosting). One exception on storefront pages:
  * frames from www.google.com/maps/embed on the Contact page only, for its map, which
- * loads only when the visitor asks for it (docs/DEPLOYMENT.md).
+ * loads only when the visitor asks for it (docs/DEPLOYMENT.md). And, when
+ * web push is on (src/lib/web-push/kavenegar.ts), Kavenegar's SDK on
+ * storefront pages: scripts, styles and images from cdn.kavenegar.com and
+ * requests to Kavenegar's own hosts. Strict pages never load it.
  */
 
 export type CspKind = "strict" | "static";
+
+/**
+ * Request header the proxy sets on every page request (always overwritten,
+ * never taken from the browser) so the root layout knows which policy the
+ * page gets: it adds the web-push loader on "static" pages only.
+ */
+export const CSP_KIND_HEADER = "x-clicksp-csp";
 
 /** Admin, the page builder preview, customer sign-in, account, cart and checkout pages: rendered per request, nonce policy. */
 export function needsStrictCsp(pathname: string): boolean {
@@ -38,25 +48,31 @@ export function allowsMapFrame(pathname: string): boolean {
   return /^\/(?:fa|en)\/contact\/?$/.test(pathname);
 }
 
-export function buildCsp(kind: CspKind, options: { nonce?: string; dev: boolean; mapFrame?: boolean }): string {
+/** Kavenegar web push SDK (storefront pages only). */
+const KAVENEGAR_CDN = "https://cdn.kavenegar.com";
+const KAVENEGAR_HOSTS = "https://*.kavenegar.com";
+
+export function buildCsp(kind: CspKind, options: { nonce?: string; dev: boolean; mapFrame?: boolean; webPush?: boolean }): string {
   const devEval = options.dev ? " 'unsafe-eval'" : "";
+  const push = kind === "static" && options.webPush === true;
+  const pushCdn = push ? ` ${KAVENEGAR_CDN}` : "";
   const script =
     kind === "strict"
       ? `'self' 'nonce-${options.nonce ?? ""}' 'strict-dynamic'${devEval}`
-      : `'self' 'unsafe-inline'${devEval}`;
+      : `'self' 'unsafe-inline'${pushCdn}${devEval}`;
   // Inline style attributes (e.g. next/image) are allowed; style elements need the nonce on strict pages.
-  const style = kind === "strict" ? `'self' 'nonce-${options.nonce ?? ""}'` : "'self' 'unsafe-inline'";
+  const style = kind === "strict" ? `'self' 'nonce-${options.nonce ?? ""}'` : `'self' 'unsafe-inline'${pushCdn}`;
   const directives = [
     "default-src 'self'",
     `script-src ${script}`,
     `style-src ${style}`,
     "style-src-attr 'unsafe-inline'",
-    "img-src 'self' blob: data:",
+    `img-src 'self' blob: data:${pushCdn}`,
     "font-src 'self'",
     // Contact page only: Google's map embed, loaded when the visitor presses "show map".
     ...(kind === "static" && options.mapFrame ? ["frame-src 'self' https://www.google.com/maps/embed"] : []),
     // Dev only: hot reload talks to the dev server over a WebSocket.
-    `connect-src 'self'${options.dev ? " ws: wss:" : ""}`,
+    `connect-src 'self'${push ? ` ${KAVENEGAR_HOSTS}` : ""}${options.dev ? " ws: wss:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

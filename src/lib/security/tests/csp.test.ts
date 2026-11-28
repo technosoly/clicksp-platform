@@ -30,6 +30,18 @@ describe("Content-Security-Policy", () => {
     for (const path of ["/fa", "/fa/contacts", "/fa/pages/contact", "/fa/admin/content/contact", "/contact"]) expect(allowsMapFrame(path)).toBe(false);
   });
 
+  it("web push adds Kavenegar's CDN to the storefront policy only", () => {
+    const csp = buildCsp("static", { dev: false, webPush: true });
+    expect(csp).toContain("script-src 'self' 'unsafe-inline' https://cdn.kavenegar.com");
+    expect(csp).toContain("style-src 'self' 'unsafe-inline' https://cdn.kavenegar.com");
+    expect(csp).toContain("img-src 'self' blob: data: https://cdn.kavenegar.com");
+    expect(csp).toContain("connect-src 'self' https://*.kavenegar.com");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(buildCsp("static", { dev: false, webPush: true, mapFrame: true })).toContain("https://cdn.kavenegar.com");
+    const strict = buildCsp("strict", { nonce: "n", dev: false, webPush: true });
+    expect(strict).not.toContain("kavenegar");
+  });
+
   it("strict pages allow no frames from other origins", () => {
     expect(buildCsp("strict", { nonce: "n", dev: false })).not.toContain("frame-src");
   });

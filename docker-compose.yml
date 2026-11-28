@@ -89,6 +89,8 @@ services:
       SMS_PROVIDER: ${SMS_PROVIDER:-none}
       KAVENEGAR_API_KEY: ${KAVENEGAR_API_KEY:-}
       KAVENEGAR_OTP_TEMPLATE: ${KAVENEGAR_OTP_TEMPLATE:-}
+      # Web push on storefront pages; unset in .env = the owner's app id, KAVENEGAR_WEBPUSH_APP_ID= (empty) = off.
+      KAVENEGAR_WEBPUSH_APP_ID: ${KAVENEGAR_WEBPUSH_APP_ID-06693099-4534-40ff-ae23-e73f63cdb0e9}
       DATABASE_URL: postgresql://${POSTGRES_USER:-clicksp}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-clicksp}
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       MEILISEARCH_HOST: http://meilisearch:7700

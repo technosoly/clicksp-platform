@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (Kavenegar web push on the storefront)
+- Storefront pages load Kavenegar's web-push SDK (`https://cdn.kavenegar.com/sdk/page.js?appId=…`, the owner's app id) as a `defer`, `charset="utf-8"` script in `<head>`. A few inline lines add the tag after the page's `load` event instead of writing it into the HTML, because a plain `defer` tag holds back DOMContentLoaded, which Next.js waits for to finish hydrating: with the CDN slow or filtered, the page would stay half working until the connection timed out. Now a missing CDN only means no push prompt.
+- Admin, page-builder preview, sign-in, account, cart and checkout pages never load it (the proxy marks each request with the policy it gets and the root layout checks that mark).
+- The storefront Content-Security-Policy allows `https://cdn.kavenegar.com` for scripts, styles and images and `https://*.kavenegar.com` for requests, only while web push is on; the strict policy is unchanged.
+- Switch: `KAVENEGAR_WEBPUSH_APP_ID` (unset = the owner's id, empty or `off` = off; anything but a UUID is refused). Tests: `src/lib/web-push/tests/kavenegar.test.ts`, `src/lib/security/tests/csp.test.ts`, `e2e/web-push.spec.ts`.
+
 ### Added (Kavenegar web-push service worker file)
 - `public/kvn-push-sw.js` is served at `/kvn-push-sw.js` (the file Kavenegar's panel asks for to set up web push). It only imports `https://cdn.kavenegar.com/sdk/sw.js`; no page registers it, so it runs only if web push is set up later. The locale proxy skips it (files with an extension are not matched), tested in `src/lib/security/tests/public-root-files.test.ts`.
 

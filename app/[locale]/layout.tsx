@@ -1,12 +1,15 @@
 import "@fontsource-variable/vazirmatn/wght.css";
 import "../globals.css";
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { hasLocale, NextIntlClientProvider } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
 import { localeDirection, type Locale } from "@/lib/i18n/config";
 import { routing } from "@/lib/i18n/routing";
+import { CSP_KIND_HEADER } from "@/lib/security/csp";
+import { kavenegarLoaderScript, kavenegarWebPushAppId } from "@/lib/web-push/kavenegar";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -55,9 +58,14 @@ export default async function LocaleLayout({
   if (!hasLocale(routing.locales, locale)) notFound();
   setRequestLocale(locale);
   const t = await getTranslations({ locale, namespace: "Common" });
+  // Kavenegar web push: storefront pages with the static policy only (never
+  // admin, sign-in, account, cart or checkout), loaded after the page's load
+  // event so a slow or blocked CDN cannot delay anything (see the module).
+  const pushAppId = (await headers()).get(CSP_KIND_HEADER) === "static" ? kavenegarWebPushAppId(process.env.KAVENEGAR_WEBPUSH_APP_ID) : null;
 
   return (
     <html lang={locale === "fa" ? "fa-IR" : "en"} dir={localeDirection[locale as Locale]}>
+      <head>{pushAppId ? <script id="kvn-web-push-loader" dangerouslySetInnerHTML={{ __html: kavenegarLoaderScript(pushAppId) }} /> : null}</head>
       <body className="min-h-dvh antialiased">
         <a
           href="#main"
