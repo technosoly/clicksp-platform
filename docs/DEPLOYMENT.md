@@ -74,6 +74,7 @@ docker build \
 | Kavenegar SMS API (`api.kavenegar.com`, HTTPS) | customer phone sign-in, when `SMS_PROVIDER=kavenegar` | Iranian provider, reachable from Iranian hosting; the server must be allowed to make outbound HTTPS to it | `SMS_PROVIDER=none`: phone sign-in is off, the rest of the store works. Requests time out after 8 seconds and are not retried automatically. A timeout can still mean the SMS arrives; if the customer asks again, the new code replaces the old one |
 | Authenticator apps | admins' phones only | offline (TOTP needs no network) | any RFC 6238 app |
 | Time server (NTP) for the server clock | always (admin two-factor codes need the clock right to about 30 seconds) | Ubuntu's default `ntp.ubuntu.com` is abroad | the hosting provider's NTP server, see "If the international internet is cut" |
+| Google Maps embed (`www.google.com/maps/embed`) | visitor's browser only, and only after they press "Show Google map" on the Contact page, when an admin has pasted an embed code | may be unreachable when international internet is cut | the Contact page draws its own map picture and shows the address, phones and the map-app links (Google Maps, Neshan, Balad) without loading anything from another site; the Contact page's CSP (and no other page's) allows frames from `https://www.google.com/maps/embed` |
 | Google Fonts, CDNs, foreign SaaS | not used | n/a | n/a |
 
 The running app has **no** runtime dependency on foreign services (the server's clock needs a reachable time server, see below).

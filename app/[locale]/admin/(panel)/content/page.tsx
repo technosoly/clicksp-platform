@@ -29,6 +29,11 @@ export default async function AdminContentPage({ params }: { params: Promise<{ l
           ))}
         </ul>
       </Card>
+      <Card title={t("contactTitle")} description={t("contactHelp")} testId="admin-contact-card">
+        <Link href="/admin/content/contact" className="font-medium underline" data-testid="admin-contact-edit">
+          {t("contactEdit")}
+        </Link>
+      </Card>
     </>
   );
 }

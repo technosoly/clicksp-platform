@@ -50,7 +50,9 @@
     "rights": "All rights reserved, {name}.",
     "pagesLabel": "Store information",
     "blog": "Articles",
-    "moreLabel": "More links"
+    "moreLabel": "More links",
+    "about": "About us",
+    "contact": "Contact us"
   },
   "NotFound": {
     "title": "Page not found",
@@ -62,7 +64,9 @@
     "motorcycles": "Motorcycles",
     "menu": "Main menu",
     "cart": "Cart",
-    "more": "Store links"
+    "more": "Store links",
+    "about": "About us",
+    "contact": "Contact us"
   },
   "Admin": {
     "title": "Clicksp admin",
@@ -1760,7 +1764,10 @@
     },
     "messages": {
       "published": "Published."
-    }
+    },
+    "contactTitle": "Contact details",
+    "contactHelp": "Address, phone, opening hours and map for the Contact us page.",
+    "contactEdit": "Edit contact details"
   },
   "AdminImports": {
     "title": "Product import",
@@ -2516,5 +2523,111 @@
       "restored": "The earlier version is live again."
     },
     "restoredFrom": "Restored from #{n}"
+  },
+  "Contact": {
+    "title": "Contact us",
+    "eyebrow": "We are here to help",
+    "description": "Address, phone number, opening hours and map location of Clicksp Spare Parts, the motorcycle parts and accessories store.",
+    "intro": "Call us or visit the store to ask about a part, check that it fits your motorcycle, or follow up on an order.",
+    "address": "Store address",
+    "phone": "Phone",
+    "hours": "Opening hours",
+    "email": "Email",
+    "notSet": "The store's contact details will be added to this page soon.",
+    "mapTitle": "Find us on the map",
+    "mapHelp": "Open directions to the store in your favourite map app.",
+    "mapSoon": "A map link will be added soon.",
+    "showMap": "Show Google map",
+    "maps": {
+      "google": "Google Maps",
+      "neshan": "Neshan",
+      "balad": "Balad"
+    }
+  },
+  "About": {
+    "title": "About us",
+    "eyebrow": "About Clicksp Spare Parts",
+    "description": "Clicksp Spare Parts is an online store for genuine motorcycle parts and accessories, with fitment checks for your model and delivery across Iran.",
+    "headline": "The right part for your motorcycle",
+    "intro": "We sell motorcycle spare parts and accessories with exact part numbers and fitment information, so you buy a part that really fits your bike, without guesswork.",
+    "valuesLabel": "Why Clicksp",
+    "values": {
+      "genuine": {
+        "title": "Genuine, quality parts",
+        "text": "We source parts from trusted suppliers and show each item's brand and origin clearly."
+      },
+      "fitment": {
+        "title": "Fitment checked",
+        "text": "Every part lists the motorcycle models and years it fits, so you don't order the wrong one."
+      },
+      "shipping": {
+        "title": "Delivery across Iran",
+        "text": "Orders are packed safely and shipped to every city in the country."
+      },
+      "support": {
+        "title": "Expert advice",
+        "text": "Not sure which part you need? Our team will help you before you buy."
+      }
+    },
+    "storyTitle": "Our story",
+    "story": {
+      "p1": "Clicksp Spare Parts started with a simple goal: finding the right part for a motorcycle shouldn't be hard, slow or full of guesswork. Many riders visit several shops for a simple brake pad or oil filter and still aren't sure it fits their bike.",
+      "p2": "We organise our catalogue by manufacturer part number and compatible models, so once you choose your motorcycle you only see parts made for it. From engine and brake parts to electrical items, oil, filters and accessories, everything comes with a clear price and real stock.",
+      "p3": "We believe trust is built on honesty. That's why we describe every item accurately, answer your questions before you buy, and stay with you after the sale."
+    },
+    "rangeTitle": "What we sell",
+    "range": {
+      "engine": "Engine and drivetrain parts",
+      "brakes": "Brake pads, discs and brake system parts",
+      "electrical": "Electrical parts, batteries and lighting",
+      "consumables": "Oil, filters, spark plugs and consumables",
+      "accessories": "Accessories and rider gear"
+    },
+    "ctaTitle": "Have a question?",
+    "ctaText": "Get in touch and we'll help you find the right part for your bike.",
+    "ctaContact": "Contact us",
+    "ctaShop": "Parts by motorcycle"
+  },
+  "AdminContact": {
+    "title": "Contact details",
+    "intro": "The address, phone numbers, opening hours and map links shown on the Contact us page. Empty fields are not shown on the site.",
+    "view": "View contact page",
+    "back": "Back to content",
+    "save": "Save",
+    "detailsTitle": "Address and contact",
+    "mapsTitle": "Map",
+    "mapsHelp": "Find the store in the map app, press Share and paste the link here. The contact page never loads a map from another site by itself, so it keeps working when international internet is cut.",
+    "fields": {
+      "addressFa": "Address (Persian)",
+      "addressEn": "Address (English)",
+      "enHint": "Optional. When empty, the English site shows the Persian address.",
+      "phone": "Phone {number}",
+      "email": "Email",
+      "hoursFa": "Opening hours (Persian)",
+      "hoursEn": "Opening hours (English)",
+      "hoursHint": "For example: Saturday to Thursday 9:00 to 20:00, closed on Fridays",
+      "google": "Google Maps link",
+      "googleHint": "The link copied from Share in Google Maps (maps.app.goo.gl or google.com/maps).",
+      "neshan": "Neshan link (neshan.org or nshn.ir)",
+      "balad": "Balad link (balad.ir)",
+      "googleEmbed": "Google embedded map code (optional)",
+      "googleEmbedHint": "In Google Maps: Share › Embed a map › Copy HTML. The map loads only when a visitor presses \"Show map\"."
+    },
+    "errors": {
+      "phones_too_many": "Three numbers at most.",
+      "phone_invalid": "A phone number is 4 to 15 digits, optionally starting with +.",
+      "email_invalid": "The email address is not valid.",
+      "address_too_long": "The address is 500 characters at most.",
+      "hours_too_long": "Opening hours are 300 characters at most.",
+      "address_fa_required": "Enter the Persian address before the English one.",
+      "map_google_invalid": "The Google Maps link must be https on google.com or maps.app.goo.gl.",
+      "map_neshan_invalid": "The Neshan link must be on neshan.org or nshn.ir.",
+      "map_balad_invalid": "The Balad link must be on balad.ir.",
+      "map_googleEmbed_invalid": "The embed code must be a www.google.com/maps/embed map.",
+      "invalid": "Check the values."
+    },
+    "messages": {
+      "saved": "Saved."
+    }
   }
 }

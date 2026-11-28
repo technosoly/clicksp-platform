@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCsp, createNonce, needsStrictCsp } from "../csp";
+import { allowsMapFrame, buildCsp, createNonce, needsStrictCsp } from "../csp";
 
 describe("Content-Security-Policy", () => {
   it("uses the nonce policy on admin, account and customer sign-in pages only", () => {
@@ -20,7 +20,18 @@ describe("Content-Security-Policy", () => {
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain("nonce-");
+    expect(csp).not.toContain("frame-src");
     expect(csp).not.toMatch(/https?:/);
+  });
+
+  it("only the Contact page may frame Google's map embed", () => {
+    expect(buildCsp("static", { dev: false, mapFrame: true })).toContain("frame-src 'self' https://www.google.com/maps/embed");
+    for (const path of ["/fa/contact", "/en/contact", "/fa/contact/"]) expect(allowsMapFrame(path)).toBe(true);
+    for (const path of ["/fa", "/fa/contacts", "/fa/pages/contact", "/fa/admin/content/contact", "/contact"]) expect(allowsMapFrame(path)).toBe(false);
+  });
+
+  it("strict pages allow no frames from other origins", () => {
+    expect(buildCsp("strict", { nonce: "n", dev: false })).not.toContain("frame-src");
   });
 
   it("development allows eval and the hot-reload socket", () => {
