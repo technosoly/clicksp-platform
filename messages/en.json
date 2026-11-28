@@ -164,8 +164,7 @@
       "mismatch": "The passwords don't match.",
       "too_short": "The password is too short (at least 12 characters).",
       "too_long": "The password is too long (128 characters at most).",
-      "same_as_identifier": "The password can't be your username, email or name.",
-      "mfa_clock_drift": "That code would be correct about {minutes} minutes away from the server's time: a clock is off. Set your phone's date and time to automatic and try again, or use a backup code. If it keeps happening, the server's clock needs fixing."
+      "same_as_identifier": "The password can't be your username, email or name."
     },
     "setPasswordTitle": "Set your password",
     "setPasswordSubtitle": "Choose the password for your Clicksp admin account.",
@@ -538,7 +537,6 @@
       "same_as_current": "Choose a password different from the current one.",
       "not_found": "That device is already signed out.",
       "invalid_code": "That code is not correct. Enter the current 6-digit code from your authenticator app.",
-      "mfa_clock_drift": "That code would be correct about {minutes} minutes away from the server's time: a clock is off. Set your phone's date and time to automatic; if it already is, the server's clock needs fixing.",
       "mfa_locked": "Too many wrong codes. Two-factor codes are locked for 15 minutes.",
       "forbidden": "Two-factor sign-in is not set up for this account.",
       "unexpected": "Something went wrong. Please try again."

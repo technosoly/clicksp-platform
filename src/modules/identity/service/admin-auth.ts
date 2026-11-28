@@ -238,8 +238,6 @@ export async function adminPasswordLogin(
 export type MfaResult =
   | { status: "ok"; session: IssuedSession | null }
   | { status: "invalid" }
-  /** The code is refused, but it matches the authenticator at another time: a clock is off. */
-  | { status: "clock_drift"; driftMinutes: number }
   | { status: "locked" }
   | { status: "not_allowed" };
 
@@ -252,7 +250,6 @@ type MfaRow = NonNullable<Awaited<ReturnType<typeof getMfa>>>;
 type CodeCheck =
   | { status: "ok"; method: "totp" | "backup_code" }
   | { status: "invalid" }
-  | { status: "clock_drift"; driftMinutes: number }
   | { status: "locked" };
 
 /**
@@ -260,8 +257,11 @@ type CodeCheck =
  * lock for 15 minutes) and replay protection. `allowBackupCode: false` for
  * actions that must prove the authenticator itself (new backup codes).
  * A TOTP code that only matches a time step outside the accepted window is
- * still a failure; it is recorded as clock drift so the owner can fix the
- * server's time (for example when its time servers are unreachable).
+ * still a plain failure for the person signing in; it is recorded as a
+ * `mfa.clock_drift` security event so the owner can fix the server's time
+ * (for example when its time servers are unreachable). The browser is never
+ * told: an offset would let someone with the password wait for a guessed
+ * future code to become valid.
  */
 async function checkSecondFactor(
   userId: string,
@@ -311,7 +311,6 @@ async function checkSecondFactor(
       userId,
       details: { clockDriftSeconds: driftSteps * TOTP_STEP_SECONDS },
     });
-    return { status: "clock_drift", driftMinutes: Math.max(1, Math.round(Math.abs(driftSteps * TOTP_STEP_SECONDS) / 60)) };
   }
   return { status: "invalid" };
 }
@@ -434,7 +433,6 @@ function formatBackupCode(code: string): string {
 export type NewBackupCodesResult =
   | { status: "ok"; backupCodes: string[] }
   | { status: "invalid" }
-  | { status: "clock_drift"; driftMinutes: number }
   | { status: "locked" }
   | { status: "not_allowed" };
 
@@ -443,7 +441,8 @@ export type NewBackupCodesResult =
  * lost or seen by someone else). Backup codes are the way in when the phone
  * is lost, so this needs a current code from the authenticator app itself
  * (not a backup code) on a fully signed-in session. Self-service: it only
- * touches the actor's own enrolment, found from the session.
+ * touches the actor's own enrolment, found from the session, so like the
+ * other own-account actions it needs no permission key (docs/RBAC.md).
  */
 export async function regenerateOwnBackupCodes(actor: Actor, code: string, meta: RequestMeta, now = new Date()): Promise<NewBackupCodesResult> {
   if (actor.kind !== "admin" || !actor.userId || !actor.sessionId || actor.mfaVerifiedAt === null) return { status: "not_allowed" };

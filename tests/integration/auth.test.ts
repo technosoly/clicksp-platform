@@ -139,6 +139,17 @@ describe("new backup codes (My account)", () => {
     expect((await verifyAdminMfa(await signIn(), result.backupCodes[0]!, admin.meta, later)).status).toBe("ok");
   });
 
+  it("shares the 5-wrong-codes lock with sign-in", async () => {
+    const now = new Date();
+    const admin = await enrolledAdmin("business_admin", now);
+    const actor = adminActor(await context(admin.token, now), admin.meta);
+    const later = new Date(now.getTime() + 60_000);
+    const results: string[] = [];
+    for (let i = 0; i < 5; i += 1) results.push((await regenerateOwnBackupCodes(actor, "111111", admin.meta, later)).status);
+    expect(results).toEqual(["invalid", "invalid", "invalid", "invalid", "locked"]);
+    expect((await regenerateOwnBackupCodes(actor, totp(admin.secret, later.getTime()), admin.meta, later)).status).toBe("locked");
+  });
+
   it("refuses a session without a two-factor check, a customer, and an admin without two-factor", async () => {
     const now = new Date();
     const admin = await enrolledAdmin("business_admin", now);
@@ -350,7 +361,7 @@ describe("two-factor sign-in (TOTP)", () => {
     await one(pool as never, "SELECT 1 FROM security_events WHERE type = 'mfa.backup_code_used' AND user_id = $1", [admin.userId]);
   });
 
-  it("refuses a code from a clock 5 minutes off, and says the clock is the problem", async () => {
+  it("refuses a code from a clock 5 minutes off as a plain wrong code, and records the drift for the owner", async () => {
     const now = new Date();
     const admin = await enrolledAdmin("business_admin", now);
     const later = new Date(now.getTime() + 60_000);
@@ -358,7 +369,8 @@ describe("two-factor sign-in (TOTP)", () => {
     if (login.status !== "ok") throw new Error("login failed");
     const pending = await context(login.session.token, later);
     const phoneAhead = totp(admin.secret, later.getTime() + 5 * 60_000);
-    expect(await verifyAdminMfa(pending, phoneAhead, admin.meta, later)).toEqual({ status: "clock_drift", driftMinutes: 5 });
+    // The browser learns nothing about the offset.
+    expect(await verifyAdminMfa(pending, phoneAhead, admin.meta, later)).toEqual({ status: "invalid" });
     // Still a failed attempt, and the session stays pending.
     expect((await context(login.session.token, later)).mfa).toBe("challenge");
     const drift = await one<{ details: { clockDriftSeconds: number } }>(
@@ -368,7 +380,17 @@ describe("two-factor sign-in (TOTP)", () => {
     );
     expect(drift.details.clockDriftSeconds).toBe(300);
     await one(pool as never, "SELECT 1 FROM security_events WHERE type = 'mfa.failed' AND user_id = $1", [admin.userId]);
-    expect((await verifyAdminMfa(pending, totp(admin.secret, later.getTime()), admin.meta, later)).status).toBe("ok");
+    const ok = await verifyAdminMfa(pending, totp(admin.secret, later.getTime()), admin.meta, later);
+    expect(ok.status).toBe("ok");
+
+    // A replayed older code (3 minutes later) is not reported as drift.
+    const evenLater = new Date(later.getTime() + 3 * 60_000);
+    const again = await adminPasswordLogin({ identifier: admin.username, password: PASSWORD }, freshMeta(), evenLater);
+    if (again.status !== "ok") throw new Error("login failed");
+    const pending2 = await context(again.session.token, evenLater);
+    expect((await verifyAdminMfa(pending2, totp(admin.secret, later.getTime()), admin.meta, evenLater)).status).toBe("invalid");
+    const drifts = await pool.query("SELECT count(*)::int AS n FROM security_events WHERE type = 'mfa.clock_drift' AND user_id = $1", [admin.userId]);
+    expect(drifts.rows[0].n).toBe(1);
   });
 
   it("locks TOTP for 15 minutes after 5 wrong codes", async () => {

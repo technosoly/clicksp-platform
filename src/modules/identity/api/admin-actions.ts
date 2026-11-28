@@ -16,7 +16,7 @@ import { safeAdminReturnPath } from "../domain/admin-account";
 import { currentAdmin } from "./admin-guard";
 import { clearSessionCookie, readSessionToken, setSessionCookie } from "./cookies";
 
-export type FormState = { error?: string; values?: Record<string, number>; backupCodes?: string[] } | undefined;
+export type FormState = { error?: string; backupCodes?: string[] } | undefined;
 
 const localeOf = (form: FormData): string => {
   const value = form.get("locale");
@@ -61,7 +61,6 @@ export async function adminMfaAction(_prev: FormState, form: FormData): Promise<
     if (result.status === "locked") return { error: "mfa_locked" };
     if (result.status === "not_allowed") return { error: "unexpected" };
     if (result.status === "invalid") return { error: "invalid_code" };
-    if (result.status === "clock_drift") return { error: "mfa_clock_drift", values: { minutes: result.driftMinutes } };
     if (result.session) await setSessionCookie("admin", result.session);
   } catch (error) {
     logger.error("admin MFA failed", { error: String(error) });

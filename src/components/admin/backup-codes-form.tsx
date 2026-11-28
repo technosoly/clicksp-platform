@@ -42,7 +42,7 @@ export function BackupCodesForm({ left }: { left: number }) {
       </p>
       {errorKey ? (
         <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive" data-testid="form-error">
-          {t.has(errorKey) ? t(errorKey, state.values) : t("errors.unexpected")}
+          {t.has(errorKey) ? t(errorKey) : t("errors.unexpected")}
         </p>
       ) : null}
       <div className="space-y-2">

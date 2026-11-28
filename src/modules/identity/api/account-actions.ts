@@ -38,7 +38,6 @@ export async function regenerateBackupCodesAction(_prev: ActionState, form: Form
     const code = text(form, "code").slice(0, 20);
     const result = await regenerateOwnBackupCodes(actor, code, await currentRequestMeta());
     if (result.status === "ok") return { ok: true, backupCodes: result.backupCodes };
-    if (result.status === "clock_drift") return { error: "mfa_clock_drift", values: { minutes: result.driftMinutes } };
     if (result.status === "locked") return { error: "mfa_locked" };
     if (result.status === "invalid") return { error: "invalid_code" };
     return { error: "forbidden" };
