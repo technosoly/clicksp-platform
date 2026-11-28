@@ -42,7 +42,7 @@ async function signInBusinessAdmin(page: Page) {
 test("a Business Admin writes an information page and visitors read it", async ({ page }, info) => {
   const id = randomUUID().slice(0, 8);
   // Projects run side by side: each writes its own page so neither overwrites the other.
-  const { key, name } = info.project.name === "mobile" ? { key: "shipping", name: "Shipping and delivery" } : { key: "contact", name: "Contact us" };
+  const { key, name } = info.project.name === "mobile" ? { key: "shipping", name: "Shipping and delivery" } : { key: "returns", name: "Returns" };
   await signInBusinessAdmin(page);
   await page.goto("/en/admin/content");
   await page.getByTestId("admin-info-pages").getByRole("link", { name }).click();
@@ -70,4 +70,53 @@ test("a Business Admin writes an information page and visitors read it", async (
 test("a page that hasn't been written is not found", async ({ page }) => {
   const response = await page.goto("/fa/pages/no-such-page");
   expect(response?.status()).toBe(404);
+});
+
+test("a Business Admin sets the contact details and visitors see them on the Contact page", async ({ page }, info) => {
+  // One project writes the shared store setting, so the two projects can't overwrite each other.
+  test.skip(info.project.name === "mobile", "the setting is shared; the desktop project writes it");
+  const id = randomUUID().slice(0, 8);
+  await signInBusinessAdmin(page);
+  await page.goto("/en/admin/content");
+  await page.getByTestId("admin-contact-edit").click();
+  await expect(page.getByTestId("admin-contact-heading")).toContainText("Contact details");
+  await page.getByLabel("Address (Persian)").fill(`TEST نشانی ${id}`);
+  await page.getByLabel("Phone 1").fill("021-0000 0000");
+  await page.getByLabel("Opening hours (Persian)").fill("TEST شنبه تا پنجشنبه");
+  await page.getByLabel("Neshan link (neshan.org or nshn.ir)").fill("https://evil.test/x");
+  await page.getByTestId("admin-contact-form-submit").click();
+  await expect(page.getByTestId("form-error")).toContainText("neshan.org");
+  await page.getByLabel("Neshan link (neshan.org or nshn.ir)").fill("https://nshn.ir/TEST");
+  await page.getByLabel("Google embedded map code (optional)").fill('<iframe src="https://www.google.com/maps/embed?pb=TEST"></iframe>');
+  await page.getByTestId("admin-contact-form-submit").click();
+  await expect(page.getByTestId("form-success")).toContainText("Saved");
+
+  await page.goto("/fa");
+  await page.getByTestId("footer-contact").click();
+  await expect(page).toHaveURL(/\/fa\/contact$/);
+  await expect(page.getByTestId("contact-address")).toContainText(`TEST نشانی ${id}`);
+  await expect(page.getByTestId("contact-phone")).toHaveText("۰۲۱۰۰۰۰۰۰۰۰");
+  await expect(page.getByTestId("contact-phone")).toHaveAttribute("href", "tel:02100000000");
+  await expect(page.getByTestId("contact-map-neshan")).toHaveAttribute("href", "https://nshn.ir/TEST");
+  // The Google map is not loaded until the visitor asks for it.
+  await expect(page.getByTestId("contact-map-frame")).toHaveCount(0);
+  await page.getByTestId("contact-map-load").click();
+  await expect(page.getByTestId("contact-map-frame")).toHaveAttribute("src", "https://www.google.com/maps/embed?pb=TEST");
+  // The old address of the information page leads here.
+  await page.goto("/en/pages/contact");
+  await expect(page).toHaveURL(/\/en\/contact$/);
+});
+
+test("the About page shows the store's story and links to Contact", async ({ page }) => {
+  await page.goto("/fa");
+  await page.getByTestId("footer-about").click();
+  await expect(page).toHaveURL(/\/fa\/about$/);
+  await expect(page.getByTestId("about-heading")).toBeVisible();
+  await expect(page.getByTestId("about-values").getByRole("heading")).toHaveCount(4);
+  await expect(page.getByTestId("about-story")).not.toBeEmpty();
+  await expect(page).toHaveTitle(/دربارهٔ ما/);
+  expect(await page.locator('link[rel="canonical"]').getAttribute("href")).toMatch(/\/fa\/about$/);
+  await page.getByTestId("about-contact-link").click();
+  await expect(page).toHaveURL(/\/fa\/contact$/);
+  await expect(page.getByTestId("contact-heading")).toBeVisible();
 });

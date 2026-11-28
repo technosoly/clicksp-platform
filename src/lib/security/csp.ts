@@ -12,7 +12,9 @@
  *   has to allow inline scripts (Next.js inlines its hydration data).
  *
  * Every source is 'self': fonts are bundled and nothing is loaded from other
- * origins (CLAUDE.md, Iranian hosting).
+ * origins (CLAUDE.md, Iranian hosting). One exception on storefront pages:
+ * frames from www.google.com, for the Contact page's embedded map, which
+ * loads only when the visitor asks for it (docs/DEPLOYMENT.md).
  */
 
 export type CspKind = "strict" | "static";
@@ -46,6 +48,8 @@ export function buildCsp(kind: CspKind, options: { nonce?: string; dev: boolean 
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' blob: data:",
     "font-src 'self'",
+    // Storefront only: the Contact page's Google map, loaded when the visitor presses "show map".
+    ...(kind === "static" ? ["frame-src 'self' https://www.google.com"] : []),
     // Dev only: hot reload talks to the dev server over a WebSocket.
     `connect-src 'self'${options.dev ? " ws: wss:" : ""}`,
     "object-src 'none'",

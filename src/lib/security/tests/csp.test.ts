@@ -20,7 +20,13 @@ describe("Content-Security-Policy", () => {
     expect(csp).toContain("default-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain("nonce-");
-    expect(csp).not.toMatch(/https?:/);
+    // The only other origin: frames from Google, for the Contact page map the visitor asks for.
+    expect(csp).toContain("frame-src 'self' https://www.google.com");
+    expect(csp.replace("frame-src 'self' https://www.google.com", "")).not.toMatch(/https?:/);
+  });
+
+  it("strict pages allow no frames from other origins", () => {
+    expect(buildCsp("strict", { nonce: "n", dev: false })).not.toContain("frame-src");
   });
 
   it("development allows eval and the hot-reload socket", () => {

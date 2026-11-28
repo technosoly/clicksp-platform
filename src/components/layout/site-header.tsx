@@ -25,6 +25,12 @@ export async function SiteHeader({ locale }: { locale: "fa" | "en" }) {
           <Link href="/motorcycles" className="rounded-md px-3 py-2 text-sm hover:bg-accent" data-testid="header-motorcycles">
             {nav("motorcycles")}
           </Link>
+          <Link href="/about" className="hidden rounded-md px-3 py-2 text-sm hover:bg-accent lg:inline-flex" data-testid="header-about">
+            {nav("about")}
+          </Link>
+          <Link href="/contact" className="hidden rounded-md px-3 py-2 text-sm hover:bg-accent sm:inline-flex" data-testid="header-contact">
+            {nav("contact")}
+          </Link>
           {/* Static link: the account page itself sends signed-out visitors to sign in. */}
           <Link href="/account" className="rounded-md px-3 py-2 text-sm hover:bg-accent" data-testid="header-account">
             {nav("account")}

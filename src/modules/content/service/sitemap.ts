@@ -21,8 +21,10 @@ export async function sitemapUrls(baseUrl: string): Promise<SitemapUrl[]> {
   const base = baseUrl.replace(/\/+$/, "");
   const [catalog, articles, bikes, faPages, enPages] = await Promise.all([catalogSitemap(LIMIT), articleSitemap(LIMIT), motorcycleSitemap(), shopInfoPageLinks("fa"), shopInfoPageLinks("en")]);
   const url = (locale: string, path: string) => `${base}/${locale}${path === "/" ? "" : encodeURI(path)}`;
-  const fixed = (["fa", "en"] as const).flatMap((l) => ["/", "/motorcycles", "/blog"].map((p) => ({ url: url(l, p) })));
-  const pages = [...faPages.map((p) => ({ url: url("fa", `/pages/${p.key}`) })), ...enPages.filter((p) => p.lang === "en").map((p) => ({ url: url("en", `/pages/${p.key}`) }))];
+  const fixed = (["fa", "en"] as const).flatMap((l) => ["/", "/motorcycles", "/blog", "/about", "/contact"].map((p) => ({ url: url(l, p) })));
+  // About and Contact have their own addresses (in fixed); /pages/about and /pages/contact redirect there.
+  const own = (p: { key: string }) => p.key !== "about" && p.key !== "contact";
+  const pages = [...faPages.filter(own).map((p) => ({ url: url("fa", `/pages/${p.key}`) })), ...enPages.filter((p) => own(p) && p.lang === "en").map((p) => ({ url: url("en", `/pages/${p.key}`) }))];
   const rest = [...catalog, ...articles, ...bikes].slice(0, MAX).map((e) => ({ url: url(e.locale, e.path), ...(e.updatedAt ? { lastModified: e.updatedAt } : {}) }));
   return [...fixed, ...pages, ...rest];
 }

@@ -18,7 +18,17 @@ export async function SiteFooter() {
                 {t("blog")}
               </Link>
             </li>
-            {links.map((l) => (
+            <li>
+              <Link href="/about" className="hover:text-foreground hover:underline" data-testid="footer-about">
+                {t("about")}
+              </Link>
+            </li>
+            <li>
+              <Link href="/contact" className="hover:text-foreground hover:underline" data-testid="footer-contact">
+                {t("contact")}
+              </Link>
+            </li>
+            {links.filter((l) => l.key !== "about" && l.key !== "contact").map((l) => (
               <li key={l.key}>
                 <Link href={`/pages/${l.key}`} lang={l.lang} className="hover:text-foreground hover:underline">
                   {l.title}

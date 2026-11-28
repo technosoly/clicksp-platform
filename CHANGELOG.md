@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added (website: Contact and About pages)
+- **Contact us** (`/fa/contact`, `/en/contact`): store address, phone numbers (tap to call), opening hours, email and a map card with buttons for Google Maps, Neshan and Balad. The map is a drawn picture, so the page never waits on a foreign service; an optional Google embedded map loads only when the visitor presses "Show Google map". `Store` structured data, canonical and hreflang.
+- **Contact details editor** (Admin > Website > Content > Contact details, `settings.store`): saved as the `store.contact` store setting (not seeded: empty until the owner fills it in, and the page then says the details are coming). Phone numbers are normalized to digits; map links are accepted only over https from each provider's own hosts, and the embed only from `www.google.com/maps/embed`. Each save is audited (`settings.store.contact_updated`).
+- **About us** (`/fa/about`, `/en/about`): hero, four reasons to buy, the store's story, what the store sells and a contact call to action. The story is sample text from the translation messages until the owner writes the About page in Admin > Content, which then replaces it.
+- About and Contact are linked in the header (wider screens) and footer and listed in the sitemap; `/pages/about` and `/pages/contact` redirect to them permanently.
+- Tests: unit (contact details parsing, phone normalization, map link and embed checks, CSP), integration (save, show, audit, invalid input, denied for Store Staff, admins without `settings.store` and customers), E2E (admin sets details and the visitor sees them; Google map loads only on request; About page and links).
+
 ### Added (SMS)
 - **Kavenegar SMS for customer sign-in codes**: `SMS_PROVIDER=kavenegar` sends the code with Kavenegar's Verify Lookup API and an approved template (`KAVENEGAR_API_KEY`, `KAVENEGAR_OTP_TEMPLATE`, server environment only, passed through Docker Compose). The key never appears in logs or errors; requests time out after 8 seconds without retrying and never follow redirects; a missing key or template leaves phone sign-in off instead of stopping the store. Setup steps in `docs/DEPLOYMENT.md`.
 - Tests: unit (request format, number conversion, success and error answers, timeout, refused numbers and codes, no key in errors, configuration checks, environment parsing).
