@@ -56,6 +56,7 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
   {
     labelKey: "website",
     items: [
+      item("/admin/settings", "siteSettings", ["settings.store"], true),
       item("/admin/content", "content", ["content.manage"], true),
       item("/admin/articles", "articles", ["article.manage"], true),
       item("/admin/banners", "banners", ["banner.manage"], true),
@@ -74,7 +75,6 @@ export const ADMIN_NAV: readonly AdminNavGroup[] = [
   {
     labelKey: "system",
     items: [
-      item("/admin/settings", "settings", ["settings.store", "settings.system"]),
       item("/admin/system", "technical", ["settings.system", "integration.manage", "backup.view", "deployment.view", "monitoring.view"]),
     ],
   },
