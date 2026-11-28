@@ -21,7 +21,29 @@
       "position": "Slide {n} of {total}",
       "previous": "Previous slide",
       "next": "Next slide",
-      "goTo": "Go to slide {n}"
+      "goTo": "Go to slide {n}",
+      "play": "Play slides",
+      "pause": "Pause slides",
+      "defaults": {
+        "parts": {
+          "eyebrow": "Clicksp Spare Parts",
+          "title": "Motorcycle spare parts and consumables",
+          "subtitle": "Search parts and consumables by name, part number or SKU.",
+          "cta": "Search parts"
+        },
+        "fitment": {
+          "eyebrow": "Parts that fit your bike",
+          "title": "Pick your motorcycle, find its parts",
+          "subtitle": "See the parts listed as compatible with your motorcycle model.",
+          "cta": "Choose a motorcycle"
+        },
+        "guides": {
+          "eyebrow": "Clicksp articles",
+          "title": "Maintenance and part replacement guides",
+          "subtitle": "Service tips and simple repairs for riders.",
+          "cta": "Read the articles"
+        }
+      }
     }
   },
   "Footer": {
